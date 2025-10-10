@@ -1,0 +1,8 @@
+[workspace]
+resolver = "3"
+members = ["crates/lazycloud-core", "crates/lazycloud-tui"]
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -2 }
+nursery = { level = "warn", priority = -3 }
