@@ -1,8 +1,15 @@
-[workspace]
+[package]
+name = "lazycloud"
+edition = "2024"
 resolver = "3"
-members = ["crates/lazycloud-core", "crates/lazycloud-tui"]
 
-[workspace.lints.clippy]
-all = { level = "deny", priority = -1 }
-pedantic = { level = "warn", priority = -2 }
-nursery = { level = "warn", priority = -3 }
+[dependencies]
+color-eyre = "0.6.5"
+ratatui = "0.29.0"
+tokio = { version = "1.48.0", features = ["full"] }
+tokio-util = "0.7.17"
+futures = "0.3.31"
+signal-hook = "0.3.18"
+crossterm = { version = "0.29.0", features = ["event-stream"] }
+log = "0.4.29"
+serde = { version = "1.0.228", features = ["derive"] }
