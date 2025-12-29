@@ -4,6 +4,7 @@ mod command;
 mod components;
 mod tui;
 mod app;
+mod context;
 
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {

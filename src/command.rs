@@ -1,14 +1,6 @@
 use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GcpConnection {
-    project_id: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Connection {
-    Gcp(GcpConnection),
-}
+use crate::components::services::Service;
+use crate::context::Context;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Command {
@@ -22,6 +14,6 @@ pub enum Command {
     DisplayError(String),
     DisplayHelp,
 
-    // Connections
-    UseConnection(Connection)
+    SelectContext(Context),
+    SelectService(Service)
 }

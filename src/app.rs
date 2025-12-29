@@ -1,5 +1,10 @@
 use crate::command::Command;
 use crate::components::Component;
+use crate::components::context_select::ContextSelector;
+use crate::components::service_select::ServiceSelector;
+use crate::components::services::secret_manager::SecretManager;
+use crate::components::services::{GcpService, Service};
+use crate::context::Context;
 use crate::tui::{Event, Tui};
 use crossterm::event::{KeyCode, KeyEvent};
 use log::debug;
@@ -7,10 +12,22 @@ use ratatui::layout::Rect;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
+enum Route {
+    ContextSelect(ContextSelector),
+    ServiceSelect(ServiceSelector),
+    ActiveService(Box<dyn Component>),
+}
+
+pub struct AppContext {
+    pub active_context: Option<Context>,
+    pub command_tx: UnboundedSender<Command>,
+}
+
 pub struct App {
-    components: Vec<Box<dyn Component>>,
+    route: Route,
     should_quit: bool,
     should_suspend: bool,
+    app_context: AppContext,
     command_tx: UnboundedSender<Command>,
     command_rx: UnboundedReceiver<Command>,
 }
@@ -18,10 +35,15 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         let (command_tx, command_rx) = mpsc::unbounded_channel();
+        let app_context = AppContext {
+            active_context: None,
+            command_tx: command_tx.clone(),
+        };
         Self {
-            components: Vec::new(),
+            route: Route::ContextSelect(ContextSelector::new(&app_context)),
             should_quit: false,
             should_suspend: false,
+            app_context,
             command_tx,
             command_rx,
         }
@@ -62,10 +84,14 @@ impl App {
             _ => {}
         }
 
-        for component in &mut self.components {
-            if let Some(command) = component.handle_event(event.clone())? {
-                self.command_tx.send(command)?;
-            }
+        let command = match &mut self.route {
+            Route::ContextSelect(component) => component.handle_event(event)?,
+            Route::ServiceSelect(component) => component.handle_event(event)?,
+            Route::ActiveService(component) => component.handle_event(event)?,
+        };
+
+        if let Some(command) = command {
+            self.command_tx.send(command)?;
         }
 
         Ok(())
@@ -88,7 +114,7 @@ impl App {
                 debug!("Handling command: {:?}", command);
             }
 
-            match command {
+            match &command {
                 Command::Tick => {
                     // TODO: Drain previously pressed keys
                 }
@@ -96,15 +122,32 @@ impl App {
                 Command::Suspend => self.should_suspend = true,
                 Command::Resume => self.should_suspend = false,
                 Command::ClearScreen => tui.clear()?,
-                Command::Resize(width, height) => self.handle_resize(tui, width, height)?,
+                Command::Resize(width, height) => self.handle_resize(tui, *width, *height)?,
                 Command::Render => self.render(tui)?,
+                Command::SelectContext(context) => {
+                    self.app_context.active_context = Some(context.clone());
+                    self.route = Route::ServiceSelect(ServiceSelector::new(&self.app_context));
+                }
+                Command::SelectService(service) => {
+                    let service_component = self.create_service_component(service);
+                    self.route = Route::ActiveService(service_component);
+                }
                 _ => {}
             }
 
-            for component in &mut self.components {
-                if let Some(command) = component.update(command.clone())? {
-                    self.command_tx.send(command)?;
-                }
+            let result = match &mut self.route {
+                Route::ContextSelect(component) => component.update(command),
+                Route::ServiceSelect(component) => component.update(command),
+                Route::ActiveService(component) => component.update(command),
+            };
+
+            if let Ok(Some(command)) = result {
+                self.command_tx.send(command)?;
+            } else if let Err(error) = result {
+                self.command_tx.send(Command::DisplayError(format!(
+                    "Error encountered while updating component: {}",
+                    error
+                )))?;
             }
         }
         Ok(())
@@ -118,18 +161,29 @@ impl App {
 
     fn render(&mut self, tui: &mut Tui) -> color_eyre::Result<()> {
         tui.draw(|frame| {
-            for component in &mut self.components {
-                if let Err(error) = component.render(frame, frame.area()) {
-                    self.command_tx
-                        .send(Command::DisplayError(format!(
-                            "Component '{}' failed to render: {}",
-                            component.name(),
-                            error
-                        )))
-                        .expect("Failed to send error command");
-                }
+            let result = match &mut self.route {
+                Route::ContextSelect(component) => component.render(frame, frame.area()),
+                Route::ServiceSelect(component) => component.render(frame, frame.area()),
+                Route::ActiveService(component) => component.render(frame, frame.area()),
+            };
+
+            if let Err(error) = result {
+                self.command_tx
+                    .send(Command::DisplayError(format!(
+                        "Error encountered while rendering component: {}",
+                        error
+                    )))
+                    .expect("Failed to send error command");
             }
         })?;
         Ok(())
+    }
+
+    fn create_service_component(&self, service: &Service) -> Box<dyn Component> {
+        match service {
+            Service::Gcp(GcpService::SecretManager) => {
+                Box::new(SecretManager::new(&self.app_context))
+            }
+        }
     }
 }

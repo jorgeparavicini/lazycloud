@@ -1,3 +1,9 @@
+pub mod status;
+pub mod context_select;
+pub mod service_select;
+pub mod services;
+mod widgets;
+
 use crate::command::Command;
 use crate::tui::Event;
 use crossterm::event::KeyEvent;
@@ -5,10 +11,6 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 
 pub trait Component {
-    fn name(&self) -> &str;
-
-    fn render(&self, frame: &mut Frame, area: Rect) -> color_eyre::Result<()>;
-
     fn handle_event(&mut self, event: Event) -> color_eyre::Result<Option<Command>> {
         let command = match event {
             Event::Key(key_event) => self.handle_key_event(key_event)?,
@@ -35,4 +37,6 @@ pub trait Component {
         let _ = command;
         Ok(None)
     }
+
+    fn render(&mut self, frame: &mut Frame, area: Rect) -> color_eyre::Result<()>;
 }
