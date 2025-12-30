@@ -1,9 +1,9 @@
-use serde::{Deserialize, Serialize};
 use crate::components::services::Service;
 use crate::context::Context;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Command {
+pub enum Action {
     Tick,
     Render,
     Resize(u16, u16),
@@ -15,5 +15,5 @@ pub enum Command {
     DisplayHelp,
 
     SelectContext(Context),
-    SelectService(Service)
+    SelectService(Service),
 }

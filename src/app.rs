@@ -1,4 +1,4 @@
-use crate::command::Command;
+use crate::action::Action;
 use crate::components::Component;
 use crate::components::context_select::ContextSelector;
 use crate::components::service_select::ServiceSelector;
@@ -11,6 +11,7 @@ use log::debug;
 use ratatui::layout::Rect;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use crate::components::ComponentResult::Consumed;
 
 enum Route {
     ContextSelect(ContextSelector),
@@ -20,7 +21,7 @@ enum Route {
 
 pub struct AppContext {
     pub active_context: Option<Context>,
-    pub command_tx: UnboundedSender<Command>,
+    pub action_tx: UnboundedSender<Action>,
 }
 
 pub struct App {
@@ -28,8 +29,8 @@ pub struct App {
     should_quit: bool,
     should_suspend: bool,
     app_context: AppContext,
-    command_tx: UnboundedSender<Command>,
-    command_rx: UnboundedReceiver<Command>,
+    action_tx: UnboundedSender<Action>,
+    action_rx: UnboundedReceiver<Action>,
 }
 
 impl App {
@@ -37,15 +38,15 @@ impl App {
         let (command_tx, command_rx) = mpsc::unbounded_channel();
         let app_context = AppContext {
             active_context: None,
-            command_tx: command_tx.clone(),
+            action_tx: command_tx.clone(),
         };
         Self {
             route: Route::ContextSelect(ContextSelector::new(&app_context)),
             should_quit: false,
             should_suspend: false,
             app_context,
-            command_tx,
-            command_rx,
+            action_tx: command_tx,
+            action_rx: command_rx,
         }
     }
 
@@ -55,11 +56,11 @@ impl App {
 
         loop {
             self.handle_events(&mut tui).await?;
-            self.handle_commands(&mut tui)?;
+            self.handle_actions(&mut tui)?;
             if self.should_suspend {
                 tui.suspend()?;
-                self.command_tx.send(Command::Resume)?;
-                self.command_tx.send(Command::ClearScreen)?;
+                self.action_tx.send(Action::Resume)?;
+                self.action_tx.send(Action::ClearScreen)?;
                 tui.enter()?;
             } else if self.should_quit {
                 break;
@@ -76,10 +77,10 @@ impl App {
         };
 
         match event {
-            Event::Quit => self.command_tx.send(Command::Quit)?,
-            Event::Tick => self.command_tx.send(Command::Tick)?,
-            Event::Render => self.command_tx.send(Command::Render)?,
-            Event::Resize(width, height) => self.command_tx.send(Command::Resize(width, height))?,
+            Event::Quit => self.action_tx.send(Action::Quit)?,
+            Event::Tick => self.action_tx.send(Action::Tick)?,
+            Event::Render => self.action_tx.send(Action::Render)?,
+            Event::Resize(width, height) => self.action_tx.send(Action::Resize(width, height))?,
             Event::Key(key_event) => self.handle_key_event(key_event)?,
             _ => {}
         }
@@ -90,8 +91,8 @@ impl App {
             Route::ActiveService(component) => component.handle_event(event)?,
         };
 
-        if let Some(command) = command {
-            self.command_tx.send(command)?;
+        if let Consumed(Some(command)) = command {
+            self.action_tx.send(command)?;
         }
 
         Ok(())
@@ -100,35 +101,35 @@ impl App {
     fn handle_key_event(&mut self, key_event: KeyEvent) -> color_eyre::Result<()> {
         // TODO: handle keys and multi-key combinations
         let command = match key_event.code {
-            KeyCode::Char('q') => Command::Quit,
-            KeyCode::Char('h') => Command::DisplayHelp,
+            KeyCode::Char('q') => Action::Quit,
+            KeyCode::Char('h') => Action::DisplayHelp,
             _ => return Ok(()),
         };
-        self.command_tx.send(command)?;
+        self.action_tx.send(command)?;
         Ok(())
     }
 
-    fn handle_commands(&mut self, tui: &mut Tui) -> color_eyre::Result<()> {
-        while let Ok(command) = self.command_rx.try_recv() {
-            if command != Command::Tick && command != Command::Render {
+    fn handle_actions(&mut self, tui: &mut Tui) -> color_eyre::Result<()> {
+        while let Ok(command) = self.action_rx.try_recv() {
+            if command != Action::Tick && command != Action::Render {
                 debug!("Handling command: {:?}", command);
             }
 
             match &command {
-                Command::Tick => {
+                Action::Tick => {
                     // TODO: Drain previously pressed keys
                 }
-                Command::Quit => self.should_quit = true,
-                Command::Suspend => self.should_suspend = true,
-                Command::Resume => self.should_suspend = false,
-                Command::ClearScreen => tui.clear()?,
-                Command::Resize(width, height) => self.handle_resize(tui, *width, *height)?,
-                Command::Render => self.render(tui)?,
-                Command::SelectContext(context) => {
+                Action::Quit => self.should_quit = true,
+                Action::Suspend => self.should_suspend = true,
+                Action::Resume => self.should_suspend = false,
+                Action::ClearScreen => tui.clear()?,
+                Action::Resize(width, height) => self.handle_resize(tui, *width, *height)?,
+                Action::Render => self.render(tui)?,
+                Action::SelectContext(context) => {
                     self.app_context.active_context = Some(context.clone());
                     self.route = Route::ServiceSelect(ServiceSelector::new(&self.app_context));
                 }
-                Command::SelectService(service) => {
+                Action::SelectService(service) => {
                     let service_component = self.create_service_component(service);
                     self.route = Route::ActiveService(service_component);
                 }
@@ -142,9 +143,9 @@ impl App {
             };
 
             if let Ok(Some(command)) = result {
-                self.command_tx.send(command)?;
+                self.action_tx.send(command)?;
             } else if let Err(error) = result {
-                self.command_tx.send(Command::DisplayError(format!(
+                self.action_tx.send(Action::DisplayError(format!(
                     "Error encountered while updating component: {}",
                     error
                 )))?;
@@ -168,8 +169,8 @@ impl App {
             };
 
             if let Err(error) = result {
-                self.command_tx
-                    .send(Command::DisplayError(format!(
+                self.action_tx
+                    .send(Action::DisplayError(format!(
                         "Error encountered while rendering component: {}",
                         error
                     )))

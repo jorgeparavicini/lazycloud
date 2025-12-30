@@ -1,6 +1,6 @@
 use crate::app::AppContext;
 use crate::context::GcpContext;
-use crate::{command::Command, components::Component};
+use crate::{action::Action, components::Component};
 use color_eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -10,12 +10,14 @@ use ratatui::{
     Frame,
 };
 use tokio::sync::mpsc::UnboundedSender;
+use crate::components::ComponentResult;
+use crate::components::ComponentResult::Ignored;
 use crate::context::Context::Gcp;
 
 pub struct ContextSelector {
     contexts: Vec<String>,
     state: ListState,
-    command_tx: UnboundedSender<Command>,
+    action_tx: UnboundedSender<Action>,
 }
 
 impl ContextSelector {
@@ -29,7 +31,7 @@ impl ContextSelector {
                 "Azure - Test".to_string(),
             ],
             state,
-            command_tx: app_context.command_tx.clone(),
+            action_tx: app_context.action_tx.clone(),
         }
     }
 
@@ -64,8 +66,8 @@ impl ContextSelector {
     fn select_context(&mut self) -> Result<()> {
         if let Some(i) = self.state.selected() {
             let context = self.contexts[i].clone();
-            self.command_tx
-                .send(Command::SelectContext(Gcp(GcpContext {
+            self.action_tx
+                .send(Action::SelectContext(Gcp(GcpContext {
                     project_id: context,
                     service_account_path: "".to_string(),
                     zone: "".to_string(),
@@ -76,14 +78,14 @@ impl ContextSelector {
 }
 
 impl Component for ContextSelector {
-    fn handle_key_event(&mut self, key: KeyEvent) -> Result<Option<Command>> {
+    fn handle_key_event(&mut self, key: KeyEvent) -> Result<ComponentResult> {
         match key.code {
             KeyCode::Down => self.previous(),
             KeyCode::Up => self.next(),
             KeyCode::Enter => self.select_context()?,
             _ => {}
         }
-        Ok(None)
+        Ok(Ignored)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {

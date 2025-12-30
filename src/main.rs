@@ -1,6 +1,6 @@
 use crate::app::App;
 
-mod command;
+mod action;
 mod components;
 mod tui;
 mod app;

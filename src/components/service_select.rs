@@ -1,6 +1,6 @@
 use crate::app::AppContext;
 use crate::components::services::{GcpService, Service};
-use crate::{command::Command, components::Component};
+use crate::{action::Action, components::Component};
 use color_eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -10,11 +10,13 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState},
 };
 use tokio::sync::mpsc::UnboundedSender;
+use crate::components::ComponentResult;
+use crate::components::ComponentResult::Ignored;
 
 pub struct ServiceSelector {
     services: Vec<Service>,
     state: ListState,
-    command_tx: UnboundedSender<Command>,
+    action_tx: UnboundedSender<Action>,
 }
 
 impl ServiceSelector {
@@ -24,7 +26,7 @@ impl ServiceSelector {
         Self {
             services: vec![Service::Gcp(GcpService::SecretManager)],
             state,
-            command_tx: app_context.command_tx.clone(),
+            action_tx: app_context.action_tx.clone(),
         }
     }
 
@@ -59,22 +61,23 @@ impl ServiceSelector {
     fn selected_service(&self) -> Result<()> {
         if let Some(i) = self.state.selected() {
             let service = &self.services[i];
-            self.command_tx
-                .send(Command::SelectService(service.clone()))?;
+            self.action_tx
+                .send(Action::SelectService(service.clone()))?;
         }
         Ok(())
     }
 }
 
 impl Component for ServiceSelector {
-    fn handle_key_event(&mut self, key: KeyEvent) -> Result<Option<Command>> {
+    fn handle_key_event(&mut self, key: KeyEvent) -> Result<ComponentResult> {
         match key.code {
             KeyCode::Down => self.previous(),
             KeyCode::Up => self.next(),
             KeyCode::Enter => self.selected_service()?,
             _ => {}
         }
-        Ok(None)
+
+        Ok(Ignored)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
