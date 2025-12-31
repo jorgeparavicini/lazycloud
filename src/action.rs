@@ -1,8 +1,8 @@
+use crate::components::services::gcp::GcpAction;
 use crate::components::services::Service;
 use crate::context::Context;
-use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
     Tick,
     Render,
@@ -16,4 +16,9 @@ pub enum Action {
 
     SelectContext(Context),
     SelectService(Service),
+
+    Gcp(GcpAction),
+
+    // Navigation
+    Pop,
 }

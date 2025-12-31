@@ -1,10 +1,18 @@
 use serde::{Deserialize, Serialize};
 
-pub mod secret_manager;
+pub mod gcp;
+
+use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Service {
     Gcp(GcpService),
+}
+
+impl fmt::Display for Service {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name())
+    }
 }
 
 impl Service {

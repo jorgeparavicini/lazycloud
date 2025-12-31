@@ -1,5 +1,5 @@
 use futures::FutureExt;
-use crossterm::event::{EventStream, Event as CrosstermEvent, KeyEvent, MouseEvent, EnableMouseCapture, EnableBracketedPaste, DisableBracketedPaste, DisableMouseCapture};
+use crossterm::event::{EventStream, Event as CrosstermEvent, KeyEvent, KeyEventKind, MouseEvent, EnableMouseCapture, EnableBracketedPaste, DisableBracketedPaste, DisableMouseCapture};
 use futures::StreamExt;
 use ratatui::backend::CrosstermBackend;
 use ratatui::{Terminal};
@@ -150,7 +150,13 @@ impl Tui {
                 crossterm_event = event_stream.next().fuse() => {
                     match crossterm_event {
                         Some(Ok(event)) => match event {
-                            CrosstermEvent::Key(key) => Event::Key(key),
+                            CrosstermEvent::Key(key) => {
+                                if key.kind == KeyEventKind::Press {
+                                    Event::Key(key)
+                                } else {
+                                    continue;
+                                }
+                            },
                             CrosstermEvent::Mouse(mouse) => Event::Mouse(mouse),
                             CrosstermEvent::Resize(width, height) => Event::Resize(width, height),
                             CrosstermEvent::FocusGained => Event::FocusGained,
