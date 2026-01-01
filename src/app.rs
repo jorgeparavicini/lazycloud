@@ -1,8 +1,8 @@
-use crate::action::Action;
+use crate::action::AppMsg;
 use crate::components::Component;
 use crate::components::context_selector::ContextSelector;
 use crate::components::service_selector::ServiceSelector;
-use crate::components::services::gcp::secret_manager::{SecretManager, SecretManagerAction};
+use crate::components::services::gcp::secret_manager::{SecretManager};
 use crate::components::services::{GcpService, Service};
 use crate::components::status::Status;
 use crate::context::Context;
@@ -14,37 +14,40 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::Paragraph;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use crate::command::{Command, CommandEnv};
 use crate::components::EventResult::Consumed;
 
 #[derive(Clone)]
 pub struct AppContext {
     pub active_context: Option<Context>,
-    pub action_tx: UnboundedSender<Action>,
+    pub action_tx: UnboundedSender<AppMsg>,
 }
 
 impl AppContext {
-    pub fn send_action(&self, action: Action) -> color_eyre::Result<()> {
+    pub fn send_action(&self, action: AppMsg) -> color_eyre::Result<()> {
         self.action_tx.send(action)?;
         Ok(())
     }
 }
 
+type DynScreen = Box<dyn Component<Msg = AppMsg, Cmd = Box<dyn Command>>>;
+
 pub struct App {
-    navigation_stack: Vec<Box<dyn Component>>,
+    navigation_stack: Vec<DynScreen>,
     status: Status,
     should_quit: bool,
     should_suspend: bool,
     app_context: AppContext,
-    action_tx: UnboundedSender<Action>,
-    action_rx: UnboundedReceiver<Action>,
+    msg_tx: UnboundedSender<AppMsg>,
+    msg_rx: UnboundedReceiver<AppMsg>,
 }
 
 impl App {
     pub fn new() -> Self {
-        let (command_tx, command_rx) = mpsc::unbounded_channel();
+        let (msg_tx, msg_rx) = mpsc::unbounded_channel();
         let app_context = AppContext {
             active_context: None,
-            action_tx: command_tx.clone(),
+            action_tx: msg_tx.clone(),
         };
         Self {
             navigation_stack: vec![Box::new(ContextSelector::new(&app_context))],
@@ -52,8 +55,8 @@ impl App {
             should_quit: false,
             should_suspend: false,
             app_context,
-            action_tx: command_tx,
-            action_rx: command_rx,
+            msg_tx,
+            msg_rx,
         }
     }
 
@@ -66,8 +69,8 @@ impl App {
             self.handle_actions(&mut tui)?;
             if self.should_suspend {
                 tui.suspend()?;
-                self.action_tx.send(Action::Resume)?;
-                self.action_tx.send(Action::ClearScreen)?;
+                self.msg_tx.send(AppMsg::Resume)?;
+                self.msg_tx.send(AppMsg::ClearScreen)?;
                 tui.enter()?;
             } else if self.should_quit {
                 break;
@@ -88,7 +91,7 @@ impl App {
             let command = component.handle_event(event.clone())?;
             match command {
                 Consumed(Some(command)) => {
-                    self.action_tx.send(command)?;
+                    self.msg_tx.send(command)?;
                     consumed = true;
                 }
                 Consumed(None) => {
@@ -100,10 +103,10 @@ impl App {
 
         if !consumed {
             match event {
-                Event::Quit => self.action_tx.send(Action::Quit)?,
-                Event::Tick => self.action_tx.send(Action::Tick)?,
-                Event::Render => self.action_tx.send(Action::Render)?,
-                Event::Resize(width, height) => self.action_tx.send(Action::Resize(width, height))?,
+                Event::Quit => self.msg_tx.send(AppMsg::Quit)?,
+                Event::Tick => self.msg_tx.send(AppMsg::Tick)?,
+                Event::Render => self.msg_tx.send(AppMsg::Render)?,
+                Event::Resize(width, height) => self.msg_tx.send(AppMsg::Resize(width, height))?,
                 Event::Key(key_event) => self.handle_key_event(key_event)?,
                 _ => {}
             }
@@ -114,41 +117,42 @@ impl App {
 
     fn handle_key_event(&mut self, key_event: KeyEvent) -> color_eyre::Result<()> {
         let command = match key_event.code {
-            KeyCode::Char('q') => Action::Quit,
-            KeyCode::Char('h') => Action::DisplayHelp,
-            KeyCode::Esc => Action::Pop,
+            KeyCode::Char('q') => AppMsg::Quit,
+            KeyCode::Char('h') => AppMsg::DisplayHelp,
+            KeyCode::Esc => AppMsg::Pop,
             _ => return Ok(()),
         };
-        self.action_tx.send(command)?;
+        self.msg_tx.send(command)?;
         Ok(())
     }
 
     fn handle_actions(&mut self, tui: &mut Tui) -> color_eyre::Result<()> {
-        while let Ok(command) = self.action_rx.try_recv() {
-            if command != Action::Tick && command != Action::Render {
+        while let Ok(command) = self.msg_rx.try_recv() {
+            if command != AppMsg::Tick && command != AppMsg::Render {
                 debug!("Handling command: {:?}", command);
             }
 
             match &command {
-                Action::Tick => {
+                AppMsg::Tick => {
                     // TODO: Drain previously pressed keys
                 }
-                Action::Quit => self.should_quit = true,
-                Action::Suspend => self.should_suspend = true,
-                Action::Resume => self.should_suspend = false,
-                Action::ClearScreen => tui.clear()?,
-                Action::Resize(width, height) => self.handle_resize(tui, *width, *height)?,
-                Action::Render => self.render(tui)?,
-                Action::SelectContext(context) => {
+                AppMsg::Quit => self.should_quit = true,
+                AppMsg::Suspend => self.should_suspend = true,
+                AppMsg::Resume => self.should_suspend = false,
+                AppMsg::ClearScreen => tui.clear()?,
+                AppMsg::Resize(width, height) => self.handle_resize(tui, *width, *height)?,
+                AppMsg::Render => self.render(tui)?,
+                AppMsg::SelectContext(context) => {
                     self.app_context.active_context = Some(context.clone());
+                    self.status.set_active_context(context.clone());
                     self.navigation_stack
                         .push(Box::new(ServiceSelector::new(&self.app_context)));
                 }
-                Action::SelectService(service) => {
+                AppMsg::SelectService(service) => {
                     let service_component = self.create_service_component(service);
                     self.navigation_stack.push(service_component);
                 }
-                Action::Pop => {
+                AppMsg::Pop => {
                     if self.navigation_stack.len() > 1 {
                         self.navigation_stack.pop();
                     }
@@ -156,16 +160,12 @@ impl App {
                 _ => {}
             }
 
-            if let Ok(Some(action)) = self.status.update(command.clone()) {
-                self.action_tx.send(action)?;
-            }
-
             if let Some(component) = self.navigation_stack.last_mut() {
                 let result = component.update(command);
                 if let Ok(Some(command)) = result {
-                    self.action_tx.send(command)?;
+                    self.run_cmds(vec![command]);
                 } else if let Err(error) = result {
-                    self.action_tx.send(Action::DisplayError(format!(
+                    self.msg_tx.send(AppMsg::DisplayError(format!(
                         "Error encountered while updating component: {}",
                         error
                     )))?;
@@ -179,6 +179,13 @@ impl App {
         tui.resize(Rect::new(0, 0, width, height))?;
         self.render(tui)?;
         Ok(())
+    }
+
+    fn run_cmds(&self, cmds: Vec<Box<dyn Command>>) {
+        let env = CommandEnv { msg_tx: self.msg_tx.clone()};
+        for cmd in cmds {
+            cmd.spawn(env.clone())
+        }
     }
 
     fn render(&mut self, tui: &mut Tui) -> color_eyre::Result<()> {
@@ -212,7 +219,7 @@ impl App {
         Ok(())
     }
 
-    fn create_service_component(&self, service: &Service) -> Box<dyn Component> {
+    fn create_service_component(&self, service: &Service) -> DynScreen {
         match service {
             Service::Gcp(GcpService::SecretManager) => {
                 Box::new(SecretManager::new(&self.app_context))

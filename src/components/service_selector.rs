@@ -1,6 +1,6 @@
 use crate::app::AppContext;
 use crate::components::services::{GcpService, Service};
-use crate::{action::Action, components::Component};
+use crate::{action::AppMsg, components::Component};
 use color_eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -15,7 +15,7 @@ use crate::components::EventResult;
 pub struct ServiceSelector {
     services: Vec<Service>,
     state: ListState,
-    action_tx: UnboundedSender<Action>
+    action_tx: UnboundedSender<AppMsg>
 }
 
 impl ServiceSelector {
@@ -32,7 +32,7 @@ impl ServiceSelector {
     
     fn select_service(&self, index: usize) -> Result<()> {
         if let Some(service) = self.services.get(index) {
-            self.action_tx.send(Action::SelectService(service.clone()))?;
+            self.action_tx.send(AppMsg::SelectService(service.clone()))?;
         }
         Ok(())
     }

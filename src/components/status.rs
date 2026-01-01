@@ -1,4 +1,4 @@
-use crate::action::Action;
+use crate::action::AppMsg;
 use crate::components::Component;
 use crate::context::Context;
 use color_eyre::Result;
@@ -18,14 +18,9 @@ impl Status {
             active_context: None,
         }
     }
-}
-
-impl Component for Status {
-    fn update(&mut self, action: Action) -> Result<Option<Action>> {
-        if let Action::SelectContext(context) = action {
-            self.active_context = Some(context);
-        }
-        Ok(None)
+    
+    pub fn set_active_context(&mut self, context: Context) {
+        self.active_context = Some(context);
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect) {

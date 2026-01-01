@@ -1,7 +1,7 @@
 use crate::app::AppContext;
 use crate::components::EventResult;
 use crate::context::{get_available_contexts, Context};
-use crate::{action::Action, components::Component};
+use crate::{action::AppMsg, components::Component};
 use color_eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::style::{Color, Modifier, Style};
@@ -15,7 +15,7 @@ use tokio::sync::mpsc::UnboundedSender;
 pub struct ContextSelector {
     contexts: Vec<Context>,
     state: ListState,
-    action_tx: UnboundedSender<Action>,
+    action_tx: UnboundedSender<AppMsg>,
 }
 
 impl ContextSelector {
@@ -31,7 +31,7 @@ impl ContextSelector {
 
     fn select_context(&self, index: usize) -> Result<()> {
         if let Some(context) = self.contexts.get(index) {
-            self.action_tx.send(Action::SelectContext(context.clone()))?;
+            self.action_tx.send(AppMsg::SelectContext(context.clone()))?;
         }
         Ok(())
     }

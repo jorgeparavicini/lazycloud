@@ -3,7 +3,7 @@ use crate::components::services::Service;
 use crate::context::Context;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Action {
+pub enum AppMsg {
     Tick,
     Render,
     Resize(u16, u16),

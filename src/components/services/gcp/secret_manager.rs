@@ -1,10 +1,10 @@
-use crate::action::Action;
+use crate::action::AppMsg;
 use crate::app::AppContext;
 use crate::components::Component;
 use crate::components::EventResult;
 use crate::components::EventResult::{Consumed, Ignored};
 use crate::components::services::gcp::GcpAction;
-use crate::widgets::Loader;
+use crate::widgets::Spinner;
 use color_eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use google_cloud_secretmanager_v1::client::SecretManagerService as GcpSecretManagerClient;
@@ -77,23 +77,11 @@ struct SecretDetails {
     payload: SecretPayload,
 }
 
-struct Loading {
-    loader: Loader,
-}
-
-impl Loading {
-    fn new(label: String) -> Self {
-        Self {
-            loader: Loader::new().with_label(label),
-        }
-    }
-}
-
 enum SecretManagerViewState {
     SecretList(SecretList),
     VersionList(SecretVersionList),
     SecretDetails(SecretDetails),
-    Loading(Loading),
+    Loading(Spinner),
 }
 
 pub struct SecretManager {
@@ -109,26 +97,26 @@ impl SecretManager {
                 active_context: app_context.active_context.clone(),
                 action_tx: app_context.action_tx.clone(),
             },
-            view_state: SecretManagerViewState::Loading(Loading::new(
-                "Initializing secret manager...".to_string(),
-            )),
+            view_state: SecretManagerViewState::Loading(
+                Spinner::new().with_label("Initializing secret manager..."),
+            ),
             service: None,
         };
 
         // TODO: Replace below with actual project ID from context
-        let project_id = "".to_string();
+        let project_id = "vpc-host-prod-ug322-nt609".to_string();
         let action_tx = app_context.action_tx.clone();
 
         // TODO: How to handle errors during async initialization?
         tokio::spawn(async move {
             match SecretManagerService::new(project_id).await {
                 Ok(service) => {
-                    let _ = action_tx.send(Action::Gcp(GcpAction::SecretManagerAction(
+                    let _ = action_tx.send(AppMsg::Gcp(GcpAction::SecretManagerAction(
                         SecretManagerAction::ServiceLoaded(service),
                     )));
                 }
                 Err(e) => {
-                    let _ = action_tx.send(Action::DisplayError(format!(
+                    let _ = action_tx.send(AppMsg::DisplayError(format!(
                         "Failed to load Secret Manager service: {}",
                         e
                     )));
@@ -147,7 +135,7 @@ impl SecretManager {
             SecretManagerViewState::SecretList(_) => false, // Already at root
             SecretManagerViewState::VersionList(_) => {
                 self.view_state =
-                    SecretManagerViewState::Loading(Loading::new("Loading secrets...".to_string()));
+                    SecretManagerViewState::Loading(Spinner::new().with_label("Loading secrets..."));
                 SecretManager::load_secrets(
                     self.service.clone().unwrap(),
                     self.app_context.action_tx.clone(),
@@ -156,9 +144,9 @@ impl SecretManager {
             }
             SecretManagerViewState::SecretDetails(details) => {
                 let secret_clone = details.secret.clone();
-                self.view_state = SecretManagerViewState::Loading(Loading::new(
-                    "Loading versions...".to_string(),
-                ));
+                self.view_state = SecretManagerViewState::Loading(
+                    Spinner::new().with_label("Loading versions..."),
+                );
                 SecretManager::load_versions(
                     self.service.clone().unwrap(),
                     secret_clone,
@@ -180,9 +168,7 @@ impl SecretManager {
             SecretManagerViewState::SecretList(secret_list) => {
                 if let Some(selected) = secret_list.state.selected() {
                     let secret_clone = secret_list.secrets[selected].clone();
-                    self.view_state = SecretManagerViewState::Loading(Loading::new(
-                        "Loading versions...".to_string(),
-                    ));
+                    self.view_state = SecretManagerViewState::Loading(Spinner::new().with_label("Loading versions..."));
                     SecretManager::load_versions(
                         self.service.clone().unwrap(),
                         secret_clone,
@@ -196,9 +182,7 @@ impl SecretManager {
                 if let Some(selected) = version_list.state.selected() {
                     let version_clone = version_list.versions[selected].clone();
                     let secret_clone = version_list.secret.clone();
-                    self.view_state = SecretManagerViewState::Loading(Loading::new(
-                        "Loading payload...".to_string(),
-                    ));
+                    self.view_state = SecretManagerViewState::Loading(Spinner::new().with_label("Loading payload..."));
                     SecretManager::load_payload(
                         self.service.clone().unwrap(),
                         secret_clone,
@@ -242,18 +226,18 @@ impl SecretManager {
         }
     }
 
-    fn load_secrets(service: SecretManagerService, action_tx: UnboundedSender<Action>) {
+    fn load_secrets(service: SecretManagerService, action_tx: UnboundedSender<AppMsg>) {
         tokio::spawn(async move {
             // sleep for demo purposes
             sleep(Duration::from_secs(3)).await;
             match service.list_secrets().await {
                 Ok(secrets) => {
-                    let _ = action_tx.send(Action::Gcp(GcpAction::SecretManagerAction(
+                    let _ = action_tx.send(AppMsg::Gcp(GcpAction::SecretManagerAction(
                         SecretManagerAction::SecretsLoaded(secrets),
                     )));
                 }
                 Err(e) => {
-                    let _ = action_tx.send(Action::DisplayError(format!(
+                    let _ = action_tx.send(AppMsg::DisplayError(format!(
                         "Failed to load secrets: {}",
                         e
                     )));
@@ -265,17 +249,17 @@ impl SecretManager {
     fn load_versions(
         service: SecretManagerService,
         secret: Secret,
-        action_tx: UnboundedSender<Action>,
+        action_tx: UnboundedSender<AppMsg>,
     ) {
         tokio::spawn(async move {
             match service.list_versions(&secret.name).await {
                 Ok(versions) => {
-                    let _ = action_tx.send(Action::Gcp(GcpAction::SecretManagerAction(
+                    let _ = action_tx.send(AppMsg::Gcp(GcpAction::SecretManagerAction(
                         SecretManagerAction::VersionsLoaded(secret, versions),
                     )));
                 }
                 Err(e) => {
-                    let _ = action_tx.send(Action::DisplayError(format!(
+                    let _ = action_tx.send(AppMsg::DisplayError(format!(
                         "Failed to load versions for secret {}: {}",
                         secret.name, e
                     )));
@@ -288,7 +272,7 @@ impl SecretManager {
         service: SecretManagerService,
         secret: Secret,
         version: SecretVersion,
-        action_tx: UnboundedSender<Action>,
+        action_tx: UnboundedSender<AppMsg>,
     ) {
         tokio::spawn(async move {
             match service
@@ -300,12 +284,12 @@ impl SecretManager {
                         data,
                         is_binary: false,
                     };
-                    let _ = action_tx.send(Action::Gcp(GcpAction::SecretManagerAction(
+                    let _ = action_tx.send(AppMsg::Gcp(GcpAction::SecretManagerAction(
                         SecretManagerAction::PayloadLoaded(secret, version, payload),
                     )));
                 }
                 Err(e) => {
-                    let _ = action_tx.send(Action::DisplayError(format!(
+                    let _ = action_tx.send(AppMsg::DisplayError(format!(
                         "Failed to load payload for secret {} version {}: {}",
                         secret.name, version.version_id, e
                     )));
@@ -392,15 +376,15 @@ impl Component for SecretManager {
         Ok(Ignored)
     }
 
-    fn update(&mut self, action: Action) -> Result<Option<Action>> {
-        if action == Action::Tick {
-            if let SecretManagerViewState::Loading(loading) = &mut self.view_state {
-                loading.loader.on_tick();
+    fn update(&mut self, action: AppMsg) -> Result<Option<AppMsg>> {
+        if action == AppMsg::Tick {
+            if let SecretManagerViewState::Loading(spinner) = &mut self.view_state {
+                spinner.on_tick();
             }
             return Ok(None);
         }
 
-        let Action::Gcp(GcpAction::SecretManagerAction(action)) = action else {
+        let AppMsg::Gcp(GcpAction::SecretManagerAction(action)) = action else {
             return Ok(None);
         };
 
@@ -453,7 +437,7 @@ impl Component for SecretManager {
             SecretManagerViewState::SecretDetails(details) => {
                 SecretManager::render_secret_details(frame, area, details)
             }
-            SecretManagerViewState::Loading(loading) => loading.loader.render(frame, area),
+            SecretManagerViewState::Loading(loading) => loading.render(frame, area),
         }
     }
 

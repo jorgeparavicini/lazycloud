@@ -1,3 +1,3 @@
-mod loader;
+mod spinner;
 
-pub use loader::Loader;
+pub use spinner::Spinner;
