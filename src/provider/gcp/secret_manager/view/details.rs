@@ -1,0 +1,72 @@
+use crate::provider::gcp::secret_manager::message::SecretManagerMsg;
+use crate::provider::gcp::secret_manager::model::{Secret, SecretPayload, SecretVersion};
+use crate::provider::gcp::secret_manager::SecretManagerView;
+use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::layout::Rect;
+use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::Frame;
+
+pub struct PayloadView {
+    secret: Secret,
+    version: SecretVersion,
+    payload: SecretPayload,
+    scroll: u16,
+}
+
+impl PayloadView {
+    pub fn new(secret: Secret, version: SecretVersion, payload: SecretPayload) -> Self {
+        Self {
+            secret,
+            version,
+            payload,
+            scroll: 0,
+        }
+    }
+
+    pub fn secret(&self) -> &Secret {
+        &self.secret
+    }
+
+    pub fn version(&self) -> &SecretVersion {
+        &self.version
+    }
+
+    pub fn payload(&self) -> &SecretPayload {
+        &self.payload
+    }
+}
+
+impl SecretManagerView for PayloadView {
+    fn handle_key(&mut self, key: KeyEvent) -> Option<SecretManagerMsg> {
+        match key.code {
+            KeyCode::Char('r') => Some(SecretManagerMsg::ReloadData),
+            KeyCode::Char('y') => Some(SecretManagerMsg::CopyPayload),
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.scroll = self.scroll.saturating_add(1);
+                None
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.scroll = self.scroll.saturating_sub(1);
+                None
+            }
+            _ => None,
+        }
+    }
+
+    fn render(&mut self, frame: &mut Frame, area: Rect) {
+        let text = format!(
+            "Secret: {}\nVersion: {}\n\nPayload:\n{}",
+            self.secret.name, self.version.version_id, self.payload.data
+        );
+
+        let p = Paragraph::new(text)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Secret Payload"),
+            )
+            .scroll((self.scroll, 0));
+
+        frame.render_widget(p, area);
+    }
+}

@@ -1,59 +1,73 @@
-use crate::action::Action;
-use crate::components::Component;
-use crate::components::context_selector::ContextSelector;
-use crate::components::service_selector::ServiceSelector;
-use crate::components::services::gcp::secret_manager::{SecretManager, SecretManagerAction};
-use crate::components::services::{GcpService, Service};
-use crate::components::status::Status;
-use crate::context::Context;
-use crate::tui::{Event, Tui};
-use crossterm::event::{KeyCode, KeyEvent};
+use crate::screen::context_selector::ContextSelector;
+use crate::screen::service_selector::ServiceSelector;
+use crate::core::command::Command;
+use crate::core::event::Event;
+use crate::core::message::AppMessage;
+use crate::core::service::{Service, UpdateResult};
+use crate::core::tui::Tui;
+use crate::model::CloudContext;
+use crate::registry::ServiceRegistry;
+use crate::widget::{CommandTracker, HelpOverlay, Keybinding, StatusBar};
+use crossterm::event::KeyCode;
 use log::debug;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::Paragraph;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use crate::components::EventResult::Consumed;
 
-#[derive(Clone)]
-pub struct AppContext {
-    pub active_context: Option<Context>,
-    pub action_tx: UnboundedSender<Action>,
-}
+/// Global keybindings shown in the help overlay.
+const GLOBAL_KEYBINDINGS: &[Keybinding] = &[
+    Keybinding::new("?", "Toggle help"),
+    Keybinding::new("q", "Quit application"),
+    Keybinding::new("Esc", "Go back / Close"),
+    Keybinding::new("Enter", "Select item"),
+    Keybinding::new("j / Down", "Move down"),
+    Keybinding::new("k / Up", "Move up"),
+    Keybinding::new("r", "Reload current view"),
+    Keybinding::new("y", "Copy to clipboard"),
+    Keybinding::new("c", "Toggle command status"),
+];
 
-impl AppContext {
-    pub fn send_action(&self, action: Action) -> color_eyre::Result<()> {
-        self.action_tx.send(action)?;
-        Ok(())
-    }
+/// Application state - what the user is currently doing.
+enum AppState {
+    /// Selecting a cloud context (GCP project, AWS account, etc.)
+    SelectingContext(ContextSelector),
+    /// Selecting a service within the chosen context
+    SelectingService(ServiceSelector),
+    /// Using an active cloud service
+    ActiveService(Box<dyn Service>),
 }
 
 pub struct App {
-    navigation_stack: Vec<Box<dyn Component>>,
-    status: Status,
+    state: AppState,
+    status_bar: StatusBar,
+    help_overlay: HelpOverlay,
+    command_tracker: CommandTracker,
     should_quit: bool,
     should_suspend: bool,
-    app_context: AppContext,
-    action_tx: UnboundedSender<Action>,
-    action_rx: UnboundedReceiver<Action>,
+    active_context: Option<CloudContext>,
+    registry: Arc<ServiceRegistry>,
+    msg_tx: UnboundedSender<AppMessage>,
+    msg_rx: UnboundedReceiver<AppMessage>,
 }
 
 impl App {
-    pub fn new() -> Self {
-        let (command_tx, command_rx) = mpsc::unbounded_channel();
-        let app_context = AppContext {
-            active_context: None,
-            action_tx: command_tx.clone(),
-        };
+    pub fn new(registry: ServiceRegistry) -> Self {
+        let (msg_tx, msg_rx) = mpsc::unbounded_channel();
+
         Self {
-            navigation_stack: vec![Box::new(ContextSelector::new(&app_context))],
-            status: Status::new(),
+            state: AppState::SelectingContext(ContextSelector::new()),
+            status_bar: StatusBar::new(),
+            help_overlay: HelpOverlay::new(),
+            command_tracker: CommandTracker::new(),
             should_quit: false,
             should_suspend: false,
-            app_context,
-            action_tx: command_tx,
-            action_rx: command_rx,
+            active_context: None,
+            registry: Arc::new(registry),
+            msg_tx,
+            msg_rx,
         }
     }
 
@@ -62,12 +76,21 @@ impl App {
         tui.enter()?;
 
         loop {
-            self.handle_events(&mut tui).await?;
-            self.handle_actions(&mut tui)?;
+            tokio::select! {
+                event = tui.next_event() => {
+                    if let Some(event) = event {
+                        self.handle_event(&event)?;
+                    }
+                }
+                Some(message) = self.msg_rx.recv() => {
+                    self.handle_message(&mut tui, message)?;
+                }
+            }
+
             if self.should_suspend {
                 tui.suspend()?;
-                self.action_tx.send(Action::Resume)?;
-                self.action_tx.send(Action::ClearScreen)?;
+                self.msg_tx.send(AppMessage::Resume)?;
+                self.msg_tx.send(AppMessage::ClearScreen)?;
                 tui.enter()?;
             } else if self.should_quit {
                 break;
@@ -78,106 +101,223 @@ impl App {
         Ok(())
     }
 
-    async fn handle_events(&mut self, tui: &mut Tui) -> color_eyre::Result<()> {
-        let Some(event) = tui.next_event().await else {
+    /// Spawn commands and signal when complete.
+    fn spawn_commands(&mut self, commands: Vec<Box<dyn Command>>) {
+        for cmd in commands {
+            let id = self.command_tracker.start(cmd.name());
+            let msg_tx = self.msg_tx.clone();
+            tokio::spawn(async move {
+                let success = match cmd.execute().await {
+                    Ok(()) => true,
+                    Err(e) => {
+                        let _ = msg_tx.send(AppMessage::DisplayError(e.to_string()));
+                        false
+                    }
+                };
+                // Signal that a command completed - service should process messages
+                let _ = msg_tx.send(AppMessage::CommandCompleted { id, success });
+            });
+        }
+    }
+
+    /// Process the result from service.update().
+    fn process_update_result(&mut self, result: UpdateResult) {
+        match result {
+            UpdateResult::Idle => {}
+            UpdateResult::Commands(commands) => {
+                self.spawn_commands(commands);
+            }
+            UpdateResult::Close => {
+                let _ = self.msg_tx.send(AppMessage::GoBack);
+            }
+            UpdateResult::Error(err) => {
+                let _ = self.msg_tx.send(AppMessage::DisplayError(err));
+            }
+        }
+    }
+
+    /// Transition to context selection.
+    fn go_to_context_selection(&mut self) {
+        self.active_context = None;
+        self.status_bar.clear_context();
+        self.state = AppState::SelectingContext(ContextSelector::new());
+    }
+
+    /// Transition to service selection.
+    fn go_to_service_selection(&mut self, context: CloudContext) {
+        self.active_context = Some(context.clone());
+        self.status_bar.set_active_context(context.clone());
+        self.state =
+            AppState::SelectingService(ServiceSelector::new(self.registry.clone(), context));
+    }
+
+    /// Transition to active service.
+    fn go_to_active_service(&mut self, mut service: Box<dyn Service>) {
+        // Initialize the service (queues startup message)
+        service.init();
+        self.state = AppState::ActiveService(service);
+
+        // Immediately process the startup message
+        if let AppState::ActiveService(service) = &mut self.state {
+            let result = service.update();
+            self.process_update_result(result);
+        }
+    }
+
+    /// Handle going back one state.
+    fn go_back(&mut self) {
+        match &mut self.state {
+            AppState::SelectingContext(_) => {
+                self.should_quit = true;
+            }
+            AppState::SelectingService(_) => {
+                self.go_to_context_selection();
+            }
+            AppState::ActiveService(service) => {
+                service.destroy();
+                if let Some(ctx) = self.active_context.clone() {
+                    self.go_to_service_selection(ctx);
+                } else {
+                    self.go_to_context_selection();
+                }
+            }
+        }
+    }
+
+    fn handle_event(&mut self, event: &Event) -> color_eyre::Result<()> {
+        // Help overlay intercepts all key events when visible
+        if self.help_overlay.is_visible() {
+            if let Event::Key(key) = event {
+                match key.code {
+                    KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => {
+                        self.help_overlay.hide();
+                        self.msg_tx.send(AppMessage::Render)?;
+                    }
+                    _ => {}
+                }
+                return Ok(());
+            }
+        }
+
+        // Handle tick separately - always goes to service and command tracker
+        if matches!(event, Event::Tick) {
+            self.command_tracker.on_tick();
+            if let AppState::ActiveService(service) = &mut self.state {
+                service.handle_tick();
+            }
             return Ok(());
-        };
-
-        let mut consumed = false;
-        if let Some(component) = self.navigation_stack.last_mut() {
-            let command = component.handle_event(event.clone())?;
-            match command {
-                Consumed(Some(command)) => {
-                    self.action_tx.send(command)?;
-                    consumed = true;
-                }
-                Consumed(None) => {
-                    consumed = true;
-                }
-                _ => {}
-            }
         }
 
-        if !consumed {
+        // Route input event based on current state
+        let handled = match &mut self.state {
+            AppState::SelectingContext(selector) => {
+                if let Event::Key(key) = event {
+                    if let Some(context) = selector.handle_key_event(*key) {
+                        self.msg_tx.send(AppMessage::SelectContext(context))?;
+                        return Ok(());
+                    }
+                }
+                false
+            }
+            AppState::SelectingService(selector) => {
+                if let Event::Key(key) = event {
+                    if let Some(service_id) = selector.handle_key_event(*key) {
+                        self.msg_tx.send(AppMessage::SelectService(service_id))?;
+                        return Ok(());
+                    }
+                }
+                false
+            }
+            AppState::ActiveService(service) => {
+                let consumed = service.handle_input(event);
+                if consumed {
+                    // Input was consumed, process any queued messages
+                    let result = service.update();
+                    self.process_update_result(result);
+                }
+                consumed
+            }
+        };
+
+        // Handle global events if not consumed
+        if !handled {
             match event {
-                Event::Quit => self.action_tx.send(Action::Quit)?,
-                Event::Tick => self.action_tx.send(Action::Tick)?,
-                Event::Render => self.action_tx.send(Action::Render)?,
-                Event::Resize(width, height) => self.action_tx.send(Action::Resize(width, height))?,
-                Event::Key(key_event) => self.handle_key_event(key_event)?,
-                _ => {}
-            }
-        }
-
-        Ok(())
-    }
-
-    fn handle_key_event(&mut self, key_event: KeyEvent) -> color_eyre::Result<()> {
-        let command = match key_event.code {
-            KeyCode::Char('q') => Action::Quit,
-            KeyCode::Char('h') => Action::DisplayHelp,
-            KeyCode::Esc => Action::Pop,
-            _ => return Ok(()),
-        };
-        self.action_tx.send(command)?;
-        Ok(())
-    }
-
-    fn handle_actions(&mut self, tui: &mut Tui) -> color_eyre::Result<()> {
-        while let Ok(command) = self.action_rx.try_recv() {
-            if command != Action::Tick && command != Action::Render {
-                debug!("Handling command: {:?}", command);
-            }
-
-            match &command {
-                Action::Tick => {
-                    // TODO: Drain previously pressed keys
+                Event::Quit => self.msg_tx.send(AppMessage::Quit)?,
+                Event::Render => self.msg_tx.send(AppMessage::Render)?,
+                Event::Resize(width, height) => {
+                    self.msg_tx.send(AppMessage::Resize(*width, *height))?;
                 }
-                Action::Quit => self.should_quit = true,
-                Action::Suspend => self.should_suspend = true,
-                Action::Resume => self.should_suspend = false,
-                Action::ClearScreen => tui.clear()?,
-                Action::Resize(width, height) => self.handle_resize(tui, *width, *height)?,
-                Action::Render => self.render(tui)?,
-                Action::SelectContext(context) => {
-                    self.app_context.active_context = Some(context.clone());
-                    self.navigation_stack
-                        .push(Box::new(ServiceSelector::new(&self.app_context)));
-                }
-                Action::SelectService(service) => {
-                    let service_component = self.create_service_component(service);
-                    self.navigation_stack.push(service_component);
-                }
-                Action::Pop => {
-                    if self.navigation_stack.len() > 1 {
-                        self.navigation_stack.pop();
+                Event::Key(key) => {
+                    match key.code {
+                        KeyCode::Char('q') => self.msg_tx.send(AppMessage::Quit)?,
+                        KeyCode::Char('?') => self.msg_tx.send(AppMessage::DisplayHelp)?,
+                        KeyCode::Char('c') => self.msg_tx.send(AppMessage::ToggleCommandStatus)?,
+                        KeyCode::Esc => self.msg_tx.send(AppMessage::GoBack)?,
+                        _ => {}
                     }
                 }
                 _ => {}
             }
-
-            if let Ok(Some(action)) = self.status.update(command.clone()) {
-                self.action_tx.send(action)?;
-            }
-
-            if let Some(component) = self.navigation_stack.last_mut() {
-                let result = component.update(command);
-                if let Ok(Some(command)) = result {
-                    self.action_tx.send(command)?;
-                } else if let Err(error) = result {
-                    self.action_tx.send(Action::DisplayError(format!(
-                        "Error encountered while updating component: {}",
-                        error
-                    )))?;
-                }
-            }
         }
+
         Ok(())
     }
 
-    fn handle_resize(&mut self, tui: &mut Tui, width: u16, height: u16) -> color_eyre::Result<()> {
-        tui.resize(Rect::new(0, 0, width, height))?;
-        self.render(tui)?;
+    fn handle_message(&mut self, tui: &mut Tui, msg: AppMessage) -> color_eyre::Result<()> {
+        if !matches!(msg, AppMessage::Tick | AppMessage::Render | AppMessage::CommandCompleted { .. }) {
+            debug!("Handling message: {:?}", msg);
+        }
+
+        match msg {
+            AppMessage::Tick => {
+                // Handled in handle_event
+            }
+            AppMessage::Quit => self.should_quit = true,
+            AppMessage::Suspend => self.should_suspend = true,
+            AppMessage::Resume => self.should_suspend = false,
+            AppMessage::ClearScreen => tui.clear()?,
+            AppMessage::Resize(width, height) => {
+                tui.resize(Rect::new(0, 0, width, height))?;
+                self.render(tui)?;
+            }
+            AppMessage::Render => self.render(tui)?,
+            AppMessage::DisplayError(err) => {
+                self.status_bar.set_error(err.clone());
+                log::error!("Error: {}", err);
+            }
+            AppMessage::DisplayHelp => {
+                self.help_overlay.toggle();
+            }
+            AppMessage::CommandCompleted { id, success } => {
+                // Mark command as complete in tracker
+                self.command_tracker.complete(id, success);
+                // A command finished, tell service to process its messages
+                if let AppState::ActiveService(service) = &mut self.state {
+                    let result = service.update();
+                    self.process_update_result(result);
+                }
+                // Render after command completion
+                self.render(tui)?;
+            }
+            AppMessage::ToggleCommandStatus => {
+                self.command_tracker.toggle_expanded();
+            }
+            AppMessage::SelectContext(context) => {
+                self.go_to_service_selection(context);
+            }
+            AppMessage::SelectService(service_id) => {
+                if let Some(ctx) = &self.active_context {
+                    if let Some(provider) = self.registry.get(&service_id) {
+                        let service = provider.create_service(ctx);
+                        self.go_to_active_service(service);
+                    }
+                }
+            }
+            AppMessage::GoBack => {
+                self.go_back();
+            }
+        }
+
         Ok(())
     }
 
@@ -186,36 +326,68 @@ impl App {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
-                    Constraint::Length(3), // Status
+                    Constraint::Length(3), // Status bar
                     Constraint::Min(0),    // Main content
                     Constraint::Length(1), // Breadcrumbs
                 ])
                 .split(frame.area());
 
-            if let Some(component) = self.navigation_stack.last_mut() {
-                component.render(frame, chunks[1]);
+            // Render status bar
+            self.status_bar.render(frame, chunks[0]);
+
+            // Render current state
+            match &mut self.state {
+                AppState::SelectingContext(selector) => {
+                    selector.render(frame, chunks[1]);
+                }
+                AppState::SelectingService(selector) => {
+                    selector.render(frame, chunks[1]);
+                }
+                AppState::ActiveService(service) => {
+                    service.view(frame, chunks[1]);
+                }
             }
 
-            // Render Breadcrumbs
-            let mut breadcrumbs = Vec::new();
-            for component in &self.navigation_stack {
-                breadcrumbs.extend(component.breadcrumbs());
-            }
+            // Render breadcrumbs
+            let breadcrumbs = self.build_breadcrumbs();
             let bc_text = breadcrumbs.join(" > ");
-            let bc_paragraph = Paragraph::new(bc_text).style(
+            let bc_widget = Paragraph::new(bc_text).style(
                 Style::default()
                     .fg(Color::DarkGray)
                     .add_modifier(Modifier::ITALIC),
             );
-            frame.render_widget(bc_paragraph, chunks[2]);
+            frame.render_widget(bc_widget, chunks[2]);
+
+            // Render command status (bottom right)
+            self.command_tracker.render(frame, chunks[1]);
+
+            // Render help overlay on top
+            self.help_overlay
+                .render(frame, frame.area(), GLOBAL_KEYBINDINGS);
         })?;
         Ok(())
     }
 
-    fn create_service_component(&self, service: &Service) -> Box<dyn Component> {
-        match service {
-            Service::Gcp(GcpService::SecretManager) => {
-                Box::new(SecretManager::new(&self.app_context))
+    fn build_breadcrumbs(&self) -> Vec<String> {
+        match &self.state {
+            AppState::SelectingContext(_) => {
+                vec!["Select Context".to_string()]
+            }
+            AppState::SelectingService(_) => {
+                let mut bc = vec![];
+                if let Some(ctx) = &self.active_context {
+                    bc.push(ctx.provider().display_name().to_string());
+                }
+                bc.push("Select Service".to_string());
+                bc
+            }
+            AppState::ActiveService(service) => {
+                let mut bc = vec![];
+                if let Some(ctx) = &self.active_context {
+                    bc.push(ctx.provider().display_name().to_string());
+                }
+                bc.extend(service.breadcrumbs());
+                bc
             }
         }
     }

@@ -15,3 +15,6 @@ log = "0.4.29"
 serde = { version = "1.0.228", features = ["derive"] }
 google-cloud-secretmanager-v1 = "1.2.0"
 throbber-widgets-tui = "0.10.0"
+async-trait = "0.1.89"
+arboard = "3.6.1"
+chrono = "0.4"

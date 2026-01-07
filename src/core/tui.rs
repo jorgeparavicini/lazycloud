@@ -1,13 +1,21 @@
-use futures::FutureExt;
-use crossterm::event::{EventStream, Event as CrosstermEvent, KeyEvent, KeyEventKind, MouseEvent, EnableMouseCapture, EnableBracketedPaste, DisableBracketedPaste, DisableMouseCapture};
-use futures::StreamExt;
+//! Terminal UI wrapper.
+//!
+//! This module provides [`Tui`], a wrapper around ratatui's Terminal that
+//! handles the event loop, raw mode, and alternate command management.
+
+use crate::core::event::Event;
+use crossterm::cursor;
+use crossterm::event::{
+    DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    Event as CrosstermEvent, EventStream, KeyEventKind,
+};
+use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
+use futures::{FutureExt, StreamExt};
 use ratatui::backend::CrosstermBackend;
-use ratatui::{Terminal};
+use ratatui::Terminal;
 use std::io::Stdout;
 use std::ops::{Deref, DerefMut};
 use std::time::Duration;
-use crossterm::cursor;
-use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
@@ -19,22 +27,10 @@ const FORCEFUL_SHUTDOWN_TIMEOUT_MS: u64 = 2000;
 
 pub type Backend = CrosstermBackend<Stdout>;
 
-#[derive(Clone, Debug)]
-pub enum Event {
-    Init,
-    Quit,
-    Error(String),
-    Closed,
-    Tick,
-    Render,
-    FocusGained,
-    FocusLost,
-    Paste(String),
-    Key(KeyEvent),
-    Mouse(MouseEvent),
-    Resize(u16, u16),
-}
-
+/// Terminal UI wrapper.
+///
+/// Manages the terminal state (raw mode, alternate command) and provides
+/// an async event stream.
 pub struct Tui {
     terminal: Terminal<Backend>,
     task: JoinHandle<()>,
@@ -46,6 +42,11 @@ pub struct Tui {
 }
 
 impl Tui {
+    /// Create a new TUI with the specified frame and tick rates.
+    ///
+    /// # Arguments
+    /// * `frame_rate` - Frames per second for rendering (e.g., 60.0)
+    /// * `tick_rate` - Ticks per second for animations (e.g., 4.0)
     pub fn new(frame_rate: f64, tick_rate: f64) -> color_eyre::Result<Self> {
         let (event_tx, event_rx) = mpsc::unbounded_channel();
         Ok(Self {
@@ -59,6 +60,7 @@ impl Tui {
         })
     }
 
+    /// Enter the TUI (raw mode, alternate command, mouse capture).
     pub fn enter(&mut self) -> color_eyre::Result<()> {
         crossterm::terminal::enable_raw_mode()?;
         crossterm::execute!(std::io::stdout(), EnterAlternateScreen, cursor::Hide)?;
@@ -68,6 +70,7 @@ impl Tui {
         Ok(())
     }
 
+    /// Exit the TUI (restore terminal state).
     pub fn exit(&mut self) -> color_eyre::Result<()> {
         self.stop()?;
         if crossterm::terminal::is_raw_mode_enabled()? {
@@ -80,6 +83,7 @@ impl Tui {
         Ok(())
     }
 
+    /// Suspend the TUI (for Ctrl+Z handling).
     pub fn suspend(&mut self) -> color_eyre::Result<()> {
         self.exit()?;
         #[cfg(not(windows))]
@@ -87,11 +91,13 @@ impl Tui {
         Ok(())
     }
 
+    /// Resume the TUI after suspension.
     pub fn resume(&mut self) -> color_eyre::Result<()> {
         self.enter()?;
         Ok(())
     }
 
+    /// Get the next event from the event stream.
     pub async fn next_event(&mut self) -> Option<Event> {
         self.event_rx.recv().await
     }
@@ -138,7 +144,9 @@ impl Tui {
         let mut tick_interval = interval(Duration::from_secs_f64(1.0 / tick_rate));
         let mut frame_interval = interval(Duration::from_secs_f64(1.0 / frame_rate));
 
-        event_tx.send(Event::Init).expect("Failed to send init event");
+        event_tx
+            .send(Event::Init)
+            .expect("Failed to send init event");
 
         loop {
             let event = tokio::select! {
