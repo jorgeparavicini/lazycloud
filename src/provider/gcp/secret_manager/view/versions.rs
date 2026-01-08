@@ -1,5 +1,6 @@
 use crate::provider::gcp::secret_manager::message::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::model::{Secret, SecretVersion};
+use crate::provider::gcp::secret_manager::view::ServiceView;
 use crate::view::{ColumnDef, KeyResult, TableEvent, TableRow, TableView, View};
 use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -39,15 +40,21 @@ pub struct VersionListView {
 
 impl VersionListView {
     pub fn new(secret: Secret, versions: Vec<SecretVersion>) -> Self {
-        let title = format!(" Versions: {} ", secret.name);
+        let title = format!(" {} - Versions ", secret.name);
         Self {
             secret,
             table: TableView::new(versions).with_title(title),
         }
     }
+}
 
-    pub fn secret(&self) -> &Secret {
-        &self.secret
+impl ServiceView for VersionListView {
+    fn breadcrumbs(&self) -> Vec<String> {
+        vec!["Versions".to_string()]
+    }
+
+    fn reload(&self) -> SecretManagerMsg {
+        SecretManagerMsg::SelectSecret(self.secret.clone())
     }
 }
 

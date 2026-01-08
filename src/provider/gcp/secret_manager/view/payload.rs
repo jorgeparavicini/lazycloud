@@ -1,5 +1,6 @@
 use crate::provider::gcp::secret_manager::message::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::model::{Secret, SecretPayload, SecretVersion};
+use crate::provider::gcp::secret_manager::view::ServiceView;
 use crate::view::{KeyResult, View};
 use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -24,17 +25,15 @@ impl PayloadView {
             scroll: 0,
         }
     }
+}
 
-    pub fn secret(&self) -> &Secret {
-        &self.secret
+impl ServiceView for PayloadView {
+    fn breadcrumbs(&self) -> Vec<String> {
+        vec!["Payload".to_string()]
     }
 
-    pub fn version(&self) -> &SecretVersion {
-        &self.version
-    }
-
-    pub fn payload(&self) -> &SecretPayload {
-        &self.payload
+    fn reload(&self) -> SecretManagerMsg {
+        SecretManagerMsg::SelectVersion(self.secret.clone(), self.version.clone())
     }
 }
 
@@ -44,7 +43,7 @@ impl View for PayloadView {
     fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
         match key.code {
             KeyCode::Char('r') => SecretManagerMsg::ReloadData.into(),
-            KeyCode::Char('y') => SecretManagerMsg::CopyPayload.into(),
+            KeyCode::Char('y') => SecretManagerMsg::CopyPayload(self.payload.data.clone()).into(),
             KeyCode::Down | KeyCode::Char('j') => {
                 self.scroll = self.scroll.saturating_add(1);
                 KeyResult::Consumed
@@ -58,20 +57,16 @@ impl View for PayloadView {
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+        let title = format!(" {} - v{} ", self.secret.name, self.version.version_id);
 
-        let text = format!(
-            "Secret: {}\nVersion: {}\n\nPayload:\n{}",
-            self.secret.name, self.version.version_id, self.payload.data
-        );
-
-        let p = Paragraph::new(text)
+        let p = Paragraph::new(self.payload.data.as_str())
             .style(Style::default().fg(theme.text()))
             .block(
                 Block::default()
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
                     .border_style(Style::default().fg(theme.border()))
-                    .title("Secret Payload")
+                    .title(title)
                     .title_style(Style::default().fg(theme.mauve()).add_modifier(Modifier::BOLD)),
             )
             .scroll((self.scroll, 0));

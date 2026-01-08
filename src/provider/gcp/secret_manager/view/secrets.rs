@@ -1,5 +1,6 @@
 use crate::provider::gcp::secret_manager::message::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::model::Secret;
+use crate::provider::gcp::secret_manager::view::ServiceView;
 use crate::view::{ColumnDef, KeyResult, TableEvent, TableRow, TableView, View};
 use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -40,6 +41,16 @@ impl SecretListView {
         Self {
             table: TableView::new(secrets).with_title(" Secrets "),
         }
+    }
+}
+
+impl ServiceView for SecretListView {
+    fn breadcrumbs(&self) -> Vec<String> {
+        vec!["Secrets".to_string()]
+    }
+
+    fn reload(&self) -> SecretManagerMsg {
+        SecretManagerMsg::LoadSecrets
     }
 }
 

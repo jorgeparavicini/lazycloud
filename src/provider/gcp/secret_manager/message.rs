@@ -14,16 +14,18 @@ pub enum SecretManagerMsg {
     Initialize,
 
     // === User Actions (from views) ===
-    /// Navigate back to previous view
+    /// Navigate back to the previous view
     NavigateBack,
     /// Reload data for current view
     ReloadData,
+    /// Load secrets list
+    LoadSecrets,
     /// User selected a secret to view its versions
     SelectSecret(Secret),
     /// User selected a version to view its payload
     SelectVersion(Secret, SecretVersion),
-    /// Copy current payload to clipboard
-    CopyPayload,
+    /// Copy payload to clipboard
+    CopyPayload(String),
 
     // === Async Results (from commands) ===
     /// Client initialization completed

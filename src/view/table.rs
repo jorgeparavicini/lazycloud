@@ -73,13 +73,6 @@ impl<T: TableRow + Clone> TableView<T> {
         self
     }
 
-    pub fn selected(&self) -> Option<&T> {
-        self.state
-            .selected()
-            .and_then(|i| self.filtered_indices.get(i))
-            .and_then(|&idx| self.items.get(idx))
-    }
-
     fn update_filter(&mut self) {
         self.filtered_indices = self
             .items

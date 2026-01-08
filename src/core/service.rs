@@ -39,7 +39,7 @@ pub enum UpdateResult {
 ///    - `handle_input()` if input event, then `update()` if consumed
 /// 4. When command completes: `update()`
 /// 5. `destroy()` - when service is closing
-pub trait Service: Send {
+pub trait Service {
     /// Initialize the service by queuing startup message(s).
     ///
     /// Called once when the service becomes active. Queue your initial
