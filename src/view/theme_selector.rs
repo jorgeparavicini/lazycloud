@@ -1,5 +1,5 @@
 use crate::theme::{available_themes, ThemeInfo};
-use crate::view::{ListEvent, ListRow, ListView, View};
+use crate::view::{KeyResult, ListEvent, ListRow, ListView, View};
 use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -46,18 +46,24 @@ impl Default for ThemeSelectorView {
 impl View for ThemeSelectorView {
     type Event = ThemeEvent;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Option<Self::Event> {
+    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
         // Handle escape/toggle to close
         if matches!(key.code, KeyCode::Esc | KeyCode::Char('t')) {
-            return Some(ThemeEvent::Cancelled);
+            return ThemeEvent::Cancelled.into();
         }
 
         // Delegate to list
-        if let Some(ListEvent::Activated(info)) = self.list.handle_key(key) {
-            return Some(ThemeEvent::Selected(info.theme));
+        let result = self.list.handle_key(key);
+        if let KeyResult::Event(ListEvent::Activated(info)) = result {
+            return ThemeEvent::Selected(info.theme).into();
         }
 
-        None
+        // Propagate consumed state from list
+        if result.is_consumed() {
+            KeyResult::Consumed
+        } else {
+            KeyResult::Ignored
+        }
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {

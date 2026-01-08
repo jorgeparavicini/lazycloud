@@ -1,6 +1,6 @@
 use crate::provider::gcp::secret_manager::message::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::model::{Secret, SecretPayload, SecretVersion};
-use crate::provider::gcp::secret_manager::SecretManagerView;
+use crate::view::{KeyResult, View};
 use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::Rect;
@@ -38,20 +38,22 @@ impl PayloadView {
     }
 }
 
-impl SecretManagerView for PayloadView {
-    fn handle_key(&mut self, key: KeyEvent) -> Option<SecretManagerMsg> {
+impl View for PayloadView {
+    type Event = SecretManagerMsg;
+
+    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
         match key.code {
-            KeyCode::Char('r') => Some(SecretManagerMsg::ReloadData),
-            KeyCode::Char('y') => Some(SecretManagerMsg::CopyPayload),
+            KeyCode::Char('r') => SecretManagerMsg::ReloadData.into(),
+            KeyCode::Char('y') => SecretManagerMsg::CopyPayload.into(),
             KeyCode::Down | KeyCode::Char('j') => {
                 self.scroll = self.scroll.saturating_add(1);
-                None
+                KeyResult::Consumed
             }
             KeyCode::Up | KeyCode::Char('k') => {
                 self.scroll = self.scroll.saturating_sub(1);
-                None
+                KeyResult::Consumed
             }
-            _ => None,
+            _ => KeyResult::Ignored,
         }
     }
 

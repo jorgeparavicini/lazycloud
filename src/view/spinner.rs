@@ -1,6 +1,5 @@
 use crate::view::View;
 use crate::Theme;
-use crossterm::event::KeyEvent;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::Style;
 use ratatui::Frame;
@@ -34,10 +33,6 @@ impl Default for SpinnerView {
 
 impl View for SpinnerView {
     type Event = ();
-
-    fn handle_key(&mut self, _key: KeyEvent) -> Option<Self::Event> {
-        None
-    }
 
     fn on_tick(&mut self) {
         self.throbber_state.calc_next();

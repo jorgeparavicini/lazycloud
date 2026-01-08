@@ -1,4 +1,4 @@
-use crate::view::View;
+use crate::view::{KeyResult, View};
 use crate::Theme;
 use crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
@@ -53,20 +53,20 @@ impl<T: ListRow + Clone> ListView<T> {
         }
     }
 
-    fn get_change_event(&self, before: Option<usize>) -> Option<ListEvent<T>> {
+    fn get_change_event(&self, before: Option<usize>) -> KeyResult<ListEvent<T>> {
         if let Some(selected) = self.state.selected() {
             if Some(selected) != before {
-                return Some(ListEvent::Changed(self.items[selected].clone()));
+                return ListEvent::Changed(self.items[selected].clone()).into();
             }
         }
-        None
+        KeyResult::Consumed
     }
 }
 
 impl<T: ListRow + Clone> View for ListView<T> {
     type Event = ListEvent<T>;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Option<Self::Event> {
+    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
         use crossterm::event::KeyCode::*;
 
         let before = self.state.selected();
@@ -108,12 +108,12 @@ impl<T: ListRow + Clone> View for ListView<T> {
             }
             Enter => {
                 if let Some(selected) = self.state.selected() {
-                    Some(ListEvent::Activated(self.items[selected].clone()))
+                    ListEvent::Activated(self.items[selected].clone()).into()
                 } else {
-                    None
+                    KeyResult::Ignored
                 }
             }
-            _ => None,
+            _ => KeyResult::Ignored,
         }
     }
 

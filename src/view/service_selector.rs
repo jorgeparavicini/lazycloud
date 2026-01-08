@@ -1,6 +1,6 @@
 use crate::model::CloudContext;
 use crate::registry::{ServiceId, ServiceProvider, ServiceRegistry};
-use crate::view::{ListEvent, ListRow, ListView, View};
+use crate::view::{KeyResult, ListEvent, ListRow, ListView, View};
 use crate::Theme;
 use crossterm::event::KeyEvent;
 use ratatui::{
@@ -51,11 +51,16 @@ impl ServiceSelectorView {
 impl View for ServiceSelectorView {
     type Event = ServiceId;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Option<Self::Event> {
-        if let Some(ListEvent::Activated(item)) = self.service_list.handle_key(key) {
-            return Some(item.provider.service_id());
+    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
+        let result = self.service_list.handle_key(key);
+        if let KeyResult::Event(ListEvent::Activated(item)) = result {
+            return item.provider.service_id().into();
         }
-        None
+        if result.is_consumed() {
+            KeyResult::Consumed
+        } else {
+            KeyResult::Ignored
+        }
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {

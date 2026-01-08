@@ -9,8 +9,7 @@ use crate::provider::gcp::secret_manager::command::{
 use crate::provider::gcp::secret_manager::message::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::model::{Secret, SecretVersion};
 use crate::provider::gcp::secret_manager::view::{PayloadView, SecretListView, VersionListView};
-use crate::provider::gcp::secret_manager::SecretManagerView;
-use crate::view::{SpinnerView, View};
+use crate::view::{KeyResult, SpinnerView, View};
 use crate::Theme;
 use crossterm::event::KeyCode;
 use ratatui::layout::Rect;
@@ -198,15 +197,19 @@ impl Service for SecretManager {
         };
 
         // Let the current view handle the key
-        let msg = match &mut self.state {
-            State::Loading => None,
+        let result = match &mut self.state {
+            State::Loading => KeyResult::Ignored,
             State::SecretList(v) => v.handle_key(*key),
             State::VersionList(v) => v.handle_key(*key),
             State::Payload(v) => v.handle_key(*key),
         };
 
-        if let Some(m) = msg {
+        if let KeyResult::Event(m) = result {
             self.queue(m);
+            return true;
+        }
+
+        if result.is_consumed() {
             return true;
         }
 

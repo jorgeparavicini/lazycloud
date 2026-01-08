@@ -1,7 +1,6 @@
 use crate::provider::gcp::secret_manager::message::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::model::Secret;
-use crate::provider::gcp::secret_manager::SecretManagerView;
-use crate::view::{ColumnDef, TableEvent, TableRow, TableView, View};
+use crate::view::{ColumnDef, KeyResult, TableEvent, TableRow, TableView, View};
 use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::{Constraint, Rect};
@@ -25,6 +24,11 @@ impl TableRow for Secret {
             Cell::from(format!("{}", self.labels.len())),
         ]
     }
+
+    fn matches(&self, query: &str) -> bool {
+        let query_lower = query.to_lowercase();
+        self.name.to_lowercase().contains(&query_lower)
+    }
 }
 
 pub struct SecretListView {
@@ -39,18 +43,24 @@ impl SecretListView {
     }
 }
 
-impl SecretManagerView for SecretListView {
-    fn handle_key(&mut self, key: KeyEvent) -> Option<SecretManagerMsg> {
-        match key.code {
-            KeyCode::Char('r') => return Some(SecretManagerMsg::ReloadData),
-            _ => {}
-        };
+impl View for SecretListView {
+    type Event = SecretManagerMsg;
 
-        if let Some(TableEvent::Activated(secret)) = self.table.handle_key(key) {
-            return Some(SecretManagerMsg::SelectSecret(secret));
+    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
+        // Delegate to table first (handles search mode, navigation, etc.)
+        let result = self.table.handle_key(key);
+        if let KeyResult::Event(TableEvent::Activated(secret)) = result {
+            return SecretManagerMsg::SelectSecret(secret).into();
+        }
+        if result.is_consumed() {
+            return KeyResult::Consumed;
         }
 
-        None
+        // Handle local shortcuts only if table didn't consume the key
+        match key.code {
+            KeyCode::Char('r') => SecretManagerMsg::ReloadData.into(),
+            _ => KeyResult::Ignored,
+        }
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {

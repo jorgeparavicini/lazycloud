@@ -1,4 +1,4 @@
-use crate::view::View;
+use crate::view::{KeyResult, View};
 use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -41,10 +41,10 @@ impl HelpView {
 impl View for HelpView {
     type Event = HelpEvent;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Option<Self::Event> {
+    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
         match key.code {
-            KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => Some(HelpEvent::Close),
-            _ => None,
+            KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => HelpEvent::Close.into(),
+            _ => KeyResult::Ignored,
         }
     }
 

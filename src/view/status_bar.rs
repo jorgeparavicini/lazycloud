@@ -1,7 +1,6 @@
 use crate::model::CloudContext;
 use crate::view::View;
 use crate::Theme;
-use crossterm::event::KeyEvent;
 use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
@@ -49,10 +48,6 @@ impl Default for StatusBarView {
 impl View for StatusBarView {
     type Event = ();
 
-    fn handle_key(&mut self, _key: KeyEvent) -> Option<Self::Event> {
-        None
-    }
-
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         let context_name = match &self.active_context {
             Some(CloudContext::Gcp(gcp)) => format!("GCP: {}", gcp.project_id),
@@ -77,7 +72,7 @@ impl View for StatusBarView {
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(theme.surface1()))
-            .title("Status")
+            .title(" Status ")
             .title_style(Style::default().fg(theme.blue()).add_modifier(Modifier::BOLD));
         let paragraph = Paragraph::new(status_text).style(style).block(block);
         frame.render_widget(paragraph, area);

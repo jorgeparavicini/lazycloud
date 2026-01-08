@@ -1,9 +1,9 @@
-use crate::view::View;
+use crate::view::{KeyResult, View};
 use crate::Theme;
-use crossterm::event::KeyEvent;
-use ratatui::layout::{Constraint, Rect};
+use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::prelude::{Modifier, Style};
-use ratatui::widgets::{Block, BorderType, Borders, Cell, Row, Table, TableState};
+use ratatui::widgets::{Block, BorderType, Borders, Cell, Paragraph, Row, Table, TableState};
 use ratatui::Frame;
 
 /// Event emitted by [`TableView`].
@@ -12,6 +12,8 @@ pub enum TableEvent<T> {
     Changed(T),
     /// Item was activated (Enter pressed).
     Activated(T),
+    /// Search query changed (for server-side filtering).
+    SearchChanged(String),
 }
 
 /// Column definition for a table.
@@ -33,25 +35,36 @@ pub trait TableRow {
 
     /// Render this row's cells with full styling control.
     fn render_cells(&self, theme: &Theme) -> Vec<Cell<'static>>;
+
+    /// Check if this row matches the search query (case-insensitive).
+    /// Used for local filtering. Return true if the row should be shown.
+    fn matches(&self, query: &str) -> bool;
 }
 
-/// A selectable table view with keyboard navigation.
+/// A selectable table view with keyboard navigation and search.
 pub struct TableView<T: TableRow + Clone> {
     items: Vec<T>,
+    filtered_indices: Vec<usize>,
     state: TableState,
     title: Option<String>,
+    searching: bool,
+    query: String,
 }
 
 impl<T: TableRow + Clone> TableView<T> {
     pub fn new(items: Vec<T>) -> Self {
+        let filtered_indices: Vec<usize> = (0..items.len()).collect();
         let mut state = TableState::default();
-        if !items.is_empty() {
+        if !filtered_indices.is_empty() {
             state.select(Some(0));
         }
         Self {
             items,
+            filtered_indices,
             state,
             title: None,
+            searching: false,
+            query: String::new(),
         }
     }
 
@@ -61,16 +74,36 @@ impl<T: TableRow + Clone> TableView<T> {
     }
 
     pub fn selected(&self) -> Option<&T> {
-        self.state.selected().and_then(|i| self.items.get(i))
+        self.state
+            .selected()
+            .and_then(|i| self.filtered_indices.get(i))
+            .and_then(|&idx| self.items.get(idx))
+    }
+
+    fn update_filter(&mut self) {
+        self.filtered_indices = self
+            .items
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| self.query.is_empty() || item.matches(&self.query))
+            .map(|(i, _)| i)
+            .collect();
+
+        // Reset selection to first item if current selection is invalid
+        if self.filtered_indices.is_empty() {
+            self.state.select(None);
+        } else if self.state.selected().map_or(true, |i| i >= self.filtered_indices.len()) {
+            self.state.select(Some(0));
+        }
     }
 
     fn select_next(&mut self) {
-        if self.items.is_empty() {
+        if self.filtered_indices.is_empty() {
             return;
         }
         let i = match self.state.selected() {
             Some(i) => {
-                if i >= self.items.len() - 1 {
+                if i >= self.filtered_indices.len() - 1 {
                     i
                 } else {
                     i + 1
@@ -82,7 +115,7 @@ impl<T: TableRow + Clone> TableView<T> {
     }
 
     fn select_previous(&mut self) {
-        if self.items.is_empty() {
+        if self.filtered_indices.is_empty() {
             return;
         }
         let i = match self.state.selected() {
@@ -93,88 +126,152 @@ impl<T: TableRow + Clone> TableView<T> {
     }
 
     fn select_first(&mut self) {
-        if !self.items.is_empty() {
+        if !self.filtered_indices.is_empty() {
             self.state.select(Some(0));
         }
     }
 
     fn select_last(&mut self) {
-        if !self.items.is_empty() {
-            self.state.select(Some(self.items.len() - 1));
+        if !self.filtered_indices.is_empty() {
+            self.state.select(Some(self.filtered_indices.len() - 1));
         }
     }
 
-    fn get_change_event(&self, before: Option<usize>) -> Option<TableEvent<T>> {
+    fn get_change_event(&self, before: Option<usize>) -> KeyResult<TableEvent<T>> {
         if let Some(selected) = self.state.selected() {
             if Some(selected) != before {
-                return Some(TableEvent::Changed(self.items[selected].clone()));
+                if let Some(&idx) = self.filtered_indices.get(selected) {
+                    return TableEvent::Changed(self.items[idx].clone()).into();
+                }
             }
         }
-        None
+        KeyResult::Consumed
+    }
+
+    fn handle_search_key(&mut self, key: KeyEvent) -> KeyResult<TableEvent<T>> {
+        match key.code {
+            KeyCode::Esc => {
+                // Exit search mode and clear filter
+                self.searching = false;
+                let had_query = !self.query.is_empty();
+                self.query.clear();
+                self.update_filter();
+                if had_query {
+                    TableEvent::SearchChanged(String::new()).into()
+                } else {
+                    KeyResult::Consumed
+                }
+            }
+            KeyCode::Enter => {
+                // Exit search mode but keep filter
+                self.searching = false;
+                KeyResult::Consumed
+            }
+            KeyCode::Backspace => {
+                self.query.pop();
+                self.update_filter();
+                TableEvent::SearchChanged(self.query.clone()).into()
+            }
+            KeyCode::Char(c) => {
+                self.query.push(c);
+                self.update_filter();
+                TableEvent::SearchChanged(self.query.clone()).into()
+            }
+            // Consume all other keys in search mode
+            _ => KeyResult::Consumed,
+        }
+    }
+
+    fn handle_navigation_key(&mut self, key: KeyEvent) -> KeyResult<TableEvent<T>> {
+        let before = self.state.selected();
+
+        match key.code {
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.select_next();
+                self.get_change_event(before)
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.select_previous();
+                self.get_change_event(before)
+            }
+            KeyCode::Home | KeyCode::Char('g') => {
+                self.select_first();
+                self.get_change_event(before)
+            }
+            KeyCode::End | KeyCode::Char('G') => {
+                self.select_last();
+                self.get_change_event(before)
+            }
+            KeyCode::PageDown => {
+                let step = 10;
+                let new_index = match self.state.selected() {
+                    Some(i) if !self.filtered_indices.is_empty() => {
+                        usize::min(i + step, self.filtered_indices.len() - 1)
+                    }
+                    _ => 0,
+                };
+                if !self.filtered_indices.is_empty() {
+                    self.state.select(Some(new_index));
+                }
+                self.get_change_event(before)
+            }
+            KeyCode::PageUp => {
+                let step = 10;
+                let new_index = match self.state.selected() {
+                    Some(i) => i.saturating_sub(step),
+                    None => 0,
+                };
+                if !self.filtered_indices.is_empty() {
+                    self.state.select(Some(new_index));
+                }
+                self.get_change_event(before)
+            }
+            KeyCode::Enter => {
+                if let Some(selected) = self.state.selected() {
+                    self.filtered_indices
+                        .get(selected)
+                        .map(|&idx| TableEvent::Activated(self.items[idx].clone()).into())
+                        .unwrap_or(KeyResult::Ignored)
+                } else {
+                    KeyResult::Ignored
+                }
+            }
+            KeyCode::Char('/') => {
+                self.searching = true;
+                KeyResult::Consumed
+            }
+            KeyCode::Esc if !self.query.is_empty() => {
+                // Clear filter when not searching
+                self.query.clear();
+                self.update_filter();
+                KeyResult::Consumed
+            }
+            _ => KeyResult::Ignored,
+        }
     }
 }
 
 impl<T: TableRow + Clone> View for TableView<T> {
     type Event = TableEvent<T>;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Option<Self::Event> {
-        use crossterm::event::KeyCode::*;
-
-        let before = self.state.selected();
-
-        match key.code {
-            Down | Char('j') => {
-                self.select_next();
-                self.get_change_event(before)
-            }
-            Up | Char('k') => {
-                self.select_previous();
-                self.get_change_event(before)
-            }
-            Home | Char('g') => {
-                self.select_first();
-                self.get_change_event(before)
-            }
-            End | Char('G') => {
-                self.select_last();
-                self.get_change_event(before)
-            }
-            PageDown => {
-                let step = 10;
-                let new_index = match self.state.selected() {
-                    Some(i) if !self.items.is_empty() => {
-                        usize::min(i + step, self.items.len() - 1)
-                    }
-                    _ => 0,
-                };
-                if !self.items.is_empty() {
-                    self.state.select(Some(new_index));
-                }
-                self.get_change_event(before)
-            }
-            PageUp => {
-                let step = 10;
-                let new_index = match self.state.selected() {
-                    Some(i) => i.saturating_sub(step),
-                    None => 0,
-                };
-                if !self.items.is_empty() {
-                    self.state.select(Some(new_index));
-                }
-                self.get_change_event(before)
-            }
-            Enter => {
-                if let Some(selected) = self.state.selected() {
-                    Some(TableEvent::Activated(self.items[selected].clone()))
-                } else {
-                    None
-                }
-            }
-            _ => None,
+    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
+        if self.searching {
+            self.handle_search_key(key)
+        } else {
+            self.handle_navigation_key(key)
         }
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+        // If searching or has active filter, reserve space for search bar
+        let has_search_bar = self.searching || !self.query.is_empty();
+        let (table_area, search_area) = if has_search_bar {
+            let chunks = Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).split(area);
+            (chunks[0], Some(chunks[1]))
+        } else {
+            (area, None)
+        };
+
         let columns = T::columns();
 
         let header_cells: Vec<Cell> = columns
@@ -192,9 +289,12 @@ impl<T: TableRow + Clone> View for TableView<T> {
             .style(Style::default().bg(theme.surface0()));
 
         let rows: Vec<Row> = self
-            .items
+            .filtered_indices
             .iter()
-            .map(|item| Row::new(item.render_cells(theme)).style(Style::default().fg(theme.text())))
+            .map(|&idx| {
+                Row::new(self.items[idx].render_cells(theme))
+                    .style(Style::default().fg(theme.text()))
+            })
             .collect();
 
         let widths: Vec<Constraint> = columns.iter().map(|c| c.constraint).collect();
@@ -219,6 +319,24 @@ impl<T: TableRow + Clone> View for TableView<T> {
             table = table.block(block);
         }
 
-        frame.render_stateful_widget(table, area, &mut self.state);
+        frame.render_stateful_widget(table, table_area, &mut self.state);
+
+        // Render search bar if needed
+        if let Some(search_area) = search_area {
+            let search_text = if self.searching {
+                format!("/{}_", self.query)
+            } else {
+                format!("/{} ({} matches)", self.query, self.filtered_indices.len())
+            };
+
+            let search_style = if self.searching {
+                Style::default().fg(theme.yellow())
+            } else {
+                Style::default().fg(theme.subtext0())
+            };
+
+            let search_bar = Paragraph::new(search_text).style(search_style);
+            frame.render_widget(search_bar, search_area);
+        }
     }
 }

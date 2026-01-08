@@ -1,6 +1,5 @@
 use crate::view::View;
 use crate::Theme;
-use crossterm::event::KeyEvent;
 use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
@@ -220,10 +219,6 @@ impl Default for CommandStatusView {
 
 impl View for CommandStatusView {
     type Event = ();
-
-    fn handle_key(&mut self, _key: KeyEvent) -> Option<Self::Event> {
-        None
-    }
 
     fn on_tick(&mut self) {
         self.throbber_state.calc_next();

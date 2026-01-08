@@ -6,7 +6,7 @@ use crate::core::tui::Tui;
 use crate::model::CloudContext;
 use crate::registry::ServiceRegistry;
 use crate::view::{
-    CommandStatusView, ContextSelectorView, HelpEvent, HelpView, Keybinding,
+    CommandStatusView, ContextSelectorView, HelpEvent, HelpView, Keybinding, KeyResult,
     ServiceSelectorView, StatusBarView, ThemeEvent, ThemeSelectorView, View,
 };
 use crate::Theme;
@@ -199,19 +199,19 @@ impl App {
             if let Event::Key(key) = event {
                 match popup {
                     ActivePopup::Help(help) => {
-                        if let Some(HelpEvent::Close) = help.handle_key(*key) {
+                        if let KeyResult::Event(HelpEvent::Close) = help.handle_key(*key) {
                             self.msg_tx.send(AppMessage::ClosePopup)?;
                         }
                     }
                     ActivePopup::ThemeSelector(selector) => {
                         match selector.handle_key(*key) {
-                            Some(ThemeEvent::Selected(theme)) => {
+                            KeyResult::Event(ThemeEvent::Selected(theme)) => {
                                 self.msg_tx.send(AppMessage::SelectTheme(theme))?;
                             }
-                            Some(ThemeEvent::Cancelled) => {
+                            KeyResult::Event(ThemeEvent::Cancelled) => {
                                 self.msg_tx.send(AppMessage::ClosePopup)?;
                             }
-                            None => {}
+                            _ => {}
                         }
                     }
                 }
@@ -232,21 +232,27 @@ impl App {
         let handled = match &mut self.state {
             AppState::SelectingContext(selector) => {
                 if let Event::Key(key) = event {
-                    if let Some(context) = selector.handle_key(*key) {
+                    let result = selector.handle_key(*key);
+                    if let KeyResult::Event(context) = result {
                         self.msg_tx.send(AppMessage::SelectContext(context))?;
                         return Ok(());
                     }
+                    result.is_consumed()
+                } else {
+                    false
                 }
-                false
             }
             AppState::SelectingService(selector) => {
                 if let Event::Key(key) = event {
-                    if let Some(service_id) = selector.handle_key(*key) {
+                    let result = selector.handle_key(*key);
+                    if let KeyResult::Event(service_id) = result {
                         self.msg_tx.send(AppMessage::SelectService(service_id))?;
                         return Ok(());
                     }
+                    result.is_consumed()
+                } else {
+                    false
                 }
-                false
             }
             AppState::ActiveService(service) => {
                 let consumed = service.handle_input(event);

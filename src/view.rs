@@ -28,6 +28,37 @@ use crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
 use ratatui::Frame;
 
+/// Result of handling a key event.
+pub enum KeyResult<E> {
+    /// Key was not handled, parent should process it.
+    Ignored,
+    /// Key was consumed but produced no event.
+    Consumed,
+    /// Key was consumed and produced an event.
+    Event(E),
+}
+
+impl<E> KeyResult<E> {
+    /// Returns true if the key was consumed (not ignored).
+    pub fn is_consumed(&self) -> bool {
+        !matches!(self, KeyResult::Ignored)
+    }
+
+    /// Extract the event if present.
+    pub fn into_event(self) -> Option<E> {
+        match self {
+            KeyResult::Event(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl<E> From<E> for KeyResult<E> {
+    fn from(event: E) -> Self {
+        KeyResult::Event(event)
+    }
+}
+
 /// Trait for all view components.
 ///
 /// Views manage their own internal UI state and return events when
@@ -36,8 +67,13 @@ pub trait View {
     /// The event type returned by this view.
     type Event;
 
-    /// Handle a key event. Returns `Some(event)` if the key triggered an action.
-    fn handle_key(&mut self, key: KeyEvent) -> Option<Self::Event>;
+    /// Handle a key event.
+    /// - `Ignored` - key was not handled, parent should process it
+    /// - `Consumed` - key was handled but produced no event
+    /// - `Event(e)` - key was handled and produced an event
+    fn handle_key(&mut self, _key: KeyEvent) -> KeyResult<Self::Event> {
+        KeyResult::Ignored
+    }
 
     /// Called on each tick for animations and time-based updates.
     fn on_tick(&mut self) {}

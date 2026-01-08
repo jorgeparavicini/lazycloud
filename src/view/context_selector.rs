@@ -1,5 +1,5 @@
 use crate::model::context::{get_available_contexts, CloudContext};
-use crate::view::{ListEvent, ListRow, ListView, View};
+use crate::view::{KeyResult, ListEvent, ListRow, ListView, View};
 use crate::Theme;
 use crossterm::event::KeyEvent;
 use ratatui::{
@@ -38,11 +38,16 @@ impl Default for ContextSelectorView {
 impl View for ContextSelectorView {
     type Event = CloudContext;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Option<Self::Event> {
-        if let Some(ListEvent::Activated(context)) = self.context_list.handle_key(key) {
-            return Some(context);
+    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
+        let result = self.context_list.handle_key(key);
+        if let KeyResult::Event(ListEvent::Activated(context)) = result {
+            return context.into();
         }
-        None
+        if result.is_consumed() {
+            KeyResult::Consumed
+        } else {
+            KeyResult::Ignored
+        }
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
