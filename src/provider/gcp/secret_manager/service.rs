@@ -11,6 +11,7 @@ use crate::provider::gcp::secret_manager::model::{Secret, SecretVersion};
 use crate::provider::gcp::secret_manager::view::{PayloadView, SecretListView, VersionListView};
 use crate::provider::gcp::secret_manager::SecretManagerView;
 use crate::widget::Spinner;
+use crate::Theme;
 use crossterm::event::KeyCode;
 use ratatui::layout::Rect;
 use ratatui::Frame;
@@ -238,12 +239,12 @@ impl Service for SecretManager {
         }
     }
 
-    fn view(&mut self, frame: &mut Frame, area: Rect) {
+    fn view(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         match &mut self.state {
-            State::Loading => self.spinner.render(frame, area),
-            State::SecretList(v) => v.render(frame, area),
-            State::VersionList(v) => v.render(frame, area),
-            State::Payload(v) => v.render(frame, area),
+            State::Loading => self.spinner.render(frame, area, theme),
+            State::SecretList(v) => v.render(frame, area, theme),
+            State::VersionList(v) => v.render(frame, area, theme),
+            State::Payload(v) => v.render(frame, area, theme),
         }
     }
 

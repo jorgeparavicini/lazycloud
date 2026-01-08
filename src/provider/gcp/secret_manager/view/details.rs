@@ -1,9 +1,11 @@
 use crate::provider::gcp::secret_manager::message::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::model::{Secret, SecretPayload, SecretVersion};
 use crate::provider::gcp::secret_manager::SecretManagerView;
+use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::Rect;
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::style::{Modifier, Style};
+use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 use ratatui::Frame;
 
 pub struct PayloadView {
@@ -53,17 +55,22 @@ impl SecretManagerView for PayloadView {
         }
     }
 
-    fn render(&mut self, frame: &mut Frame, area: Rect) {
+    fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+
         let text = format!(
             "Secret: {}\nVersion: {}\n\nPayload:\n{}",
             self.secret.name, self.version.version_id, self.payload.data
         );
 
         let p = Paragraph::new(text)
+            .style(Style::default().fg(theme.text()))
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title("Secret Payload"),
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(theme.border()))
+                    .title("Secret Payload")
+                    .title_style(Style::default().fg(theme.mauve()).add_modifier(Modifier::BOLD)),
             )
             .scroll((self.scroll, 0));
 

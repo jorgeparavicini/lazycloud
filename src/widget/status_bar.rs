@@ -1,8 +1,9 @@
 use crate::model::CloudContext;
+use crate::Theme;
 use ratatui::{
     layout::Rect,
-    style::{Color, Style},
-    widgets::{Block, Borders, Paragraph},
+    style::{Modifier, Style},
+    widgets::{Block, BorderType, Borders, Paragraph},
     Frame,
 };
 
@@ -35,7 +36,8 @@ impl StatusBar {
         self.error_message = None;
     }
 
-    pub fn render(&mut self, frame: &mut Frame, area: Rect) {
+    pub fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+
         let context_name = match &self.active_context {
             Some(CloudContext::Gcp(gcp)) => format!("GCP: {}", gcp.project_id),
             Some(CloudContext::Aws(aws)) => format!("AWS: {}", aws.profile),
@@ -46,16 +48,21 @@ impl StatusBar {
         let (status_text, style) = if let Some(err) = &self.error_message {
             (
                 format!("Error: {} | Context: {}", err, context_name),
-                Style::default().fg(Color::Red),
+                Style::default().fg(theme.error()),
             )
         } else {
             (
                 format!("Lazycloud | Context: {}", context_name),
-                Style::default(),
+                Style::default().fg(theme.subtext0()),
             )
         };
 
-        let block = Block::default().borders(Borders::ALL).title("Status");
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(theme.surface1()))
+            .title("Status")
+            .title_style(Style::default().fg(theme.blue()).add_modifier(Modifier::BOLD));
         let paragraph = Paragraph::new(status_text).style(style).block(block);
         frame.render_widget(paragraph, area);
     }

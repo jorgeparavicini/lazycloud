@@ -3,6 +3,7 @@ use crate::provider::gcp::secret_manager::model::Secret;
 use crate::provider::gcp::secret_manager::SecretManagerView;
 use crate::widget::TableEvent::Activated;
 use crate::widget::{Column, SelectTable};
+use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::{Constraint, Rect};
 use ratatui::Frame;
@@ -35,7 +36,7 @@ impl SecretManagerView for SecretListView {
         None
     }
 
-    fn render(&mut self, frame: &mut Frame, area: Rect) {
+    fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         let columns = [
             Column::new("Name", Constraint::Min(20)),
             Column::new("Created", Constraint::Length(20)),
@@ -48,6 +49,6 @@ impl SecretManagerView for SecretListView {
                 secret.created_at.clone(),
                 format!("{}", secret.labels.len()),
             ]
-        });
+        }, theme);
     }
 }

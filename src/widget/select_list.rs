@@ -1,8 +1,9 @@
+use crate::Theme;
 use crossterm::event::KeyEvent;
-use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::prelude::{Color, Modifier, Style};
+use ratatui::prelude::{Modifier, Style};
 use ratatui::widgets::{List, ListItem, ListState};
+use ratatui::Frame;
 use std::fmt::Display;
 
 pub enum ListEvent<'a, T> {
@@ -30,7 +31,7 @@ impl<T: Display> SelectList<T> {
         let before = self.state.selected();
 
         match key.code {
-            Down | Char('j')  => {
+            Down | Char('j') => {
                 self.state.select_next();
                 self.get_change_event(before)
             }
@@ -95,20 +96,21 @@ impl<T: Display> SelectList<T> {
         }
     }
 
-    pub fn render(&mut self, frame: &mut Frame, area: Rect) {
+    pub fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         let items = self
             .items
             .iter()
-            .map(|i| ListItem::new(i.to_string()))
+            .map(|i| ListItem::new(i.to_string()).style(Style::default().fg(theme.text())))
             .collect::<Vec<ListItem>>();
 
         let list = List::new(items)
             .highlight_style(
                 Style::default()
-                    .bg(Color::Blue)
+                    .bg(theme.selection_bg())
+                    .fg(theme.lavender())
                     .add_modifier(Modifier::BOLD),
             )
-            .highlight_symbol(">> ");
+            .highlight_symbol("▶ ");
 
         frame.render_stateful_widget(list, area, &mut self.state)
     }

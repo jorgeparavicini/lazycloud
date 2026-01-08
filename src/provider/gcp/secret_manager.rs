@@ -6,13 +6,14 @@ mod service;
 mod view;
 mod provider;
 
+use crate::Theme;
 use crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
 use ratatui::Frame;
 
 pub use message::SecretManagerMsg;
-pub use service::SecretManager;
 pub use provider::SecretManagerProvider;
+pub use service::SecretManager;
 
 /// Trait for Secret Manager views.
 ///
@@ -22,5 +23,5 @@ pub trait SecretManagerView {
     fn handle_key(&mut self, key: KeyEvent) -> Option<SecretManagerMsg>;
 
     /// Render the view to the frame.
-    fn render(&mut self, frame: &mut Frame, area: Rect);
+    fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme);
 }

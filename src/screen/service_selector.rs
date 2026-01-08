@@ -4,6 +4,7 @@ use crate::model::CloudContext;
 use crate::registry::{ServiceId, ServiceProvider, ServiceRegistry};
 use crate::widget::ListEvent::Activated;
 use crate::widget::SelectList;
+use crate::Theme;
 use crossterm::event::KeyEvent;
 use ratatui::{layout::Rect, Frame};
 use std::sync::Arc;
@@ -51,7 +52,7 @@ impl ServiceSelector {
     }
 
     /// Render the service selector.
-    pub fn render(&mut self, frame: &mut Frame, area: Rect) {
-        self.service_list.render(frame, area);
+    pub fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+        self.service_list.render(frame, area, theme);
     }
 }

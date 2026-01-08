@@ -7,7 +7,10 @@ mod model;
 mod provider;
 mod registry;
 mod screen;
+mod theme;
 mod widget;
+
+pub use theme::{available_themes, Theme, ThemeInfo};
 
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {

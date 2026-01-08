@@ -1,8 +1,9 @@
+use crate::Theme;
 use ratatui::{
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph},
+    widgets::{Block, BorderType, Borders, Clear, Paragraph},
     Frame,
 };
 use std::collections::VecDeque;
@@ -105,19 +106,19 @@ impl CommandTracker {
     }
 
     /// Render the command status widget.
-    pub fn render(&mut self, frame: &mut Frame, area: Rect) {
+    pub fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         if self.running.is_empty() && self.history.is_empty() {
             return;
         }
 
         if self.expanded {
-            self.render_expanded(frame, area);
+            self.render_expanded(frame, area, theme);
         } else {
-            self.render_collapsed(frame, area);
+            self.render_collapsed(frame, area, theme);
         }
     }
 
-    fn render_collapsed(&mut self, frame: &mut Frame, area: Rect) {
+    fn render_collapsed(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         if self.running.is_empty() {
             return;
         }
@@ -140,10 +141,7 @@ impl CommandTracker {
         // Build line with spinner placeholder
         let line = Line::from(vec![
             Span::raw(" "),
-            Span::styled(
-                status,
-                Style::default().fg(Color::Yellow),
-            ),
+            Span::styled(status, Style::default().fg(theme.peach())),
         ]);
 
         // Clear background and render
@@ -153,7 +151,8 @@ impl CommandTracker {
         let spinner_area = Rect::new(x, y, 2, 1);
         let throbber = Throbber::default()
             .throbber_set(BRAILLE_SIX)
-            .use_type(WhichUse::Spin);
+            .use_type(WhichUse::Spin)
+            .throbber_style(Style::default().fg(theme.lavender()));
         frame.render_stateful_widget(throbber, spinner_area, &mut self.throbber_state);
 
         // Render text after spinner
@@ -161,7 +160,8 @@ impl CommandTracker {
         frame.render_widget(Paragraph::new(line), text_area);
     }
 
-    fn render_expanded(&mut self, frame: &mut Frame, area: Rect) {
+    fn render_expanded(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+
         let running_count = self.running.len();
         let history_count = self.history.len().min(5); // Show max 5 history items
         let total_lines = running_count + history_count + 2; // +2 for headers/spacing
@@ -178,8 +178,11 @@ impl CommandTracker {
 
         let block = Block::default()
             .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(theme.surface1()))
             .title(" Commands ")
-            .style(Style::default().fg(Color::DarkGray));
+            .title_style(Style::default().fg(theme.mauve()).add_modifier(Modifier::BOLD))
+            .style(Style::default().bg(theme.base()));
 
         let inner = block.inner(widget_area);
         frame.render_widget(block, widget_area);
@@ -190,18 +193,15 @@ impl CommandTracker {
         if !self.running.is_empty() {
             lines.push(Line::from(Span::styled(
                 "Running:",
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme.peach()).add_modifier(Modifier::BOLD),
             )));
             for cmd in &self.running {
                 let elapsed = cmd.started_at.elapsed().as_secs();
                 lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("● ", Style::default().fg(Color::Yellow)),
-                    Span::raw(cmd.name),
-                    Span::styled(
-                        format!(" ({}s)", elapsed),
-                        Style::default().fg(Color::DarkGray),
-                    ),
+                    Span::styled("● ", Style::default().fg(theme.peach())),
+                    Span::styled(cmd.name, Style::default().fg(theme.text())),
+                    Span::styled(format!(" ({}s)", elapsed), Style::default().fg(theme.overlay0())),
                 ]));
             }
         }
@@ -213,15 +213,15 @@ impl CommandTracker {
             }
             lines.push(Line::from(Span::styled(
                 "Recent:",
-                Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
+                Style::default().fg(theme.subtext0()).add_modifier(Modifier::BOLD),
             )));
             for cmd in self.history.iter().take(5) {
                 let icon = if cmd.success { "✓" } else { "✗" };
-                let color = if cmd.success { Color::Green } else { Color::Red };
+                let color = if cmd.success { theme.green() } else { theme.red() };
                 lines.push(Line::from(vec![
                     Span::raw("  "),
                     Span::styled(format!("{} ", icon), Style::default().fg(color)),
-                    Span::styled(cmd.name, Style::default().fg(Color::DarkGray)),
+                    Span::styled(cmd.name, Style::default().fg(theme.subtext0())),
                 ]));
             }
         }

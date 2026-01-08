@@ -15,6 +15,7 @@
 
 use crate::model::CloudContext;
 use crate::registry::ServiceId;
+use crate::theme::Theme;
 use crate::widget::CommandId;
 
 /// Application-level messages for state transitions and global state.
@@ -41,6 +42,10 @@ pub enum AppMessage {
     DisplayError(String),
     /// Display help overlay
     DisplayHelp,
+    /// Display theme selector overlay
+    DisplayThemeSelector,
+    /// Close any open popup
+    ClosePopup,
 
     // === Service ===
     /// A command completed, service should process pending messages
@@ -53,6 +58,8 @@ pub enum AppMessage {
     SelectContext(CloudContext),
     /// User selected a service, transition to active service
     SelectService(ServiceId),
+    /// User selected a theme
+    SelectTheme(Theme),
     /// Return to the previous state (service → service selector, service selector → context selector)
     GoBack,
 }

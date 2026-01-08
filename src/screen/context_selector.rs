@@ -3,6 +3,7 @@
 use crate::model::context::{get_available_contexts, CloudContext};
 use crate::widget::ListEvent::Activated;
 use crate::widget::SelectList;
+use crate::Theme;
 use crossterm::event::KeyEvent;
 use ratatui::{layout::Rect, Frame};
 
@@ -28,8 +29,8 @@ impl ContextSelector {
     }
 
     /// Render the context selector.
-    pub fn render(&mut self, frame: &mut Frame, area: Rect) {
-        self.context_list.render(frame, area);
+    pub fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+        self.context_list.render(frame, area, theme);
     }
 }
 

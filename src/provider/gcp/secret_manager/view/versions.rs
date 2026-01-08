@@ -3,6 +3,7 @@ use crate::provider::gcp::secret_manager::model::{Secret, SecretVersion};
 use crate::provider::gcp::secret_manager::SecretManagerView;
 use crate::widget::TableEvent::Activated;
 use crate::widget::{Column, SelectTable};
+use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::{Constraint, Rect};
 use ratatui::Frame;
@@ -45,7 +46,7 @@ impl SecretManagerView for VersionListView {
         None
     }
 
-    fn render(&mut self, frame: &mut Frame, area: Rect) {
+    fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         let columns = [
             Column::new("Version", Constraint::Length(10)),
             Column::new("State", Constraint::Length(12)),
@@ -58,6 +59,6 @@ impl SecretManagerView for VersionListView {
                 version.state.clone(),
                 version.created_at.clone(),
             ]
-        });
+        }, theme);
     }
 }

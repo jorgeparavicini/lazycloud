@@ -99,6 +99,7 @@ mod tests {
     use crate::model::GcpContext;
     use ratatui::layout::Rect;
     use ratatui::Frame;
+    use crate::Theme;
 
     struct MockProvider;
 
@@ -131,7 +132,7 @@ mod tests {
             UpdateResult::Idle
         }
 
-        fn view(&mut self, _frame: &mut Frame, _area: Rect) {}
+        fn view(&mut self, _frame: &mut Frame, _area: Rect, _theme: &Theme) {}
 
         fn breadcrumbs(&self) -> Vec<String> {
             vec!["Mock".to_string()]

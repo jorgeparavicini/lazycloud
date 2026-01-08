@@ -11,6 +11,7 @@
 
 use crate::core::command::Command;
 use crate::core::event::Event;
+use crate::Theme;
 use ratatui::layout::Rect;
 use ratatui::Frame;
 
@@ -75,7 +76,7 @@ pub trait Service: Send {
     fn update(&mut self) -> UpdateResult;
 
     /// Render the current state to the terminal.
-    fn view(&mut self, frame: &mut Frame, area: Rect);
+    fn view(&mut self, frame: &mut Frame, area: Rect, theme: &Theme);
 
     /// Breadcrumb segments for the navigation bar.
     fn breadcrumbs(&self) -> Vec<String>;

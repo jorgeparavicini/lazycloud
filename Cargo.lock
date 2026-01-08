@@ -218,6 +218,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "catppuccin"
+version = "2.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09e258c2f1b845bc3f6fe9790f217f377246e5605ff003e6537d5b2baf44e69c"
+dependencies = [
+ "itertools 0.14.0",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 2.0.111",
+]
+
+[[package]]
 name = "cc"
 version = "1.2.51"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1419,6 +1434,7 @@ version = "0.0.0"
 dependencies = [
  "arboard",
  "async-trait",
+ "catppuccin",
  "chrono",
  "color-eyre",
  "crossterm",

@@ -1,5 +1,3 @@
-use crate::screen::context_selector::ContextSelector;
-use crate::screen::service_selector::ServiceSelector;
 use crate::core::command::Command;
 use crate::core::event::Event;
 use crate::core::message::AppMessage;
@@ -7,12 +5,15 @@ use crate::core::service::{Service, UpdateResult};
 use crate::core::tui::Tui;
 use crate::model::CloudContext;
 use crate::registry::ServiceRegistry;
-use crate::widget::{CommandTracker, HelpOverlay, Keybinding, StatusBar};
+use crate::screen::context_selector::ContextSelector;
+use crate::screen::service_selector::ServiceSelector;
+use crate::widget::{CommandTracker, HelpOverlay, HelpOverlayEvent, Keybinding, StatusBar, ThemeSelector, ThemeSelectorEvent};
+use crate::Theme;
 use crossterm::event::KeyCode;
 use log::debug;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::widgets::Paragraph;
+use ratatui::style::{Modifier, Style};
+use ratatui::widgets::{Block, Paragraph};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
@@ -20,6 +21,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 /// Global keybindings shown in the help overlay.
 const GLOBAL_KEYBINDINGS: &[Keybinding] = &[
     Keybinding::new("?", "Toggle help"),
+    Keybinding::new("t", "Select theme"),
     Keybinding::new("q", "Quit application"),
     Keybinding::new("Esc", "Go back / Close"),
     Keybinding::new("Enter", "Select item"),
@@ -40,10 +42,17 @@ enum AppState {
     ActiveService(Box<dyn Service>),
 }
 
+/// Active popup overlay - only one can be open at a time.
+enum ActivePopup {
+    Help(HelpOverlay),
+    ThemeSelector(ThemeSelector),
+}
+
 pub struct App {
     state: AppState,
+    theme: Theme,
+    popup: Option<ActivePopup>,
     status_bar: StatusBar,
-    help_overlay: HelpOverlay,
     command_tracker: CommandTracker,
     should_quit: bool,
     should_suspend: bool,
@@ -59,8 +68,9 @@ impl App {
 
         Self {
             state: AppState::SelectingContext(ContextSelector::new()),
+            theme: Theme::default(),
+            popup: None,
             status_bar: StatusBar::new(),
-            help_overlay: HelpOverlay::new(),
             command_tracker: CommandTracker::new(),
             should_quit: false,
             should_suspend: false,
@@ -185,15 +195,29 @@ impl App {
     }
 
     fn handle_event(&mut self, event: &Event) -> color_eyre::Result<()> {
-        // Help overlay intercepts all key events when visible
-        if self.help_overlay.is_visible() {
+        // Popup intercepts all key events when visible
+        if let Some(ref mut popup) = self.popup {
             if let Event::Key(key) = event {
-                match key.code {
-                    KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => {
-                        self.help_overlay.hide();
-                        self.msg_tx.send(AppMessage::Render)?;
+                match popup {
+                    ActivePopup::Help(help) => {
+                        match help.handle_key_event(*key) {
+                            HelpOverlayEvent::Close => {
+                                self.msg_tx.send(AppMessage::ClosePopup)?;
+                            }
+                            HelpOverlayEvent::None => {}
+                        }
                     }
-                    _ => {}
+                    ActivePopup::ThemeSelector(selector) => {
+                        match selector.handle_key_event(*key) {
+                            ThemeSelectorEvent::Selected(theme) => {
+                                self.msg_tx.send(AppMessage::SelectTheme(theme))?;
+                            }
+                            ThemeSelectorEvent::Cancelled => {
+                                self.msg_tx.send(AppMessage::ClosePopup)?;
+                            }
+                            ThemeSelectorEvent::None => {}
+                        }
+                    }
                 }
                 return Ok(());
             }
@@ -251,6 +275,7 @@ impl App {
                     match key.code {
                         KeyCode::Char('q') => self.msg_tx.send(AppMessage::Quit)?,
                         KeyCode::Char('?') => self.msg_tx.send(AppMessage::DisplayHelp)?,
+                        KeyCode::Char('t') => self.msg_tx.send(AppMessage::DisplayThemeSelector)?,
                         KeyCode::Char('c') => self.msg_tx.send(AppMessage::ToggleCommandStatus)?,
                         KeyCode::Esc => self.msg_tx.send(AppMessage::GoBack)?,
                         _ => {}
@@ -286,7 +311,17 @@ impl App {
                 log::error!("Error: {}", err);
             }
             AppMessage::DisplayHelp => {
-                self.help_overlay.toggle();
+                self.popup = Some(ActivePopup::Help(HelpOverlay::new()));
+            }
+            AppMessage::DisplayThemeSelector => {
+                self.popup = Some(ActivePopup::ThemeSelector(ThemeSelector::new()));
+            }
+            AppMessage::ClosePopup => {
+                self.popup = None;
+            }
+            AppMessage::SelectTheme(theme) => {
+                self.theme = theme;
+                self.popup = None;
             }
             AppMessage::CommandCompleted { id, success } => {
                 // Mark command as complete in tracker
@@ -323,6 +358,12 @@ impl App {
 
     fn render(&mut self, tui: &mut Tui) -> color_eyre::Result<()> {
         tui.draw(|frame| {
+            // Fill background with theme base color
+            frame.render_widget(
+                Block::default().style(Style::default().bg(self.theme.base())),
+                frame.area(),
+            );
+
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
@@ -333,18 +374,18 @@ impl App {
                 .split(frame.area());
 
             // Render status bar
-            self.status_bar.render(frame, chunks[0]);
+            self.status_bar.render(frame, chunks[0], &self.theme);
 
             // Render current state
             match &mut self.state {
                 AppState::SelectingContext(selector) => {
-                    selector.render(frame, chunks[1]);
+                    selector.render(frame, chunks[1], &self.theme);
                 }
                 AppState::SelectingService(selector) => {
-                    selector.render(frame, chunks[1]);
+                    selector.render(frame, chunks[1], &self.theme);
                 }
                 AppState::ActiveService(service) => {
-                    service.view(frame, chunks[1]);
+                    service.view(frame, chunks[1], &self.theme);
                 }
             }
 
@@ -353,17 +394,25 @@ impl App {
             let bc_text = breadcrumbs.join(" > ");
             let bc_widget = Paragraph::new(bc_text).style(
                 Style::default()
-                    .fg(Color::DarkGray)
+                    .fg(self.theme.overlay1())
                     .add_modifier(Modifier::ITALIC),
             );
             frame.render_widget(bc_widget, chunks[2]);
 
             // Render command status (bottom right)
-            self.command_tracker.render(frame, chunks[1]);
+            self.command_tracker.render(frame, chunks[1], &self.theme);
 
-            // Render help overlay on top
-            self.help_overlay
-                .render(frame, frame.area(), GLOBAL_KEYBINDINGS);
+            // Render popup overlay on top
+            if let Some(ref mut popup) = self.popup {
+                match popup {
+                    ActivePopup::Help(help) => {
+                        help.render(frame, frame.area(), GLOBAL_KEYBINDINGS, &self.theme);
+                    }
+                    ActivePopup::ThemeSelector(selector) => {
+                        selector.render(frame, frame.area(), &self.theme);
+                    }
+                }
+            }
         })?;
         Ok(())
     }

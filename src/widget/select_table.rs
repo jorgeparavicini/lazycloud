@@ -1,7 +1,8 @@
+use crate::Theme;
 use crossterm::event::KeyEvent;
 use ratatui::layout::{Constraint, Rect};
-use ratatui::prelude::{Color, Modifier, Style};
-use ratatui::widgets::{Block, Borders, Cell, Row, Table, TableState};
+use ratatui::prelude::{Modifier, Style};
+use ratatui::widgets::{Block, BorderType, Borders, Cell, Row, Table, TableState};
 use ratatui::Frame;
 
 pub enum TableEvent<'a, T> {
@@ -114,20 +115,24 @@ impl<T> SelectTable<T> {
         area: Rect,
         columns: &[Column<'a>],
         row_renderer: F,
+        theme: &Theme,
     ) where
         F: Fn(&T) -> Vec<String>,
     {
+
         let header_cells: Vec<Cell> = columns
             .iter()
             .map(|c| {
                 Cell::from(c.header).style(
                     Style::default()
-                        .fg(Color::Yellow)
+                        .fg(theme.header())
                         .add_modifier(Modifier::BOLD),
                 )
             })
             .collect();
-        let header = Row::new(header_cells).height(1);
+        let header = Row::new(header_cells)
+            .height(1)
+            .style(Style::default().bg(theme.surface0()));
 
         let rows: Vec<Row> = self
             .items
@@ -137,7 +142,7 @@ impl<T> SelectTable<T> {
                     .into_iter()
                     .map(Cell::from)
                     .collect();
-                Row::new(cells)
+                Row::new(cells).style(Style::default().fg(theme.text()))
             })
             .collect();
 
@@ -147,7 +152,8 @@ impl<T> SelectTable<T> {
             .header(header)
             .row_highlight_style(
                 Style::default()
-                    .bg(Color::Blue)
+                    .bg(theme.selection_bg())
+                    .fg(theme.lavender())
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("▶ ");
@@ -155,7 +161,10 @@ impl<T> SelectTable<T> {
         if let Some(title) = &self.title {
             let block = Block::default()
                 .borders(Borders::ALL)
-                .title(title.as_str());
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(theme.border()))
+                .title(title.as_str())
+                .title_style(Style::default().fg(theme.mauve()).add_modifier(Modifier::BOLD));
             table = table.block(block);
         }
 

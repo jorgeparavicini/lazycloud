@@ -1,4 +1,6 @@
+use crate::Theme;
 use ratatui::layout::{Constraint, Rect};
+use ratatui::style::Style;
 use ratatui::Frame;
 use throbber_widgets_tui::WhichUse::Spin;
 use throbber_widgets_tui::{Throbber, ThrobberState, BRAILLE_SIX};
@@ -24,8 +26,13 @@ impl Spinner {
         self.throbber_state.calc_next()
     }
 
-    pub fn render(&mut self, frame: &mut Frame, area: Rect) {
-        let mut throbber = Throbber::default().throbber_set(BRAILLE_SIX).use_type(Spin);
+    pub fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+
+        let mut throbber = Throbber::default()
+            .throbber_set(BRAILLE_SIX)
+            .use_type(Spin)
+            .throbber_style(Style::default().fg(theme.lavender()))
+            .style(Style::default().fg(theme.subtext1()));
 
         // The throbber itself uses 1-character width
         let mut width = 1u16;

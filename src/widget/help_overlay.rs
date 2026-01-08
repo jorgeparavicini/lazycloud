@@ -1,8 +1,10 @@
+use crate::Theme;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    layout::{Constraint, Rect},
+    style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph},
+    widgets::{Block, BorderType, Borders, Clear, Paragraph},
     Frame,
 };
 
@@ -19,47 +21,33 @@ impl Keybinding {
 }
 
 /// Help overlay that displays keybindings in a centered popup.
-pub struct HelpOverlay {
-    visible: bool,
-}
+pub struct HelpOverlay;
 
 impl HelpOverlay {
     pub fn new() -> Self {
-        Self { visible: false }
+        Self
     }
 
-    pub fn show(&mut self) {
-        self.visible = true;
-    }
-
-    pub fn hide(&mut self) {
-        self.visible = false;
-    }
-
-    pub fn toggle(&mut self) {
-        self.visible = !self.visible;
-    }
-
-    pub fn is_visible(&self) -> bool {
-        self.visible
-    }
-
-    pub fn render(&self, frame: &mut Frame, area: Rect, keybindings: &[Keybinding]) {
-        if !self.visible {
-            return;
+    /// Handle a key event. Returns whether the overlay should close.
+    pub fn handle_key_event(&mut self, key: KeyEvent) -> HelpOverlayEvent {
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => HelpOverlayEvent::Close,
+            _ => HelpOverlayEvent::None,
         }
+    }
 
+    pub fn render(&self, frame: &mut Frame, area: Rect, keybindings: &[Keybinding], theme: &Theme) {
         // Calculate centered popup area
-        let popup_area = centered_rect(60, 70, area);
+        let popup_area = area.centered(Constraint::Percentage(60), Constraint::Percentage(70));
 
         // Clear the area behind the popup
         frame.render_widget(Clear, popup_area);
 
         // Build keybinding lines
         let key_style = Style::default()
-            .fg(Color::Yellow)
+            .fg(theme.peach())
             .add_modifier(Modifier::BOLD);
-        let desc_style = Style::default().fg(Color::White);
+        let desc_style = Style::default().fg(theme.text());
 
         let lines: Vec<Line> = keybindings
             .iter()
@@ -74,8 +62,11 @@ impl HelpOverlay {
 
         let block = Block::default()
             .title(" Help (press ? or Esc to close) ")
+            .title_style(Style::default().fg(theme.mauve()).add_modifier(Modifier::BOLD))
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan));
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(theme.lavender()))
+            .style(Style::default().bg(theme.base()));
 
         let paragraph = Paragraph::new(lines).block(block);
 
@@ -89,23 +80,10 @@ impl Default for HelpOverlay {
     }
 }
 
-/// Create a centered rectangle with percentage-based width and height.
-fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(area);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
+/// Result of handling a key event in the help overlay.
+pub enum HelpOverlayEvent {
+    /// No action taken
+    None,
+    /// User wants to close the overlay
+    Close,
 }
