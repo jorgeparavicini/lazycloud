@@ -1,3 +1,4 @@
+use crate::view::View;
 use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -8,7 +9,7 @@ use ratatui::{
     Frame,
 };
 
-/// A keybinding entry for the help overlay.
+/// A keybinding entry for the help view.
 pub struct Keybinding {
     pub key: &'static str,
     pub description: &'static str,
@@ -20,23 +21,34 @@ impl Keybinding {
     }
 }
 
-/// Help overlay that displays keybindings in a centered popup.
-pub struct HelpOverlay;
+/// Event emitted by [`HelpView`].
+pub enum HelpEvent {
+    /// User wants to close the help view.
+    Close,
+}
 
-impl HelpOverlay {
-    pub fn new() -> Self {
-        Self
+/// Help overlay view that displays keybindings in a centered popup.
+pub struct HelpView {
+    keybindings: &'static [Keybinding],
+}
+
+impl HelpView {
+    pub fn new(keybindings: &'static [Keybinding]) -> Self {
+        Self { keybindings }
     }
+}
 
-    /// Handle a key event. Returns whether the overlay should close.
-    pub fn handle_key_event(&mut self, key: KeyEvent) -> HelpOverlayEvent {
+impl View for HelpView {
+    type Event = HelpEvent;
+
+    fn handle_key(&mut self, key: KeyEvent) -> Option<Self::Event> {
         match key.code {
-            KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => HelpOverlayEvent::Close,
-            _ => HelpOverlayEvent::None,
+            KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => Some(HelpEvent::Close),
+            _ => None,
         }
     }
 
-    pub fn render(&self, frame: &mut Frame, area: Rect, keybindings: &[Keybinding], theme: &Theme) {
+    fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         // Calculate centered popup area
         let popup_area = area.centered(Constraint::Percentage(60), Constraint::Percentage(70));
 
@@ -49,7 +61,8 @@ impl HelpOverlay {
             .add_modifier(Modifier::BOLD);
         let desc_style = Style::default().fg(theme.text());
 
-        let lines: Vec<Line> = keybindings
+        let lines: Vec<Line> = self
+            .keybindings
             .iter()
             .map(|kb| {
                 Line::from(vec![
@@ -72,18 +85,4 @@ impl HelpOverlay {
 
         frame.render_widget(paragraph, popup_area);
     }
-}
-
-impl Default for HelpOverlay {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Result of handling a key event in the help overlay.
-pub enum HelpOverlayEvent {
-    /// No action taken
-    None,
-    /// User wants to close the overlay
-    Close,
 }

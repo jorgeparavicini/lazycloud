@@ -1,16 +1,19 @@
+use crate::view::View;
 use crate::Theme;
+use crossterm::event::KeyEvent;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::Style;
 use ratatui::Frame;
 use throbber_widgets_tui::WhichUse::Spin;
 use throbber_widgets_tui::{Throbber, ThrobberState, BRAILLE_SIX};
 
-pub struct Spinner {
+/// A spinner/loading indicator view.
+pub struct SpinnerView {
     throbber_state: ThrobberState,
     label: Option<&'static str>,
 }
 
-impl Spinner {
+impl SpinnerView {
     pub fn new() -> Self {
         Self {
             throbber_state: ThrobberState::default(),
@@ -21,13 +24,26 @@ impl Spinner {
     pub fn set_label(&mut self, label: &'static str) {
         self.label = Some(label);
     }
+}
 
-    pub fn on_tick(&mut self) {
-        self.throbber_state.calc_next()
+impl Default for SpinnerView {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl View for SpinnerView {
+    type Event = ();
+
+    fn handle_key(&mut self, _key: KeyEvent) -> Option<Self::Event> {
+        None
     }
 
-    pub fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+    fn on_tick(&mut self) {
+        self.throbber_state.calc_next();
+    }
 
+    fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         let mut throbber = Throbber::default()
             .throbber_set(BRAILLE_SIX)
             .use_type(Spin)

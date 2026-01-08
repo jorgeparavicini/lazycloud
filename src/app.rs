@@ -5,9 +5,10 @@ use crate::core::service::{Service, UpdateResult};
 use crate::core::tui::Tui;
 use crate::model::CloudContext;
 use crate::registry::ServiceRegistry;
-use crate::screen::context_selector::ContextSelector;
-use crate::screen::service_selector::ServiceSelector;
-use crate::widget::{CommandTracker, HelpOverlay, HelpOverlayEvent, Keybinding, StatusBar, ThemeSelector, ThemeSelectorEvent};
+use crate::view::{
+    CommandStatusView, ContextSelectorView, HelpEvent, HelpView, Keybinding,
+    ServiceSelectorView, StatusBarView, ThemeEvent, ThemeSelectorView, View,
+};
 use crate::Theme;
 use crossterm::event::KeyCode;
 use log::debug;
@@ -35,25 +36,25 @@ const GLOBAL_KEYBINDINGS: &[Keybinding] = &[
 /// Application state - what the user is currently doing.
 enum AppState {
     /// Selecting a cloud context (GCP project, AWS account, etc.)
-    SelectingContext(ContextSelector),
+    SelectingContext(ContextSelectorView),
     /// Selecting a service within the chosen context
-    SelectingService(ServiceSelector),
+    SelectingService(ServiceSelectorView),
     /// Using an active cloud service
     ActiveService(Box<dyn Service>),
 }
 
 /// Active popup overlay - only one can be open at a time.
 enum ActivePopup {
-    Help(HelpOverlay),
-    ThemeSelector(ThemeSelector),
+    Help(HelpView),
+    ThemeSelector(ThemeSelectorView),
 }
 
 pub struct App {
     state: AppState,
     theme: Theme,
     popup: Option<ActivePopup>,
-    status_bar: StatusBar,
-    command_tracker: CommandTracker,
+    status_bar: StatusBarView,
+    command_tracker: CommandStatusView,
     should_quit: bool,
     should_suspend: bool,
     active_context: Option<CloudContext>,
@@ -67,11 +68,11 @@ impl App {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
 
         Self {
-            state: AppState::SelectingContext(ContextSelector::new()),
+            state: AppState::SelectingContext(ContextSelectorView::new()),
             theme: Theme::default(),
             popup: None,
-            status_bar: StatusBar::new(),
-            command_tracker: CommandTracker::new(),
+            status_bar: StatusBarView::new(),
+            command_tracker: CommandStatusView::new(),
             should_quit: false,
             should_suspend: false,
             active_context: None,
@@ -150,7 +151,7 @@ impl App {
     fn go_to_context_selection(&mut self) {
         self.active_context = None;
         self.status_bar.clear_context();
-        self.state = AppState::SelectingContext(ContextSelector::new());
+        self.state = AppState::SelectingContext(ContextSelectorView::new());
     }
 
     /// Transition to service selection.
@@ -158,7 +159,7 @@ impl App {
         self.active_context = Some(context.clone());
         self.status_bar.set_active_context(context.clone());
         self.state =
-            AppState::SelectingService(ServiceSelector::new(self.registry.clone(), context));
+            AppState::SelectingService(ServiceSelectorView::new(self.registry.clone(), context));
     }
 
     /// Transition to active service.
@@ -198,22 +199,19 @@ impl App {
             if let Event::Key(key) = event {
                 match popup {
                     ActivePopup::Help(help) => {
-                        match help.handle_key_event(*key) {
-                            HelpOverlayEvent::Close => {
-                                self.msg_tx.send(AppMessage::ClosePopup)?;
-                            }
-                            HelpOverlayEvent::None => {}
+                        if let Some(HelpEvent::Close) = help.handle_key(*key) {
+                            self.msg_tx.send(AppMessage::ClosePopup)?;
                         }
                     }
                     ActivePopup::ThemeSelector(selector) => {
-                        match selector.handle_key_event(*key) {
-                            ThemeSelectorEvent::Selected(theme) => {
+                        match selector.handle_key(*key) {
+                            Some(ThemeEvent::Selected(theme)) => {
                                 self.msg_tx.send(AppMessage::SelectTheme(theme))?;
                             }
-                            ThemeSelectorEvent::Cancelled => {
+                            Some(ThemeEvent::Cancelled) => {
                                 self.msg_tx.send(AppMessage::ClosePopup)?;
                             }
-                            ThemeSelectorEvent::None => {}
+                            None => {}
                         }
                     }
                 }
@@ -234,7 +232,7 @@ impl App {
         let handled = match &mut self.state {
             AppState::SelectingContext(selector) => {
                 if let Event::Key(key) = event {
-                    if let Some(context) = selector.handle_key_event(*key) {
+                    if let Some(context) = selector.handle_key(*key) {
                         self.msg_tx.send(AppMessage::SelectContext(context))?;
                         return Ok(());
                     }
@@ -243,7 +241,7 @@ impl App {
             }
             AppState::SelectingService(selector) => {
                 if let Event::Key(key) = event {
-                    if let Some(service_id) = selector.handle_key_event(*key) {
+                    if let Some(service_id) = selector.handle_key(*key) {
                         self.msg_tx.send(AppMessage::SelectService(service_id))?;
                         return Ok(());
                     }
@@ -309,10 +307,10 @@ impl App {
                 log::error!("Error: {}", err);
             }
             AppMessage::DisplayHelp => {
-                self.popup = Some(ActivePopup::Help(HelpOverlay::new()));
+                self.popup = Some(ActivePopup::Help(HelpView::new(GLOBAL_KEYBINDINGS)));
             }
             AppMessage::DisplayThemeSelector => {
-                self.popup = Some(ActivePopup::ThemeSelector(ThemeSelector::new()));
+                self.popup = Some(ActivePopup::ThemeSelector(ThemeSelectorView::new()));
             }
             AppMessage::ClosePopup => {
                 self.popup = None;
@@ -404,7 +402,7 @@ impl App {
             if let Some(ref mut popup) = self.popup {
                 match popup {
                     ActivePopup::Help(help) => {
-                        help.render(frame, frame.area(), GLOBAL_KEYBINDINGS, &self.theme);
+                        help.render(frame, frame.area(), &self.theme);
                     }
                     ActivePopup::ThemeSelector(selector) => {
                         selector.render(frame, frame.area(), &self.theme);

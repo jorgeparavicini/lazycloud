@@ -1,3 +1,4 @@
+use crate::view::View;
 use crate::Theme;
 use crossterm::event::KeyEvent;
 use ratatui::layout::{Constraint, Rect};
@@ -5,31 +6,43 @@ use ratatui::prelude::{Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Borders, Cell, Row, Table, TableState};
 use ratatui::Frame;
 
-pub enum TableEvent<'a, T> {
-    Changed(&'a T),
-    Activated(&'a T),
+/// Event emitted by [`TableView`].
+pub enum TableEvent<T> {
+    /// Selection changed to a new item.
+    Changed(T),
+    /// Item was activated (Enter pressed).
+    Activated(T),
 }
 
 /// Column definition for a table.
-pub struct Column<'a> {
-    pub header: &'a str,
+pub struct ColumnDef {
+    pub header: &'static str,
     pub constraint: Constraint,
 }
 
-impl<'a> Column<'a> {
-    pub fn new(header: &'a str, constraint: Constraint) -> Self {
+impl ColumnDef {
+    pub const fn new(header: &'static str, constraint: Constraint) -> Self {
         Self { header, constraint }
     }
 }
 
-/// A selectable table widget with keyboard navigation.
-pub struct SelectTable<T> {
+/// Trait for items that can be displayed in a table.
+pub trait TableRow {
+    /// Column definitions for this row type.
+    fn columns() -> &'static [ColumnDef];
+
+    /// Render this row's cells with full styling control.
+    fn render_cells(&self, theme: &Theme) -> Vec<Cell<'static>>;
+}
+
+/// A selectable table view with keyboard navigation.
+pub struct TableView<T: TableRow + Clone> {
     items: Vec<T>,
     state: TableState,
     title: Option<String>,
 }
 
-impl<T> SelectTable<T> {
+impl<T: TableRow + Clone> TableView<T> {
     pub fn new(items: Vec<T>) -> Self {
         let mut state = TableState::default();
         if !items.is_empty() {
@@ -47,7 +60,64 @@ impl<T> SelectTable<T> {
         self
     }
 
-    pub fn handle_key_event(&mut self, key: KeyEvent) -> Option<TableEvent<'_, T>> {
+    pub fn selected(&self) -> Option<&T> {
+        self.state.selected().and_then(|i| self.items.get(i))
+    }
+
+    fn select_next(&mut self) {
+        if self.items.is_empty() {
+            return;
+        }
+        let i = match self.state.selected() {
+            Some(i) => {
+                if i >= self.items.len() - 1 {
+                    i
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.state.select(Some(i));
+    }
+
+    fn select_previous(&mut self) {
+        if self.items.is_empty() {
+            return;
+        }
+        let i = match self.state.selected() {
+            Some(i) => i.saturating_sub(1),
+            None => 0,
+        };
+        self.state.select(Some(i));
+    }
+
+    fn select_first(&mut self) {
+        if !self.items.is_empty() {
+            self.state.select(Some(0));
+        }
+    }
+
+    fn select_last(&mut self) {
+        if !self.items.is_empty() {
+            self.state.select(Some(self.items.len() - 1));
+        }
+    }
+
+    fn get_change_event(&self, before: Option<usize>) -> Option<TableEvent<T>> {
+        if let Some(selected) = self.state.selected() {
+            if Some(selected) != before {
+                return Some(TableEvent::Changed(self.items[selected].clone()));
+            }
+        }
+        None
+    }
+}
+
+impl<T: TableRow + Clone> View for TableView<T> {
+    type Event = TableEvent<T>;
+
+    fn handle_key(&mut self, key: KeyEvent) -> Option<Self::Event> {
         use crossterm::event::KeyCode::*;
 
         let before = self.state.selected();
@@ -95,7 +165,7 @@ impl<T> SelectTable<T> {
             }
             Enter => {
                 if let Some(selected) = self.state.selected() {
-                    Some(TableEvent::Activated(&self.items[selected]))
+                    Some(TableEvent::Activated(self.items[selected].clone()))
                 } else {
                     None
                 }
@@ -104,21 +174,8 @@ impl<T> SelectTable<T> {
         }
     }
 
-    pub fn selected(&self) -> Option<&T> {
-        self.state.selected().and_then(|i| self.items.get(i))
-    }
-
-    /// Render the table with the given columns and row renderer.
-    pub fn render<'a, F>(
-        &mut self,
-        frame: &mut Frame,
-        area: Rect,
-        columns: &[Column<'a>],
-        row_renderer: F,
-        theme: &Theme,
-    ) where
-        F: Fn(&T) -> Vec<String>,
-    {
+    fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+        let columns = T::columns();
 
         let header_cells: Vec<Cell> = columns
             .iter()
@@ -137,13 +194,7 @@ impl<T> SelectTable<T> {
         let rows: Vec<Row> = self
             .items
             .iter()
-            .map(|item| {
-                let cells: Vec<Cell> = row_renderer(item)
-                    .into_iter()
-                    .map(Cell::from)
-                    .collect();
-                Row::new(cells).style(Style::default().fg(theme.text()))
-            })
+            .map(|item| Row::new(item.render_cells(theme)).style(Style::default().fg(theme.text())))
             .collect();
 
         let widths: Vec<Constraint> = columns.iter().map(|c| c.constraint).collect();
@@ -169,54 +220,5 @@ impl<T> SelectTable<T> {
         }
 
         frame.render_stateful_widget(table, area, &mut self.state);
-    }
-
-    fn select_next(&mut self) {
-        if self.items.is_empty() {
-            return;
-        }
-        let i = match self.state.selected() {
-            Some(i) => {
-                if i >= self.items.len() - 1 {
-                    i
-                } else {
-                    i + 1
-                }
-            }
-            None => 0,
-        };
-        self.state.select(Some(i));
-    }
-
-    fn select_previous(&mut self) {
-        if self.items.is_empty() {
-            return;
-        }
-        let i = match self.state.selected() {
-            Some(i) => i.saturating_sub(1),
-            None => 0,
-        };
-        self.state.select(Some(i));
-    }
-
-    fn select_first(&mut self) {
-        if !self.items.is_empty() {
-            self.state.select(Some(0));
-        }
-    }
-
-    fn select_last(&mut self) {
-        if !self.items.is_empty() {
-            self.state.select(Some(self.items.len() - 1));
-        }
-    }
-
-    fn get_change_event(&self, before: Option<usize>) -> Option<TableEvent<'_, T>> {
-        if let Some(selected) = self.state.selected() {
-            if Some(selected) != before {
-                return Some(TableEvent::Changed(&self.items[selected]));
-            }
-        }
-        None
     }
 }

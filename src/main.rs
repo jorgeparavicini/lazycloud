@@ -6,9 +6,8 @@ mod core;
 mod model;
 mod provider;
 mod registry;
-mod screen;
 mod theme;
-mod widget;
+mod view;
 
 pub use theme::{available_themes, Theme, ThemeInfo};
 

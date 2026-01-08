@@ -10,7 +10,7 @@ use crate::provider::gcp::secret_manager::message::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::model::{Secret, SecretVersion};
 use crate::provider::gcp::secret_manager::view::{PayloadView, SecretListView, VersionListView};
 use crate::provider::gcp::secret_manager::SecretManagerView;
-use crate::widget::Spinner;
+use crate::view::{SpinnerView, View};
 use crate::Theme;
 use crossterm::event::KeyCode;
 use ratatui::layout::Rect;
@@ -28,7 +28,7 @@ enum State {
 /// Service for managing GCP Secret Manager secrets.
 pub struct SecretManager {
     project_id: String,
-    spinner: Spinner,
+    spinner: SpinnerView,
     client: Option<SecretManagerClient>,
     state: State,
     /// Breadcrumb context preserved during loading transitions.
@@ -42,7 +42,7 @@ impl SecretManager {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
         Self {
             project_id: ctx.project_id.clone(),
-            spinner: Spinner::new(),
+            spinner: SpinnerView::new(),
             client: None,
             state: State::Loading,
             loading_context: vec!["Secrets".to_string()],

@@ -1,4 +1,6 @@
+use crate::view::View;
 use crate::Theme;
+use crossterm::event::KeyEvent;
 use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
@@ -8,7 +10,7 @@ use ratatui::{
 };
 use std::collections::VecDeque;
 use std::time::Instant;
-use throbber_widgets_tui::{Throbber, ThrobberState, BRAILLE_SIX, WhichUse};
+use throbber_widgets_tui::{Throbber, ThrobberState, WhichUse, BRAILLE_SIX};
 
 /// Unique identifier for a tracked command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -26,12 +28,11 @@ struct RunningCommand {
 #[derive(Debug)]
 struct CompletedCommand {
     name: &'static str,
-    completed_at: Instant,
     success: bool,
 }
 
-/// Tracks running and recently completed commands.
-pub struct CommandTracker {
+/// View that tracks running and recently completed commands.
+pub struct CommandStatusView {
     running: Vec<RunningCommand>,
     history: VecDeque<CompletedCommand>,
     next_id: u64,
@@ -40,7 +41,7 @@ pub struct CommandTracker {
     throbber_state: ThrobberState,
 }
 
-impl CommandTracker {
+impl CommandStatusView {
     pub fn new() -> Self {
         Self {
             running: Vec::new(),
@@ -70,7 +71,6 @@ impl CommandTracker {
             let cmd = self.running.remove(pos);
             self.history.push_front(CompletedCommand {
                 name: cmd.name,
-                completed_at: Instant::now(),
                 success,
             });
             // Trim history
@@ -98,24 +98,6 @@ impl CommandTracker {
     /// Check if any commands are running.
     pub fn has_running(&self) -> bool {
         !self.running.is_empty()
-    }
-
-    /// Called on tick to animate spinner.
-    pub fn on_tick(&mut self) {
-        self.throbber_state.calc_next();
-    }
-
-    /// Render the command status widget.
-    pub fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        if self.running.is_empty() && self.history.is_empty() {
-            return;
-        }
-
-        if self.expanded {
-            self.render_expanded(frame, area, theme);
-        } else {
-            self.render_collapsed(frame, area, theme);
-        }
     }
 
     fn render_collapsed(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -161,7 +143,6 @@ impl CommandTracker {
     }
 
     fn render_expanded(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
-
         let running_count = self.running.len();
         let history_count = self.history.len().min(5); // Show max 5 history items
         let total_lines = running_count + history_count + 2; // +2 for headers/spacing
@@ -231,8 +212,32 @@ impl CommandTracker {
     }
 }
 
-impl Default for CommandTracker {
+impl Default for CommandStatusView {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl View for CommandStatusView {
+    type Event = ();
+
+    fn handle_key(&mut self, _key: KeyEvent) -> Option<Self::Event> {
+        None
+    }
+
+    fn on_tick(&mut self) {
+        self.throbber_state.calc_next();
+    }
+
+    fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+        if self.running.is_empty() && self.history.is_empty() {
+            return;
+        }
+
+        if self.expanded {
+            self.render_expanded(frame, area, theme);
+        } else {
+            self.render_collapsed(frame, area, theme);
+        }
     }
 }

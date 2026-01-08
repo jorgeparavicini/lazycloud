@@ -16,7 +16,7 @@
 use crate::model::CloudContext;
 use crate::registry::ServiceId;
 use crate::theme::Theme;
-use crate::widget::CommandId;
+use crate::view::CommandId;
 
 /// Application-level messages for state transitions and global state.
 #[derive(Debug, Clone)]

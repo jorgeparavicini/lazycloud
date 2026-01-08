@@ -1,46 +1,66 @@
-//! Theme selector widget for choosing application themes.
-
 use crate::theme::{available_themes, ThemeInfo};
-use crate::widget::{ListEvent, SelectList};
+use crate::view::{ListEvent, ListRow, ListView, View};
 use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Modifier, Style},
-    widgets::{Block, BorderType, Borders, Clear},
+    widgets::{Block, BorderType, Borders, Clear, ListItem},
     Frame,
 };
 
-/// Widget for selecting the application theme.
-pub struct ThemeSelector {
-    list: SelectList<ThemeInfo>,
+impl ListRow for ThemeInfo {
+    fn render_row(&self, theme: &Theme) -> ListItem<'static> {
+        ListItem::new(self.name.to_string()).style(Style::default().fg(theme.text()))
+    }
 }
 
-impl ThemeSelector {
+/// Event emitted by [`ThemeSelectorView`].
+pub enum ThemeEvent {
+    /// User cancelled selection.
+    Cancelled,
+    /// User selected a theme.
+    Selected(Theme),
+}
+
+/// View for selecting the application theme.
+pub struct ThemeSelectorView {
+    list: ListView<ThemeInfo>,
+}
+
+impl ThemeSelectorView {
     pub fn new() -> Self {
         let themes = available_themes();
         Self {
-            list: SelectList::new(themes),
+            list: ListView::new(themes),
         }
     }
+}
 
-    /// Handle a key event. Returns the selected theme if Enter was pressed,
-    /// or None if Esc/t was pressed to cancel.
-    pub fn handle_key_event(&mut self, key: KeyEvent) -> ThemeSelectorEvent {
+impl Default for ThemeSelectorView {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl View for ThemeSelectorView {
+    type Event = ThemeEvent;
+
+    fn handle_key(&mut self, key: KeyEvent) -> Option<Self::Event> {
         // Handle escape/toggle to close
         if matches!(key.code, KeyCode::Esc | KeyCode::Char('t')) {
-            return ThemeSelectorEvent::Cancelled;
+            return Some(ThemeEvent::Cancelled);
         }
 
         // Delegate to list
-        if let Some(ListEvent::Activated(info)) = self.list.handle_key_event(key) {
-            return ThemeSelectorEvent::Selected(info.theme);
+        if let Some(ListEvent::Activated(info)) = self.list.handle_key(key) {
+            return Some(ThemeEvent::Selected(info.theme));
         }
 
-        ThemeSelectorEvent::None
+        None
     }
 
-    pub fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+    fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         // Calculate centered popup area
         let popup_area = area.centered(Constraint::Percentage(40), Constraint::Percentage(50));
 
@@ -66,20 +86,4 @@ impl ThemeSelector {
         // Render the list inside
         self.list.render(frame, inner, theme);
     }
-}
-
-impl Default for ThemeSelector {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Result of handling a key event in the theme selector.
-pub enum ThemeSelectorEvent {
-    /// No action taken
-    None,
-    /// User cancelled selection
-    Cancelled,
-    /// User selected a theme
-    Selected(Theme),
 }

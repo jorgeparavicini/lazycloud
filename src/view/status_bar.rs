@@ -1,5 +1,7 @@
 use crate::model::CloudContext;
+use crate::view::View;
 use crate::Theme;
+use crossterm::event::KeyEvent;
 use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
@@ -7,12 +9,13 @@ use ratatui::{
     Frame,
 };
 
-pub struct StatusBar {
+/// Status bar view displaying context and error information.
+pub struct StatusBarView {
     active_context: Option<CloudContext>,
     error_message: Option<String>,
 }
 
-impl StatusBar {
+impl StatusBarView {
     pub fn new() -> Self {
         Self {
             active_context: None,
@@ -35,9 +38,22 @@ impl StatusBar {
     pub fn clear_error(&mut self) {
         self.error_message = None;
     }
+}
 
-    pub fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+impl Default for StatusBarView {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
+impl View for StatusBarView {
+    type Event = ();
+
+    fn handle_key(&mut self, _key: KeyEvent) -> Option<Self::Event> {
+        None
+    }
+
+    fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         let context_name = match &self.active_context {
             Some(CloudContext::Gcp(gcp)) => format!("GCP: {}", gcp.project_id),
             Some(CloudContext::Aws(aws)) => format!("AWS: {}", aws.profile),
@@ -65,11 +81,5 @@ impl StatusBar {
             .title_style(Style::default().fg(theme.blue()).add_modifier(Modifier::BOLD));
         let paragraph = Paragraph::new(status_text).style(style).block(block);
         frame.render_widget(paragraph, area);
-    }
-}
-
-impl Default for StatusBar {
-    fn default() -> Self {
-        Self::new()
     }
 }
