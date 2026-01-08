@@ -22,7 +22,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 const GLOBAL_KEYBINDINGS: &[Keybinding] = &[
     Keybinding::new("?", "Toggle help"),
     Keybinding::new("t", "Select theme"),
-    Keybinding::new("q", "Quit application"),
+    Keybinding::new("q / Ctrl+C", "Quit application"),
     Keybinding::new("Esc", "Go back / Close"),
     Keybinding::new("Enter", "Select item"),
     Keybinding::new("j / Down", "Move down"),
@@ -177,9 +177,7 @@ impl App {
     /// Handle going back one state.
     fn go_back(&mut self) {
         match &mut self.state {
-            AppState::SelectingContext(_) => {
-                self.should_quit = true;
-            }
+            AppState::SelectingContext(_) => {}
             AppState::SelectingService(_) => {
                 self.go_to_context_selection();
             }

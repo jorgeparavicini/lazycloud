@@ -7,7 +7,7 @@ use crate::core::event::Event;
 use crossterm::cursor;
 use crossterm::event::{
     DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-    Event as CrosstermEvent, EventStream, KeyEventKind,
+    Event as CrosstermEvent, EventStream, KeyCode, KeyEventKind, KeyModifiers,
 };
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use futures::{FutureExt, StreamExt};
@@ -144,6 +144,19 @@ impl Tui {
         let mut tick_interval = interval(Duration::from_secs_f64(1.0 / tick_rate));
         let mut frame_interval = interval(Duration::from_secs_f64(1.0 / frame_rate));
 
+        // Spawn SIGTERM handler on Unix
+        #[cfg(unix)]
+        {
+            let event_tx_clone = event_tx.clone();
+            tokio::spawn(async move {
+                let mut sigterm =
+                    tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                        .expect("Failed to create SIGTERM handler");
+                sigterm.recv().await;
+                let _ = event_tx_clone.send(Event::Quit);
+            });
+        }
+
         event_tx
             .send(Event::Init)
             .expect("Failed to send init event");
@@ -160,7 +173,13 @@ impl Tui {
                         Some(Ok(event)) => match event {
                             CrosstermEvent::Key(key) => {
                                 if key.kind == KeyEventKind::Press {
-                                    Event::Key(key)
+                                    if key.modifiers.contains(KeyModifiers::CONTROL)
+                                        && key.code == KeyCode::Char('c')
+                                    {
+                                        Event::Quit
+                                    } else {
+                                        Event::Key(key)
+                                    }
                                 } else {
                                     continue;
                                 }
