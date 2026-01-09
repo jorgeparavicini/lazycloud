@@ -22,6 +22,7 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 /// Service for managing GCP Secret Manager secrets.
 pub struct SecretManager {
     project_id: String,
+    account: String,
     spinner: SpinnerView,
     client: Option<SecretManagerClient>,
     /// Navigation stack - top is current view.
@@ -41,6 +42,7 @@ impl SecretManager {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
         Self {
             project_id: ctx.project_id.clone(),
+            account: ctx.account.clone(),
             spinner: SpinnerView::new(),
             client: None,
             view_stack: Vec::new(),
@@ -86,6 +88,7 @@ impl SecretManager {
                 self.loading = Some("Initializing Secret Manager...");
                 UpdateResult::Commands(vec![Box::new(InitClientCmd::new(
                     self.project_id.clone(),
+                    self.account.clone(),
                     self.msg_tx.clone(),
                 ))])
             }

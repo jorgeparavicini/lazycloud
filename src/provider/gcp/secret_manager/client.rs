@@ -1,5 +1,7 @@
+use crate::provider::gcp::context::load_credentials_json;
 use crate::provider::gcp::secret_manager::model::{Secret, SecretPayload, SecretVersion};
 use chrono::{DateTime, Utc};
+use google_cloud_auth::credentials::user_account;
 use google_cloud_secretmanager_v1::client::SecretManagerService as GcpSecretManagerClient;
 
 fn format_timestamp(seconds: i64) -> String {
@@ -15,8 +17,20 @@ pub struct SecretManagerClient {
 }
 
 impl SecretManagerClient {
-    pub async fn new(project_id: String) -> color_eyre::Result<Self> {
-        let client = GcpSecretManagerClient::builder().build().await?;
+    /// Create a new SecretManagerClient with account-specific credentials.
+    ///
+    /// Uses the gcloud CLI credentials for the specified account.
+    pub async fn new(project_id: String, account: &str) -> color_eyre::Result<Self> {
+        let creds_json = load_credentials_json(account)?;
+        let credentials = user_account::Builder::new(creds_json)
+            .build()
+            .map_err(|e| color_eyre::eyre::eyre!("Failed to build credentials: {}", e))?;
+
+        let client = GcpSecretManagerClient::builder()
+            .with_credentials(credentials)
+            .build()
+            .await?;
+
         Ok(Self { client, project_id })
     }
 

@@ -31,7 +31,7 @@ impl CloudContext {
         match self {
             CloudContext::Aws(ctx) => &ctx.profile,
             CloudContext::Azure(ctx) => &ctx.subscription_id,
-            CloudContext::Gcp(ctx) => &ctx.project_id,
+            CloudContext::Gcp(ctx) => &ctx.config_name,
         }
     }
 }
@@ -48,7 +48,11 @@ impl fmt::Display for CloudContext {
                 ctx.subscription_id, ctx.tenant_id
             ),
             CloudContext::Gcp(ctx) => {
-                write!(f, "GCP - Project: {}, Zone: {}", ctx.project_id, ctx.zone)
+                write!(
+                    f,
+                    "GCP - {} ({})",
+                    ctx.config_name, ctx.project_id
+                )
             }
         }
     }
@@ -75,23 +79,41 @@ pub struct AzureContext {
 /// GCP connection context.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GcpContext {
+    /// Configuration name (e.g., "default", "prod")
+    pub config_name: String,
     /// GCP project ID
     pub project_id: String,
-    /// Path to service account JSON file
-    pub service_account_path: String,
-    /// GCP zone (e.g., "us-central1-a")
-    pub zone: String,
+    /// Account email (e.g., "user@example.com")
+    pub account: String,
+    /// Optional region from the configuration
+    pub region: Option<String>,
+    /// Path to credentials JSON file (if discovered)
+    pub credentials_path: Option<String>,
 }
 
 /// Load available cloud contexts.
 ///
-/// TODO: Load from configuration file (~/.lazycloud/config.yaml)
+/// Discovers GCP contexts from gcloud CLI configurations.
+/// TODO: Add support for AWS profiles and Azure subscriptions.
 pub fn load_contexts() -> Vec<CloudContext> {
-    vec![CloudContext::Gcp(GcpContext {
-        project_id: "vpc-host-prod-ug322-nt609".to_string(),
-        service_account_path: "/path/to/service_account.json".to_string(),
-        zone: "us-central1-a".to_string(),
-    })]
+    use crate::provider::gcp::context::discover_gcloud_contexts;
+
+    let mut contexts = Vec::new();
+
+    // Discover GCP contexts from gcloud CLI
+    if let Ok(gcp_contexts) = discover_gcloud_contexts() {
+        for ctx in gcp_contexts {
+            contexts.push(CloudContext::Gcp(GcpContext {
+                config_name: ctx.config_name,
+                project_id: ctx.project_id,
+                account: ctx.account,
+                region: ctx.region,
+                credentials_path: ctx.credentials_path.map(|p| p.to_string_lossy().to_string()),
+            }));
+        }
+    }
+
+    contexts
 }
 
 /// Get all available cloud contexts.

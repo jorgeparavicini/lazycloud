@@ -13,12 +13,21 @@ use tokio::sync::mpsc::UnboundedSender;
 /// Initialize the Secret Manager client.
 pub struct InitClientCmd {
     project_id: String,
+    account: String,
     tx: UnboundedSender<SecretManagerMsg>,
 }
 
 impl InitClientCmd {
-    pub fn new(project_id: String, tx: UnboundedSender<SecretManagerMsg>) -> Self {
-        Self { project_id, tx }
+    pub fn new(
+        project_id: String,
+        account: String,
+        tx: UnboundedSender<SecretManagerMsg>,
+    ) -> Self {
+        Self {
+            project_id,
+            account,
+            tx,
+        }
     }
 }
 
@@ -29,7 +38,7 @@ impl Command for InitClientCmd {
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
-        match SecretManagerClient::new(self.project_id.clone()).await {
+        match SecretManagerClient::new(self.project_id.clone(), &self.account).await {
             Ok(client) => {
                 let _ = self.tx.send(SecretManagerMsg::ClientInitialized(client));
             }
