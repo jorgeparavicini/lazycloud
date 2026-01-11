@@ -1,5 +1,6 @@
 use catppuccin::PALETTE;
 use ratatui::style::Color;
+use ratatui::widgets::BorderType;
 
 /// Convert a catppuccin color to a ratatui color.
 fn catppuccin_to_color(c: &catppuccin::Color) -> Color {
@@ -48,6 +49,8 @@ pub struct Theme {
     pub sapphire: Color,
     pub blue: Color,
     pub lavender: Color,
+
+    pub border_type: BorderType,
 }
 
 impl Theme {
@@ -81,6 +84,7 @@ impl Theme {
             sapphire: catppuccin_to_color(&c.sapphire),
             blue: catppuccin_to_color(&c.blue),
             lavender: catppuccin_to_color(&c.lavender),
+            border_type: BorderType::Rounded,
         }
     }
 

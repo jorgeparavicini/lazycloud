@@ -10,10 +10,10 @@ use crate::provider::gcp::secret_manager::model::{Secret, SecretPayload, SecretV
 #[derive(Debug, Clone)]
 pub enum SecretManagerMsg {
     // === Lifecycle ===
-    /// Initialize the service (queued by init())
+    /// Initialize the service client
     Initialize,
 
-    // === User Actions (from views) ===
+    // === User Actions ===
     /// Navigate back to the previous view
     NavigateBack,
     /// Reload data for current view
@@ -21,13 +21,13 @@ pub enum SecretManagerMsg {
     /// Load secrets list
     LoadSecrets,
     /// User selected a secret to view its versions
-    SelectSecret(Secret),
+    LoadVersions(Secret),
     /// User selected a version to view its payload
-    SelectVersion(Secret, SecretVersion),
+    LoadPayload(Secret, Option<SecretVersion>),
     /// Copy payload to clipboard
     CopyPayload(String),
 
-    // === Async Results (from commands) ===
+    // === Async Results ===
     /// Client initialization completed
     ClientInitialized(SecretManagerClient),
     /// Secret list loaded from API
@@ -40,9 +40,7 @@ pub enum SecretManagerMsg {
     /// Payload loaded for a specific version
     PayloadLoaded {
         secret: Secret,
-        version: SecretVersion,
+        version: Option<SecretVersion>,
         payload: SecretPayload,
     },
-    /// An operation failed
-    OperationFailed(String),
 }

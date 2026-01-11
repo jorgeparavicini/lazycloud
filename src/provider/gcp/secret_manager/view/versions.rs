@@ -54,7 +54,7 @@ impl ServiceView for VersionListView {
     }
 
     fn reload(&self) -> SecretManagerMsg {
-        SecretManagerMsg::SelectSecret(self.secret.clone())
+        SecretManagerMsg::LoadVersions(self.secret.clone())
     }
 }
 
@@ -65,7 +65,7 @@ impl View for VersionListView {
         // Delegate to table first (handles search mode, navigation, etc.)
         let result = self.table.handle_key(key);
         if let KeyResult::Event(TableEvent::Activated(version)) = result {
-            return SecretManagerMsg::SelectVersion(self.secret.clone(), version).into();
+            return SecretManagerMsg::LoadPayload(self.secret.clone(), Some(version)).into();
         }
         if result.is_consumed() {
             return KeyResult::Consumed;

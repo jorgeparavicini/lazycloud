@@ -5,7 +5,7 @@ use crate::core::service::{Service, UpdateResult};
 use crate::model::GcpContext;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::command::{
-    FetchPayloadCmd, FetchSecretsCmd, FetchVersionsCmd, InitClientCmd,
+    FetchLatestPayloadCmd, FetchPayloadCmd, FetchSecretsCmd, FetchVersionsCmd, InitClientCmd,
 };
 use crate::provider::gcp::secret_manager::message::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::model::{Secret, SecretPayload, SecretVersion};
@@ -54,7 +54,8 @@ impl SecretManager {
         }
     }
 
-    fn payload_cache_key(secret_name: &str, version_id: &str) -> String {
+    fn payload_cache_key(secret_name: &str, version_id: Option<&str>) -> String {
+        let version_id = version_id.unwrap_or("latest");
         format!("{}/{}", secret_name, version_id)
     }
 
@@ -105,9 +106,9 @@ impl SecretManager {
 
             SecretManagerMsg::LoadSecrets => self.load_secrets(),
 
-            SecretManagerMsg::SelectSecret(secret) => self.load_versions(secret),
+            SecretManagerMsg::LoadVersions(secret) => self.load_versions(secret),
 
-            SecretManagerMsg::SelectVersion(secret, version) => self.load_payload(secret, version),
+            SecretManagerMsg::LoadPayload(secret, version) => self.load_payload(secret, version),
 
             SecretManagerMsg::CopyPayload(data) => {
                 UpdateResult::Commands(vec![Box::new(CopyToClipboardCmd::new(data))])
@@ -135,15 +136,13 @@ impl SecretManager {
                 version,
                 payload,
             } => {
-                let key = Self::payload_cache_key(&secret.name, &version.version_id);
+                let key = Self::payload_cache_key(
+                    &secret.name,
+                    version.as_ref().map(|v| v.version_id.as_str()),
+                );
                 self.cached_payloads.insert(key, payload.clone());
                 self.push_view(Box::new(PayloadView::new(secret, version, payload)));
                 UpdateResult::Idle
-            }
-
-            SecretManagerMsg::OperationFailed(err) => {
-                self.loading = None;
-                UpdateResult::Error(err)
             }
         }
     }
@@ -153,11 +152,14 @@ impl SecretManager {
             let msg = view.reload();
             // Clear cache based on reload message
             match &msg {
-                SecretManagerMsg::SelectSecret(secret) => {
+                SecretManagerMsg::LoadVersions(secret) => {
                     self.cached_versions.remove(&secret.name);
                 }
-                SecretManagerMsg::SelectVersion(secret, version) => {
-                    let key = Self::payload_cache_key(&secret.name, &version.version_id);
+                SecretManagerMsg::LoadPayload(secret, version) => {
+                    let key = Self::payload_cache_key(
+                        &secret.name,
+                        version.as_ref().map(|v| v.version_id.as_str()),
+                    );
                     self.cached_payloads.remove(&key);
                 }
                 _ => {}
@@ -199,9 +201,10 @@ impl SecretManager {
         }
     }
 
-    fn load_payload(&mut self, secret: Secret, version: SecretVersion) -> UpdateResult {
+    fn load_payload(&mut self, secret: Secret, version: Option<SecretVersion>) -> UpdateResult {
         // Use cached payload if available
-        let key = Self::payload_cache_key(&secret.name, &version.version_id);
+        let version_id = version.as_ref().map(|v| v.version_id.as_str());
+        let key = Self::payload_cache_key(&secret.name, version_id);
         if let Some(payload) = self.cached_payloads.get(&key) {
             self.push_view(Box::new(PayloadView::new(secret, version, payload.clone())));
             return UpdateResult::Idle;
@@ -209,17 +212,24 @@ impl SecretManager {
 
         self.loading = Some("Loading payload...");
         if let Some(client) = &self.client {
-            UpdateResult::Commands(vec![Box::new(FetchPayloadCmd::new(
-                client.clone(),
-                secret,
-                version,
-                self.msg_tx.clone(),
-            ))])
+            let command: Box<dyn Command> = match version {
+                Some(v) => Box::new(FetchPayloadCmd::new(
+                    client.clone(),
+                    secret,
+                    v,
+                    self.msg_tx.clone(),
+                )),
+                None => Box::new(FetchLatestPayloadCmd::new(
+                    client.clone(),
+                    secret,
+                    self.msg_tx.clone(),
+                )),
+            };
+            UpdateResult::Commands(vec![command])
         } else {
             UpdateResult::Error("Client not initialized".to_string())
         }
     }
-
 }
 
 impl Service for SecretManager {

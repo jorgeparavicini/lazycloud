@@ -1,12 +1,12 @@
+use crate::Theme;
 use crate::provider::gcp::secret_manager::message::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::model::Secret;
 use crate::provider::gcp::secret_manager::view::ServiceView;
 use crate::view::{ColumnDef, KeyResult, TableEvent, TableRow, TableView, View};
-use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::widgets::Cell;
-use ratatui::Frame;
 
 impl TableRow for Secret {
     fn columns() -> &'static [ColumnDef] {
@@ -42,6 +42,10 @@ impl SecretListView {
             table: TableView::new(secrets).with_title(" Secrets "),
         }
     }
+
+    pub fn selected_secret(&self) -> Option<&Secret> {
+        self.table.selected_item()
+    }
 }
 
 impl ServiceView for SecretListView {
@@ -61,7 +65,7 @@ impl View for SecretListView {
         // Delegate to table first (handles search mode, navigation, etc.)
         let result = self.table.handle_key(key);
         if let KeyResult::Event(TableEvent::Activated(secret)) = result {
-            return SecretManagerMsg::SelectSecret(secret).into();
+            return SecretManagerMsg::LoadPayload(secret, None).into();
         }
         if result.is_consumed() {
             return KeyResult::Consumed;
@@ -70,6 +74,10 @@ impl View for SecretListView {
         // Handle local shortcuts only if table didn't consume the key
         match key.code {
             KeyCode::Char('r') => SecretManagerMsg::ReloadData.into(),
+            KeyCode::Char('v') => match self.selected_secret() {
+                None => KeyResult::Ignored,
+                Some(secret) => SecretManagerMsg::LoadVersions(secret.clone()).into(),
+            },
             _ => KeyResult::Ignored,
         }
     }

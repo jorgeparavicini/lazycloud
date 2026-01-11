@@ -18,11 +18,7 @@ pub struct InitClientCmd {
 }
 
 impl InitClientCmd {
-    pub fn new(
-        project_id: String,
-        account: String,
-        tx: UnboundedSender<SecretManagerMsg>,
-    ) -> Self {
+    pub fn new(project_id: String, account: String, tx: UnboundedSender<SecretManagerMsg>) -> Self {
         Self {
             project_id,
             account,
@@ -38,14 +34,8 @@ impl Command for InitClientCmd {
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
-        match SecretManagerClient::new(self.project_id.clone(), &self.account).await {
-            Ok(client) => {
-                let _ = self.tx.send(SecretManagerMsg::ClientInitialized(client));
-            }
-            Err(e) => {
-                let _ = self.tx.send(SecretManagerMsg::OperationFailed(e.to_string()));
-            }
-        }
+        let client = SecretManagerClient::new(self.project_id.clone(), &self.account).await?;
+        self.tx.send(SecretManagerMsg::ClientInitialized(client))?;
         Ok(())
     }
 }
@@ -69,14 +59,8 @@ impl Command for FetchSecretsCmd {
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
-        match self.client.list_secrets().await {
-            Ok(secrets) => {
-                let _ = self.tx.send(SecretManagerMsg::SecretsLoaded(secrets));
-            }
-            Err(e) => {
-                let _ = self.tx.send(SecretManagerMsg::OperationFailed(e.to_string()));
-            }
-        }
+        let secrets = self.client.list_secrets().await?;
+        self.tx.send(SecretManagerMsg::SecretsLoaded(secrets))?;
         Ok(())
     }
 }
@@ -105,17 +89,11 @@ impl Command for FetchVersionsCmd {
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
-        match self.client.list_versions(&self.secret.name).await {
-            Ok(versions) => {
-                let _ = self.tx.send(SecretManagerMsg::VersionsLoaded {
-                    secret: self.secret,
-                    versions,
-                });
-            }
-            Err(e) => {
-                let _ = self.tx.send(SecretManagerMsg::OperationFailed(e.to_string()));
-            }
-        }
+        let versions = self.client.list_versions(&self.secret.name).await?;
+        self.tx.send(SecretManagerMsg::VersionsLoaded {
+            secret: self.secret,
+            versions,
+        })?;
         Ok(())
     }
 }
@@ -151,22 +129,49 @@ impl Command for FetchPayloadCmd {
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
-        match self
+        let payload = self
             .client
             .access_version(&self.secret.name, &self.version.version_id)
-            .await
-        {
-            Ok(payload) => {
-                let _ = self.tx.send(SecretManagerMsg::PayloadLoaded {
-                    secret: self.secret,
-                    version: self.version,
-                    payload,
-                });
-            }
-            Err(e) => {
-                let _ = self.tx.send(SecretManagerMsg::OperationFailed(e.to_string()));
-            }
-        }
+            .await?;
+        self.tx.send(SecretManagerMsg::PayloadLoaded {
+            secret: self.secret,
+            version: Some(self.version),
+            payload,
+        })?;
+        Ok(())
+    }
+}
+
+/// Fetch payload for the latest version.
+pub struct FetchLatestPayloadCmd {
+    client: SecretManagerClient,
+    secret: Secret,
+    tx: UnboundedSender<SecretManagerMsg>,
+}
+
+impl FetchLatestPayloadCmd {
+    pub fn new(
+        client: SecretManagerClient,
+        secret: Secret,
+        tx: UnboundedSender<SecretManagerMsg>,
+    ) -> Self {
+        Self { client, secret, tx }
+    }
+}
+
+#[async_trait]
+impl Command for FetchLatestPayloadCmd {
+    fn name(&self) -> &'static str {
+        "Loading latest secret payload"
+    }
+
+    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+        let payload = self.client.access_latest_version(&self.secret.name).await?;
+        self.tx.send(SecretManagerMsg::PayloadLoaded {
+            secret: self.secret,
+            version: None,
+            payload,
+        })?;
         Ok(())
     }
 }

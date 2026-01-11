@@ -110,4 +110,33 @@ impl SecretManagerClient {
             ))
         }
     }
+
+    pub async fn access_latest_version(
+        &self,
+        secret_id: &str,
+    ) -> color_eyre::Result<SecretPayload> {
+        let name = format!(
+            "projects/{}/secrets/{}/versions/latest",
+            self.project_id, secret_id
+        );
+
+        let response = self
+            .client
+            .access_secret_version()
+            .set_name(name)
+            .send()
+            .await?;
+
+        if let Some(payload) = response.payload {
+            let data = String::from_utf8_lossy(&payload.data).to_string();
+            Ok(SecretPayload {
+                data,
+                is_binary: false,
+            })
+        } else {
+            Err(color_eyre::eyre::eyre!(
+                "No payload found for the latest secret version"
+            ))
+        }
+    }
 }

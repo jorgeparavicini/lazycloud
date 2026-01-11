@@ -1,28 +1,26 @@
+use crate::Theme;
 use crate::provider::gcp::secret_manager::message::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::model::{Secret, SecretPayload, SecretVersion};
 use crate::provider::gcp::secret_manager::view::ServiceView;
 use crate::view::{KeyResult, View};
-use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
-use ratatui::Frame;
 
 pub struct PayloadView {
     secret: Secret,
-    version: SecretVersion,
+    version: Option<SecretVersion>,
     payload: SecretPayload,
-    scroll: u16,
 }
 
 impl PayloadView {
-    pub fn new(secret: Secret, version: SecretVersion, payload: SecretPayload) -> Self {
+    pub fn new(secret: Secret, version: Option<SecretVersion>, payload: SecretPayload) -> Self {
         Self {
             secret,
             version,
             payload,
-            scroll: 0,
         }
     }
 }
@@ -33,7 +31,7 @@ impl ServiceView for PayloadView {
     }
 
     fn reload(&self) -> SecretManagerMsg {
-        SecretManagerMsg::SelectVersion(self.secret.clone(), self.version.clone())
+        SecretManagerMsg::LoadPayload(self.secret.clone(), self.version.clone())
     }
 }
 
@@ -44,32 +42,31 @@ impl View for PayloadView {
         match key.code {
             KeyCode::Char('r') => SecretManagerMsg::ReloadData.into(),
             KeyCode::Char('y') => SecretManagerMsg::CopyPayload(self.payload.data.clone()).into(),
-            KeyCode::Down | KeyCode::Char('j') => {
-                self.scroll = self.scroll.saturating_add(1);
-                KeyResult::Consumed
-            }
-            KeyCode::Up | KeyCode::Char('k') => {
-                self.scroll = self.scroll.saturating_sub(1);
-                KeyResult::Consumed
-            }
             _ => KeyResult::Ignored,
         }
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        let title = format!(" {} - v{} ", self.secret.name, self.version.version_id);
+        let version = match &self.version {
+            Some(v) => v.version_id.as_str(),
+            None => "latest",
+        };
+        let title = format!(" {} - v{} ", self.secret.name, version);
 
         let p = Paragraph::new(self.payload.data.as_str())
             .style(Style::default().fg(theme.text()))
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
+                    .border_type(theme.border_type)
                     .border_style(Style::default().fg(theme.border()))
                     .title(title)
-                    .title_style(Style::default().fg(theme.mauve()).add_modifier(Modifier::BOLD)),
-            )
-            .scroll((self.scroll, 0));
+                    .title_style(
+                        Style::default()
+                            .fg(theme.mauve())
+                            .add_modifier(Modifier::BOLD),
+                    ),
+            );
 
         frame.render_widget(p, area);
     }

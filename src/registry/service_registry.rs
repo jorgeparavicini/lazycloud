@@ -155,9 +155,11 @@ mod tests {
         registry.register(MockProvider);
 
         let gcp_ctx = CloudContext::Gcp(GcpContext {
+            config_name: "test-config".to_string(),
             project_id: "test".to_string(),
-            service_account_path: "".to_string(),
-            zone: "us-central1-a".to_string(),
+            account: "user@example.com".to_string(),
+            region: Some("europe-west4".to_string()),
+            credentials_path: None,
         });
 
         let services = registry.available_services(&gcp_ctx);

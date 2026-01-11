@@ -72,6 +72,15 @@ impl<T: TableRow + Clone> TableView<T> {
         self.title = Some(title.into());
         self
     }
+    
+    pub fn selected_item(&self) -> Option<&T> {
+        if let Some(selected) = self.state.selected() {
+            if let Some(&idx) = self.filtered_indices.get(selected) {
+                return self.items.get(idx);
+            }
+        }
+        None
+    }
 
     fn update_filter(&mut self) {
         self.filtered_indices = self
