@@ -32,3 +32,25 @@ pub struct SecretPayload {
     pub data: String,
     pub is_binary: bool,
 }
+
+/// An IAM binding representing a role and its members.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IamBinding {
+    pub role: String,
+    pub members: Vec<String>,
+}
+
+/// IAM policy for a secret.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IamPolicy {
+    pub bindings: Vec<IamBinding>,
+}
+
+/// Replication configuration for a secret.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReplicationConfig {
+    /// Automatic replication managed by GCP.
+    Automatic,
+    /// User-managed replication with specific locations.
+    UserManaged { locations: Vec<String> },
+}

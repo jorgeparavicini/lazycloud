@@ -1,8 +1,14 @@
 use crate::provider::gcp::context::load_credentials_json;
-use crate::provider::gcp::secret_manager::model::{Secret, SecretPayload, SecretVersion};
+use crate::provider::gcp::secret_manager::model::{
+    IamBinding, IamPolicy, ReplicationConfig, Secret, SecretPayload, SecretVersion,
+};
 use chrono::{DateTime, Utc};
 use google_cloud_auth::credentials::user_account;
 use google_cloud_secretmanager_v1::client::SecretManagerService as GcpSecretManagerClient;
+use google_cloud_secretmanager_v1::model;
+use google_cloud_wkt::FieldMask;
+use std::collections::HashMap;
+use tokio_util::bytes::Bytes;
 
 fn format_timestamp(seconds: i64) -> String {
     DateTime::<Utc>::from_timestamp(seconds, 0)
@@ -138,5 +144,270 @@ impl SecretManagerClient {
                 "No payload found for the latest secret version"
             ))
         }
+    }
+
+    /// Create a new secret without an initial version.
+    pub async fn create_secret(&self, secret_id: &str) -> color_eyre::Result<Secret> {
+        let parent = format!("projects/{}", self.project_id);
+
+        let secret = model::Secret::default().set_replication(
+            model::Replication::default()
+                .set_automatic(model::replication::Automatic::default()),
+        );
+
+        let response = self
+            .client
+            .create_secret()
+            .set_parent(parent)
+            .set_secret_id(secret_id)
+            .set_secret(secret)
+            .send()
+            .await?;
+
+        Ok(Secret {
+            name: secret_id.to_string(),
+            created_at: response
+                .create_time
+                .as_ref()
+                .map_or("Unknown".to_string(), |t| format_timestamp(t.seconds())),
+            labels: response.labels,
+        })
+    }
+
+    /// Create a new secret with an initial payload.
+    pub async fn create_secret_with_payload(
+        &self,
+        secret_id: &str,
+        payload: &[u8],
+    ) -> color_eyre::Result<Secret> {
+        // First create the secret
+        let secret = self.create_secret(secret_id).await?;
+
+        // Then add the initial version
+        self.add_secret_version(secret_id, payload).await?;
+
+        Ok(secret)
+    }
+
+    /// Delete a secret and all its versions.
+    pub async fn delete_secret(&self, secret_id: &str) -> color_eyre::Result<()> {
+        let name = format!("projects/{}/secrets/{}", self.project_id, secret_id);
+
+        self.client.delete_secret().set_name(name).send().await?;
+
+        Ok(())
+    }
+
+    /// Add a new version to an existing secret.
+    pub async fn add_secret_version(
+        &self,
+        secret_id: &str,
+        payload: &[u8],
+    ) -> color_eyre::Result<SecretVersion> {
+        let parent = format!("projects/{}/secrets/{}", self.project_id, secret_id);
+
+        let payload_model =
+            model::SecretPayload::default().set_data(Bytes::from(payload.to_vec()));
+
+        let response = self
+            .client
+            .add_secret_version()
+            .set_parent(parent)
+            .set_payload(payload_model)
+            .send()
+            .await?;
+
+        let version_id = response
+            .name
+            .split('/')
+            .last()
+            .unwrap_or("unknown")
+            .to_string();
+
+        Ok(SecretVersion {
+            version_id,
+            state: format!("{:?}", response.state),
+            created_at: response
+                .create_time
+                .as_ref()
+                .map_or("Unknown".to_string(), |t| format_timestamp(t.seconds())),
+        })
+    }
+
+    /// Disable a secret version.
+    pub async fn disable_version(
+        &self,
+        secret_id: &str,
+        version_id: &str,
+    ) -> color_eyre::Result<SecretVersion> {
+        let name = format!(
+            "projects/{}/secrets/{}/versions/{}",
+            self.project_id, secret_id, version_id
+        );
+
+        let response = self
+            .client
+            .disable_secret_version()
+            .set_name(name)
+            .send()
+            .await?;
+
+        Ok(SecretVersion {
+            version_id: version_id.to_string(),
+            state: format!("{:?}", response.state),
+            created_at: response
+                .create_time
+                .as_ref()
+                .map_or("Unknown".to_string(), |t| format_timestamp(t.seconds())),
+        })
+    }
+
+    /// Enable a previously disabled secret version.
+    pub async fn enable_version(
+        &self,
+        secret_id: &str,
+        version_id: &str,
+    ) -> color_eyre::Result<SecretVersion> {
+        let name = format!(
+            "projects/{}/secrets/{}/versions/{}",
+            self.project_id, secret_id, version_id
+        );
+
+        let response = self
+            .client
+            .enable_secret_version()
+            .set_name(name)
+            .send()
+            .await?;
+
+        Ok(SecretVersion {
+            version_id: version_id.to_string(),
+            state: format!("{:?}", response.state),
+            created_at: response
+                .create_time
+                .as_ref()
+                .map_or("Unknown".to_string(), |t| format_timestamp(t.seconds())),
+        })
+    }
+
+    /// Destroy a secret version permanently.
+    pub async fn destroy_version(
+        &self,
+        secret_id: &str,
+        version_id: &str,
+    ) -> color_eyre::Result<SecretVersion> {
+        let name = format!(
+            "projects/{}/secrets/{}/versions/{}",
+            self.project_id, secret_id, version_id
+        );
+
+        let response = self
+            .client
+            .destroy_secret_version()
+            .set_name(name)
+            .send()
+            .await?;
+
+        Ok(SecretVersion {
+            version_id: version_id.to_string(),
+            state: format!("{:?}", response.state),
+            created_at: response
+                .create_time
+                .as_ref()
+                .map_or("Unknown".to_string(), |t| format_timestamp(t.seconds())),
+        })
+    }
+
+    /// Update secret labels.
+    pub async fn update_labels(
+        &self,
+        secret_id: &str,
+        labels: HashMap<String, String>,
+    ) -> color_eyre::Result<Secret> {
+        let name = format!("projects/{}/secrets/{}", self.project_id, secret_id);
+
+        let mut secret = model::Secret::default();
+        secret.name = name.clone();
+        secret.labels = labels.clone();
+
+        let update_mask = FieldMask::default().set_paths(vec!["labels".to_string()]);
+
+        let response = self
+            .client
+            .update_secret()
+            .set_secret(secret)
+            .set_update_mask(update_mask)
+            .send()
+            .await?;
+
+        Ok(Secret {
+            name: secret_id.to_string(),
+            created_at: response
+                .create_time
+                .as_ref()
+                .map_or("Unknown".to_string(), |t| format_timestamp(t.seconds())),
+            labels: response.labels,
+        })
+    }
+
+    /// Get the IAM policy for a secret.
+    pub async fn get_iam_policy(&self, secret_id: &str) -> color_eyre::Result<IamPolicy> {
+        let resource = format!("projects/{}/secrets/{}", self.project_id, secret_id);
+
+        let response = self
+            .client
+            .get_iam_policy()
+            .set_resource(resource)
+            .send()
+            .await?;
+
+        let bindings = response
+            .bindings
+            .into_iter()
+            .map(|b| IamBinding {
+                role: b.role,
+                members: b.members,
+            })
+            .collect();
+
+        Ok(IamPolicy { bindings })
+    }
+
+    /// Get secret metadata including replication configuration.
+    pub async fn get_secret(
+        &self,
+        secret_id: &str,
+    ) -> color_eyre::Result<(Secret, ReplicationConfig)> {
+        let name = format!("projects/{}/secrets/{}", self.project_id, secret_id);
+
+        let response = self.client.get_secret().set_name(name).send().await?;
+
+        let secret = Secret {
+            name: secret_id.to_string(),
+            created_at: response
+                .create_time
+                .as_ref()
+                .map_or("Unknown".to_string(), |t| format_timestamp(t.seconds())),
+            labels: response.labels,
+        };
+
+        let replication = if let Some(replication) = response.replication {
+            if replication.automatic().is_some() {
+                ReplicationConfig::Automatic
+            } else if let Some(user_managed) = replication.user_managed() {
+                let locations = user_managed
+                    .replicas
+                    .iter()
+                    .map(|r| r.location.clone())
+                    .collect();
+                ReplicationConfig::UserManaged { locations }
+            } else {
+                ReplicationConfig::Automatic
+            }
+        } else {
+            ReplicationConfig::Automatic
+        };
+
+        Ok((secret, replication))
     }
 }

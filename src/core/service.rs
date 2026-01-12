@@ -28,6 +28,12 @@ pub enum UpdateResult {
     Error(String),
 }
 
+impl<T: Command> From<T> for UpdateResult {
+    fn from(value: T) -> Self {
+        UpdateResult::Commands(vec![Box::new(value)])
+    }
+}
+
 /// A cloud service screen.
 ///
 /// Services manage their own internal state and message queue. The App calls

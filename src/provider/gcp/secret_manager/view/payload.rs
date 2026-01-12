@@ -1,7 +1,7 @@
 use crate::Theme;
 use crate::provider::gcp::secret_manager::message::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::model::{Secret, SecretPayload, SecretVersion};
-use crate::provider::gcp::secret_manager::view::ServiceView;
+use crate::provider::gcp::secret_manager::view::SecretManagerView;
 use crate::view::{KeyResult, View};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
@@ -25,7 +25,7 @@ impl PayloadView {
     }
 }
 
-impl ServiceView for PayloadView {
+impl SecretManagerView for PayloadView {
     fn breadcrumbs(&self) -> Vec<String> {
         vec!["Payload".to_string()]
     }

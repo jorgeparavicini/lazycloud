@@ -4,6 +4,7 @@
 //! for handling keyboard input and rendering.
 
 mod command_status;
+mod confirm_dialog;
 mod context_selector;
 mod help;
 mod list;
@@ -11,9 +12,11 @@ mod service_selector;
 mod spinner;
 mod status_bar;
 mod table;
+mod text_input;
 mod theme_selector;
 
 pub use command_status::{CommandId, CommandStatusView};
+pub use confirm_dialog::{ConfirmDialog, ConfirmEvent};
 pub use context_selector::ContextSelectorView;
 pub use help::{HelpEvent, HelpView, Keybinding};
 pub use list::{ListEvent, ListRow, ListView};
@@ -21,6 +24,7 @@ pub use service_selector::ServiceSelectorView;
 pub use spinner::SpinnerView;
 pub use status_bar::StatusBarView;
 pub use table::{ColumnDef, TableEvent, TableRow, TableView};
+pub use text_input::{TextInputEvent, TextInputView};
 pub use theme_selector::{ThemeEvent, ThemeSelectorView};
 
 use crate::Theme;
@@ -42,14 +46,6 @@ impl<E> KeyResult<E> {
     /// Returns true if the key was consumed (not ignored).
     pub fn is_consumed(&self) -> bool {
         !matches!(self, KeyResult::Ignored)
-    }
-
-    /// Extract the event if present.
-    pub fn into_event(self) -> Option<E> {
-        match self {
-            KeyResult::Event(e) => Some(e),
-            _ => None,
-        }
     }
 }
 

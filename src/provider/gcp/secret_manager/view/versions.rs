@@ -1,6 +1,7 @@
 use crate::provider::gcp::secret_manager::message::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::model::{Secret, SecretVersion};
-use crate::provider::gcp::secret_manager::view::ServiceView;
+use crate::provider::gcp::secret_manager::view::SecretManagerView;
+use crate::search::Matcher;
 use crate::view::{ColumnDef, KeyResult, TableEvent, TableRow, TableView, View};
 use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -27,9 +28,8 @@ impl TableRow for SecretVersion {
     }
 
     fn matches(&self, query: &str) -> bool {
-        let query_lower = query.to_lowercase();
-        self.version_id.to_lowercase().contains(&query_lower)
-            || self.state.to_lowercase().contains(&query_lower)
+        let matcher = Matcher::new();
+        matcher.matches(&self.version_id, query) || matcher.matches(&self.state, query)
     }
 }
 
@@ -48,7 +48,7 @@ impl VersionListView {
     }
 }
 
-impl ServiceView for VersionListView {
+impl SecretManagerView for VersionListView {
     fn breadcrumbs(&self) -> Vec<String> {
         vec!["Versions".to_string()]
     }
@@ -74,6 +74,37 @@ impl View for VersionListView {
         // Handle local shortcuts only if table didn't consume the key
         match key.code {
             KeyCode::Char('r') => SecretManagerMsg::ReloadData.into(),
+            // Add new version
+            KeyCode::Char('a') => {
+                SecretManagerMsg::ShowCreateVersionDialog(self.secret.clone()).into()
+            }
+            // Disable version (only for Enabled versions)
+            KeyCode::Char('d') => match self.table.selected_item() {
+                Some(v) if v.state.contains("Enabled") => SecretManagerMsg::DisableVersion {
+                    secret: self.secret.clone(),
+                    version: v.clone(),
+                }
+                .into(),
+                _ => KeyResult::Ignored,
+            },
+            // Enable version (only for Disabled versions)
+            KeyCode::Char('e') => match self.table.selected_item() {
+                Some(v) if v.state.contains("Disabled") => SecretManagerMsg::EnableVersion {
+                    secret: self.secret.clone(),
+                    version: v.clone(),
+                }
+                .into(),
+                _ => KeyResult::Ignored,
+            },
+            // Destroy version (shift+D, only for non-Destroyed versions)
+            KeyCode::Char('D') => match self.table.selected_item() {
+                Some(v) if !v.state.contains("Destroyed") => SecretManagerMsg::ShowDestroyVersionDialog {
+                    secret: self.secret.clone(),
+                    version: v.clone(),
+                }
+                .into(),
+                _ => KeyResult::Ignored,
+            },
             _ => KeyResult::Ignored,
         }
     }

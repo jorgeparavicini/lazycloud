@@ -175,3 +175,343 @@ impl Command for FetchLatestPayloadCmd {
         Ok(())
     }
 }
+
+/// Create a new secret.
+pub struct CreateSecretCmd {
+    client: SecretManagerClient,
+    name: String,
+    payload: Option<String>,
+    tx: UnboundedSender<SecretManagerMsg>,
+}
+
+impl CreateSecretCmd {
+    pub fn new(
+        client: SecretManagerClient,
+        name: String,
+        payload: Option<String>,
+        tx: UnboundedSender<SecretManagerMsg>,
+    ) -> Self {
+        Self {
+            client,
+            name,
+            payload,
+            tx,
+        }
+    }
+}
+
+#[async_trait]
+impl Command for CreateSecretCmd {
+    fn name(&self) -> &'static str {
+        "Creating secret"
+    }
+
+    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+        let secret = if let Some(payload) = self.payload {
+            self.client
+                .create_secret_with_payload(&self.name, payload.as_bytes())
+                .await?
+        } else {
+            self.client.create_secret(&self.name).await?
+        };
+        self.tx.send(SecretManagerMsg::SecretCreated(secret))?;
+        Ok(())
+    }
+}
+
+/// Delete a secret.
+pub struct DeleteSecretCmd {
+    client: SecretManagerClient,
+    secret: Secret,
+    tx: UnboundedSender<SecretManagerMsg>,
+}
+
+impl DeleteSecretCmd {
+    pub fn new(
+        client: SecretManagerClient,
+        secret: Secret,
+        tx: UnboundedSender<SecretManagerMsg>,
+    ) -> Self {
+        Self { client, secret, tx }
+    }
+}
+
+#[async_trait]
+impl Command for DeleteSecretCmd {
+    fn name(&self) -> &'static str {
+        "Deleting secret"
+    }
+
+    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+        self.client.delete_secret(&self.secret.name).await?;
+        self.tx
+            .send(SecretManagerMsg::SecretDeleted(self.secret.name))?;
+        Ok(())
+    }
+}
+
+/// Add a new version to a secret.
+pub struct AddVersionCmd {
+    client: SecretManagerClient,
+    secret: Secret,
+    payload: String,
+    tx: UnboundedSender<SecretManagerMsg>,
+}
+
+impl AddVersionCmd {
+    pub fn new(
+        client: SecretManagerClient,
+        secret: Secret,
+        payload: String,
+        tx: UnboundedSender<SecretManagerMsg>,
+    ) -> Self {
+        Self {
+            client,
+            secret,
+            payload,
+            tx,
+        }
+    }
+}
+
+#[async_trait]
+impl Command for AddVersionCmd {
+    fn name(&self) -> &'static str {
+        "Adding secret version"
+    }
+
+    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+        self.client
+            .add_secret_version(&self.secret.name, self.payload.as_bytes())
+            .await?;
+        self.tx
+            .send(SecretManagerMsg::VersionAdded { secret: self.secret })?;
+        Ok(())
+    }
+}
+
+/// Disable a secret version.
+pub struct DisableVersionCmd {
+    client: SecretManagerClient,
+    secret: Secret,
+    version: SecretVersion,
+    tx: UnboundedSender<SecretManagerMsg>,
+}
+
+impl DisableVersionCmd {
+    pub fn new(
+        client: SecretManagerClient,
+        secret: Secret,
+        version: SecretVersion,
+        tx: UnboundedSender<SecretManagerMsg>,
+    ) -> Self {
+        Self {
+            client,
+            secret,
+            version,
+            tx,
+        }
+    }
+}
+
+#[async_trait]
+impl Command for DisableVersionCmd {
+    fn name(&self) -> &'static str {
+        "Disabling version"
+    }
+
+    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+        self.client
+            .disable_version(&self.secret.name, &self.version.version_id)
+            .await?;
+        self.tx
+            .send(SecretManagerMsg::VersionDisabled { secret: self.secret })?;
+        Ok(())
+    }
+}
+
+/// Enable a secret version.
+pub struct EnableVersionCmd {
+    client: SecretManagerClient,
+    secret: Secret,
+    version: SecretVersion,
+    tx: UnboundedSender<SecretManagerMsg>,
+}
+
+impl EnableVersionCmd {
+    pub fn new(
+        client: SecretManagerClient,
+        secret: Secret,
+        version: SecretVersion,
+        tx: UnboundedSender<SecretManagerMsg>,
+    ) -> Self {
+        Self {
+            client,
+            secret,
+            version,
+            tx,
+        }
+    }
+}
+
+#[async_trait]
+impl Command for EnableVersionCmd {
+    fn name(&self) -> &'static str {
+        "Enabling version"
+    }
+
+    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+        self.client
+            .enable_version(&self.secret.name, &self.version.version_id)
+            .await?;
+        self.tx
+            .send(SecretManagerMsg::VersionEnabled { secret: self.secret })?;
+        Ok(())
+    }
+}
+
+/// Destroy a secret version.
+pub struct DestroyVersionCmd {
+    client: SecretManagerClient,
+    secret: Secret,
+    version: SecretVersion,
+    tx: UnboundedSender<SecretManagerMsg>,
+}
+
+impl DestroyVersionCmd {
+    pub fn new(
+        client: SecretManagerClient,
+        secret: Secret,
+        version: SecretVersion,
+        tx: UnboundedSender<SecretManagerMsg>,
+    ) -> Self {
+        Self {
+            client,
+            secret,
+            version,
+            tx,
+        }
+    }
+}
+
+#[async_trait]
+impl Command for DestroyVersionCmd {
+    fn name(&self) -> &'static str {
+        "Destroying version"
+    }
+
+    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+        self.client
+            .destroy_version(&self.secret.name, &self.version.version_id)
+            .await?;
+        self.tx
+            .send(SecretManagerMsg::VersionDestroyed { secret: self.secret })?;
+        Ok(())
+    }
+}
+
+/// Update secret labels.
+pub struct UpdateLabelsCmd {
+    client: SecretManagerClient,
+    secret: Secret,
+    labels: std::collections::HashMap<String, String>,
+    tx: UnboundedSender<SecretManagerMsg>,
+}
+
+impl UpdateLabelsCmd {
+    pub fn new(
+        client: SecretManagerClient,
+        secret: Secret,
+        labels: std::collections::HashMap<String, String>,
+        tx: UnboundedSender<SecretManagerMsg>,
+    ) -> Self {
+        Self {
+            client,
+            secret,
+            labels,
+            tx,
+        }
+    }
+}
+
+#[async_trait]
+impl Command for UpdateLabelsCmd {
+    fn name(&self) -> &'static str {
+        "Updating labels"
+    }
+
+    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+        let secret = self
+            .client
+            .update_labels(&self.secret.name, self.labels)
+            .await?;
+        self.tx.send(SecretManagerMsg::LabelsUpdated(secret))?;
+        Ok(())
+    }
+}
+
+/// Fetch IAM policy for a secret.
+pub struct FetchIamPolicyCmd {
+    client: SecretManagerClient,
+    secret: Secret,
+    tx: UnboundedSender<SecretManagerMsg>,
+}
+
+impl FetchIamPolicyCmd {
+    pub fn new(
+        client: SecretManagerClient,
+        secret: Secret,
+        tx: UnboundedSender<SecretManagerMsg>,
+    ) -> Self {
+        Self { client, secret, tx }
+    }
+}
+
+#[async_trait]
+impl Command for FetchIamPolicyCmd {
+    fn name(&self) -> &'static str {
+        "Loading IAM policy"
+    }
+
+    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+        let policy = self.client.get_iam_policy(&self.secret.name).await?;
+        self.tx.send(SecretManagerMsg::IamPolicyLoaded {
+            secret: self.secret,
+            policy,
+        })?;
+        Ok(())
+    }
+}
+
+/// Fetch secret metadata including replication info.
+pub struct FetchSecretMetadataCmd {
+    client: SecretManagerClient,
+    secret: Secret,
+    tx: UnboundedSender<SecretManagerMsg>,
+}
+
+impl FetchSecretMetadataCmd {
+    pub fn new(
+        client: SecretManagerClient,
+        secret: Secret,
+        tx: UnboundedSender<SecretManagerMsg>,
+    ) -> Self {
+        Self { client, secret, tx }
+    }
+}
+
+#[async_trait]
+impl Command for FetchSecretMetadataCmd {
+    fn name(&self) -> &'static str {
+        "Loading secret metadata"
+    }
+
+    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+        let (secret, replication) = self.client.get_secret(&self.secret.name).await?;
+        self.tx.send(SecretManagerMsg::ReplicationInfoLoaded {
+            secret,
+            replication,
+        })?;
+        Ok(())
+    }
+}

@@ -6,10 +6,11 @@ mod core;
 mod model;
 mod provider;
 mod registry;
+mod search;
 mod theme;
 mod view;
 
-pub use theme::{available_themes, Theme, ThemeInfo};
+pub use theme::Theme;
 
 #[tokio::main]
 async fn main() -> color_eyre::Result<()> {
