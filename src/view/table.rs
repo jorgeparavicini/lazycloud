@@ -36,6 +36,13 @@ pub trait TableRow {
     /// Render this row's cells with full styling control.
     fn render_cells(&self, theme: &Theme) -> Vec<Cell<'static>>;
 
+    /// Render cells with the current search query for context-aware display.
+    /// Default implementation ignores the query and calls render_cells.
+    fn render_cells_with_query(&self, theme: &Theme, query: &str) -> Vec<Cell<'static>> {
+        _ = query;
+        self.render_cells(theme)
+    }
+
     /// Check if this row matches the search query (case-insensitive).
     /// Used for local filtering. Return true if the row should be shown.
     fn matches(&self, query: &str) -> bool;
@@ -72,7 +79,7 @@ impl<T: TableRow + Clone> TableView<T> {
         self.title = Some(title.into());
         self
     }
-    
+
     pub fn selected_item(&self) -> Option<&T> {
         if let Some(selected) = self.state.selected() {
             if let Some(&idx) = self.filtered_indices.get(selected) {
@@ -294,7 +301,7 @@ impl<T: TableRow + Clone> View for TableView<T> {
             .filtered_indices
             .iter()
             .map(|&idx| {
-                Row::new(self.items[idx].render_cells(theme))
+                Row::new(self.items[idx].render_cells_with_query(theme, &self.query))
                     .style(Style::default().fg(theme.text()))
             })
             .collect();

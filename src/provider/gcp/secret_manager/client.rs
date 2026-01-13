@@ -16,6 +16,28 @@ fn format_timestamp(seconds: i64) -> String {
         .unwrap_or_else(|| "Unknown".to_string())
 }
 
+fn parse_replication(replication: &Option<model::Replication>) -> ReplicationConfig {
+    let Some(replication) = replication else {
+        return ReplicationConfig::Automatic;
+    };
+    let Some(ref rep) = replication.replication else {
+        return ReplicationConfig::Automatic;
+    };
+
+    match rep {
+        model::replication::Replication::Automatic(_) => ReplicationConfig::Automatic,
+        model::replication::Replication::UserManaged(user_managed) => {
+            let locations = user_managed
+                .replicas
+                .iter()
+                .filter_map(|r| Some(r.location.clone()))
+                .collect();
+            ReplicationConfig::UserManaged { locations }
+        }
+        _ => ReplicationConfig::Automatic,
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct SecretManagerClient {
     client: GcpSecretManagerClient,
@@ -48,12 +70,20 @@ impl SecretManagerClient {
         let mut secrets = Vec::new();
         for secret in response.secrets {
             if let Some(name) = secret.name.split('/').last() {
+                let replication = parse_replication(&secret.replication);
+                let expire_time = secret
+                    .expire_time()
+                    .as_ref()
+                    .map(|t| format_timestamp(t.seconds()));
+
                 secrets.push(Secret {
                     name: name.to_string(),
+                    replication,
                     created_at: secret
                         .create_time
                         .as_ref()
                         .map_or("Unknown".to_string(), |t| format_timestamp(t.seconds())),
+                    expire_time,
                     labels: secret.labels.clone(),
                 });
             }
@@ -166,10 +196,14 @@ impl SecretManagerClient {
 
         Ok(Secret {
             name: secret_id.to_string(),
+            replication: parse_replication(&response.replication),
             created_at: response
                 .create_time
                 .as_ref()
                 .map_or("Unknown".to_string(), |t| format_timestamp(t.seconds())),
+            expire_time: response
+                .expire_time()
+                .map(|t| format_timestamp(t.seconds())),
             labels: response.labels,
         })
     }
@@ -342,10 +376,14 @@ impl SecretManagerClient {
 
         Ok(Secret {
             name: secret_id.to_string(),
+            replication: parse_replication(&response.replication),
             created_at: response
                 .create_time
                 .as_ref()
                 .map_or("Unknown".to_string(), |t| format_timestamp(t.seconds())),
+            expire_time: response
+                .expire_time()
+                .map(|t| format_timestamp(t.seconds())),
             labels: response.labels,
         })
     }
@@ -374,40 +412,21 @@ impl SecretManagerClient {
     }
 
     /// Get secret metadata including replication configuration.
-    pub async fn get_secret(
-        &self,
-        secret_id: &str,
-    ) -> color_eyre::Result<(Secret, ReplicationConfig)> {
+    pub async fn get_secret(&self, secret_id: &str) -> color_eyre::Result<Secret> {
         let name = format!("projects/{}/secrets/{}", self.project_id, secret_id);
-
         let response = self.client.get_secret().set_name(name).send().await?;
 
-        let secret = Secret {
+        Ok(Secret {
             name: secret_id.to_string(),
+            replication: parse_replication(&response.replication),
             created_at: response
                 .create_time
                 .as_ref()
                 .map_or("Unknown".to_string(), |t| format_timestamp(t.seconds())),
-            labels: response.labels,
-        };
-
-        let replication = if let Some(replication) = response.replication {
-            if replication.automatic().is_some() {
-                ReplicationConfig::Automatic
-            } else if let Some(user_managed) = replication.user_managed() {
-                let locations = user_managed
-                    .replicas
-                    .iter()
-                    .map(|r| r.location.clone())
-                    .collect();
-                ReplicationConfig::UserManaged { locations }
-            } else {
-                ReplicationConfig::Automatic
-            }
-        } else {
-            ReplicationConfig::Automatic
-        };
-
-        Ok((secret, replication))
+            expire_time: response
+                .expire_time()
+                .map(|t| format_timestamp(t.seconds())),
+            labels: response.labels.clone(),
+        })
     }
 }

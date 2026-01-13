@@ -507,7 +507,8 @@ impl Command for FetchSecretMetadataCmd {
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
-        let (secret, replication) = self.client.get_secret(&self.secret.name).await?;
+        let secret = self.client.get_secret(&self.secret.name).await?;
+        let replication = secret.replication.clone();
         self.tx.send(SecretManagerMsg::ReplicationInfoLoaded {
             secret,
             replication,

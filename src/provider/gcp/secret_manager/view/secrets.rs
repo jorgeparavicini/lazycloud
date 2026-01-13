@@ -8,22 +8,80 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::{Constraint, Rect};
 use ratatui::widgets::Cell;
 use ratatui::Frame;
+use std::collections::HashMap;
+
+/// Format labels for display in the table.
+/// When a query is provided, shows the best matching label first.
+fn format_labels(labels: &HashMap<String, String>, query: &str) -> String {
+    if labels.is_empty() {
+        return "—".to_string();
+    }
+
+    // Find the best matching label if there's a query
+    let best_label = if !query.is_empty() {
+        let matcher = Matcher::new();
+        labels
+            .iter()
+            .filter(|(key, value)| {
+                matcher.matches(format!("{}:{}", key, value).as_str(), query)
+            })
+            .next()
+            .or_else(|| labels.iter().next())
+    } else {
+        labels.iter().next()
+    };
+
+    if let Some((key, value)) = best_label {
+        let label = if value.is_empty() {
+            key.clone()
+        } else {
+            format!("{}:{}", key, value)
+        };
+
+        // Truncate if too long
+        if label.len() > 20 {
+            let suffix = if labels.len() > 1 {
+                format!("… +{}", labels.len() - 1)
+            } else {
+                "…".to_string()
+            };
+            format!("{}{}", &label[..17], suffix)
+        } else if labels.len() > 1 {
+            format!("{} +{}", label, labels.len() - 1)
+        } else {
+            label
+        }
+    } else {
+        "—".to_string()
+    }
+}
 
 impl TableRow for Secret {
     fn columns() -> &'static [ColumnDef] {
         static COLUMNS: &[ColumnDef] = &[
             ColumnDef::new("Name", Constraint::Min(20)),
+            ColumnDef::new("Replication", Constraint::Length(14)),
             ColumnDef::new("Created", Constraint::Length(18)),
-            ColumnDef::new("Labels", Constraint::Min(30)),
+            ColumnDef::new("Expiration", Constraint::Length(18)),
+            ColumnDef::new("Labels", Constraint::Length(23)),
         ];
         COLUMNS
     }
 
-    fn render_cells(&self, _theme: &Theme) -> Vec<Cell<'static>> {
+    fn render_cells(&self, theme: &Theme) -> Vec<Cell<'static>> {
+        self.render_cells_with_query(theme, "")
+    }
+
+    fn render_cells_with_query(&self, _theme: &Theme, query: &str) -> Vec<Cell<'static>> {
+        let labels_display = format_labels(&self.labels, query);
+        let expiration = self.expire_time.clone().unwrap_or_else(|| "—".to_string());
+
         vec![
             Cell::from(self.name.clone()),
+            Cell::from(self.replication.short_display()),
             Cell::from(self.created_at.clone()),
-            Cell::from(format!("{}", self.labels.len())),
+            Cell::from(expiration),
+            Cell::from(labels_display),
         ]
     }
 

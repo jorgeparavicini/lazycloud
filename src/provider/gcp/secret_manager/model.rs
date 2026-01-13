@@ -4,7 +4,9 @@ use std::fmt::Display;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Secret {
     pub name: String,
+    pub replication: ReplicationConfig,
     pub created_at: String,
+    pub expire_time: Option<String>,
     pub labels: HashMap<String, String>,
 }
 
@@ -53,4 +55,19 @@ pub enum ReplicationConfig {
     Automatic,
     /// User-managed replication with specific locations.
     UserManaged { locations: Vec<String> },
+}
+
+impl ReplicationConfig {
+    /// Short display string for table column.
+    pub fn short_display(&self) -> String {
+        match self {
+            ReplicationConfig::Automatic => "Automatic".to_string(),
+            ReplicationConfig::UserManaged { locations } if locations.len() == 1 => {
+                locations[0].clone()
+            }
+            ReplicationConfig::UserManaged { locations } => {
+                format!("{} regions", locations.len())
+            }
+        }
+    }
 }
