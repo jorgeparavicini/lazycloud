@@ -23,9 +23,6 @@ pub enum UpdateResult {
     Commands(Vec<Box<dyn Command>>),
     /// Close this service (go back to service selection)
     Close,
-    // TODO: Should we use a variant or return a result instead?
-    /// Display an error message to the user
-    Error(String),
 }
 
 impl<T: Command> From<T> for UpdateResult {

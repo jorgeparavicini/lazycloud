@@ -1,32 +1,129 @@
+use crate::Theme;
 use crate::core::command::{Command, CopyToClipboardCmd};
 use crate::core::event::Event;
 use crate::core::service::{Service, UpdateResult};
-use crate::model::GcpContext;
+use crate::model::{CloudContext, GcpContext, Provider};
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::command::{
-    AddVersionCmd, CreateSecretCmd, DeleteSecretCmd, DestroyVersionCmd, DisableVersionCmd,
-    EnableVersionCmd, FetchIamPolicyCmd, FetchLatestPayloadCmd, FetchPayloadCmd,
-    FetchSecretMetadataCmd, FetchSecretsCmd, FetchVersionsCmd, InitClientCmd, UpdateLabelsCmd,
+    AddVersionCmd, DestroyVersionCmd, DisableVersionCmd, EnableVersionCmd, FetchIamPolicyCmd,
+    FetchLatestPayloadCmd, FetchPayloadCmd, FetchSecretMetadataCmd, FetchSecretsCmd,
+    FetchVersionsCmd, UpdateLabelsCmd,
 };
-use crate::provider::gcp::secret_manager::message::SecretManagerMsg;
-use crate::provider::gcp::secret_manager::model::{Secret, SecretPayload, SecretVersion};
-use crate::provider::gcp::secret_manager::view::{
-    CreateSecretNameOverlay, CreateSecretPayloadOverlay, CreateVersionOverlay, DeleteSecretOverlay,
-    DestroyVersionOverlay, IamPolicyView, LabelsView, PayloadView, ReplicationView, SecretListView,
-    SecretManagerView, VersionListView,
+use crate::provider::gcp::secret_manager::model::{
+    ReplicationConfig, SecretPayload, SecretVersion,
 };
+use crate::provider::gcp::secret_manager::payload::SecretPayload;
+use crate::provider::gcp::secret_manager::secrets;
+use crate::provider::gcp::secret_manager::secrets::{Secret, SecretsMsg};
+use crate::provider::gcp::secret_manager::versions::{SecretVersion, VersionsMsg};
+use crate::registry::ServiceProvider;
 use crate::view::{KeyResult, SpinnerView, View};
-use crate::Theme;
+use async_trait::async_trait;
+use color_eyre::eyre::{anyhow, eyre};
 use crossterm::event::KeyCode;
-use ratatui::layout::Rect;
 use ratatui::Frame;
+use ratatui::layout::Rect;
 use std::collections::HashMap;
+use std::rc::Rc;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
+/// Messages for the Secret Manager service.
+#[derive(Debug, Clone)]
+pub enum SecretManagerMsg {
+    // === Lifecycle ===
+    /// Initialize the service client
+    Initialize,
+
+    // === Navigation ===
+    /// Navigate back to the previous view
+    NavigateBack,
+    /// User cancelled a dialog
+    DialogCancelled,
+
+    /// Secret related messages
+    Secret(SecretsMsg),
+    /// Version related messages
+    Version(VersionsMsg),
+
+    // === Async Results ===
+    /// Client initialization completed
+    ClientInitialized(SecretManagerClient),
+    /// Secret list loaded from API
+    SecretsLoaded(Vec<Secret>),
+    /// Version list loaded for a secret
+    VersionsLoaded {
+        secret: Secret,
+        versions: Vec<SecretVersion>,
+    },
+    /// Payload loaded for a specific version
+    PayloadLoaded {
+        secret: Secret,
+        version: Option<SecretVersion>,
+        payload: SecretPayload,
+    },
+    /// Secret created successfully
+    SecretCreated(Secret),
+    /// Secret deleted successfully
+    SecretDeleted(String),
+    /// Version added successfully
+    VersionAdded { secret: Secret },
+    /// Version disabled successfully
+    VersionDisabled { secret: Secret },
+    /// Version enabled successfully
+    VersionEnabled { secret: Secret },
+    /// Version destroyed successfully
+    VersionDestroyed { secret: Secret },
+    /// Labels updated successfully
+    LabelsUpdated(Secret),
+    /// IAM policy loaded
+    IamPolicyLoaded { secret: Secret, policy: IamPolicy },
+    /// Replication info loaded
+    ReplicationInfoLoaded {
+        secret: Secret,
+        replication: ReplicationConfig,
+    },
+}
+
+/// Provider for GCP Secret Manager.
+pub struct SecretManagerProvider;
+
+impl ServiceProvider for SecretManagerProvider {
+    fn provider(&self) -> Provider {
+        Provider::Gcp
+    }
+
+    fn service_key(&self) -> &'static str {
+        "secret-manager"
+    }
+
+    fn display_name(&self) -> &'static str {
+        "Secret Manager"
+    }
+
+    fn description(&self) -> &'static str {
+        "Store and manage secrets, API keys, and certificates"
+    }
+
+    fn icon(&self) -> Option<&'static str> {
+        Some("🔐")
+    }
+
+    fn create_service(&self, ctx: &CloudContext) -> Box<dyn Service> {
+        let CloudContext::Gcp(gcp_ctx) = ctx else {
+            panic!("SecretManagerProvider requires GcpContext");
+        };
+        Box::new(SecretManager::new(gcp_ctx))
+    }
+}
+
+/// A view within the Secret Manager service that provides breadcrumb context.
+pub trait SecretManagerView: View<Event = SecretManagerMsg> {
+    fn breadcrumbs(&self) -> Vec<String>;
+}
+
 /// Service for managing GCP Secret Manager secrets.
-pub struct SecretManager {
-    project_id: String,
-    account: String,
+pub struct SecretManager<'a> {
+    pub(super) context: &'a GcpContext,
     spinner: SpinnerView,
     client: Option<SecretManagerClient>,
     /// Navigation stack - top is current view.
@@ -34,26 +131,25 @@ pub struct SecretManager {
     /// Loading overlay label (None = not loading).
     loading: Option<&'static str>,
     /// Active overlay dialog.
-    overlay: Option<Box<dyn View<Event = SecretManagerMsg>>>,
+    dialog: Option<Box<dyn View<Event = SecretManagerMsg>>>,
     msg_tx: UnboundedSender<SecretManagerMsg>,
     msg_rx: UnboundedReceiver<SecretManagerMsg>,
     /// Cached versions by secret name.
-    cached_versions: HashMap<String, Vec<SecretVersion>>,
+    cached_versions: HashMap<String, Rc<Vec<SecretVersion>>>,
     /// Cached payloads by "secret_name/version_id".
-    cached_payloads: HashMap<String, SecretPayload>,
+    cached_payloads: HashMap<String, Rc<SecretPayload>>,
 }
 
-impl SecretManager {
-    pub fn new(ctx: &GcpContext) -> Self {
+impl<'a> SecretManager<'a> {
+    pub fn new(ctx: &'a GcpContext) -> Self {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
         Self {
-            project_id: ctx.project_id.clone(),
-            account: ctx.account.clone(),
+            context: ctx,
             spinner: SpinnerView::new(),
             client: None,
             view_stack: Vec::new(),
             loading: Some("Initializing..."),
-            overlay: None,
+            dialog: None,
             msg_tx,
             msg_rx,
             cached_versions: HashMap::new(),
@@ -61,12 +157,39 @@ impl SecretManager {
         }
     }
 
-    fn payload_cache_key(secret: &Secret, version: &Option<SecretVersion>) -> String {
+    pub(super) fn get_cached_versions(&self, secret: &Secret) -> Option<Rc<Vec<SecretVersion>>> {
+        self.cached_versions.get(&secret.name).cloned()
+    }
+
+    pub(super) fn get_cached_payload(
+        &self,
+        secret: &Secret,
+        version: &Option<SecretVersion>,
+    ) -> Option<Rc<SecretPayload>> {
         let version_id = version
             .as_ref()
             .map(|v| v.version_id.as_str())
             .unwrap_or("latest");
-        format!("{}/{}", secret.name, version_id)
+        let payload_id = format!("{}/{}", secret.name, version_id);
+        self.cached_payloads.get(&payload_id).cloned()
+    }
+
+    pub(super) fn show_loader(&mut self, label: &'static str) {
+        self.loading = Some(label);
+    }
+
+    pub(super) fn get_client(&self) -> color_eyre::Result<SecretManagerClient> {
+        self.client
+            .clone()
+            .ok_or_else(|| eyre!("Secret Manager client not initialized"))
+    }
+
+    pub(super) fn get_msg_sender(&self) -> UnboundedSender<SecretManagerMsg> {
+        self.msg_tx.clone()
+    }
+
+    pub(super) fn display_dialog(&mut self, overlay: Box<dyn View<Event = SecretManagerMsg>>) {
+        self.dialog = Some(overlay);
     }
 
     /// Queue a message to be processed by update().
@@ -93,7 +216,7 @@ impl SecretManager {
     }
 
     fn show_overlay<T: View<Event = SecretManagerMsg> + 'static>(&mut self, overlay: T) {
-        self.overlay = Some(Box::new(overlay));
+        self.dialog = Some(Box::new(overlay));
     }
 
     /// Process a single message and return the result.
@@ -114,14 +237,6 @@ impl SecretManager {
             SecretManagerMsg::DialogCancelled => self.close_dialog(),
 
             // === Secrets ===
-            SecretManagerMsg::LoadSecrets => self.load_secrets(),
-            SecretManagerMsg::ShowCreateSecretDialog => self.show_create_secret_dialog(),
-            SecretManagerMsg::CreateSecretStep2 { name } => self.show_create_secret_payload(name),
-            SecretManagerMsg::CreateSecret { name, payload } => self.create_secret(name, payload),
-            SecretManagerMsg::ShowDeleteSecretDialog(secret) => {
-                self.show_delete_secret_dialog(secret)
-            }
-            SecretManagerMsg::DeleteSecret(secret) => self.delete_secret(secret),
 
             // === Version ===
             SecretManagerMsg::LoadVersions(secret) => self.load_versions(secret),
@@ -231,41 +346,12 @@ impl SecretManager {
 
     // === Navigation ===
 
-    fn reload_current_view(&mut self) -> UpdateResult {
-        if let Some(view) = self.view_stack.pop() {
-            let msg = view.reload();
-            // Clear cache based on reload message
-            match &msg {
-                SecretManagerMsg::LoadVersions(secret) => {
-                    self.cached_versions.remove(&secret.name);
-                }
-                SecretManagerMsg::LoadPayload(secret, version) => {
-                    let key = Self::payload_cache_key(&secret, &version);
-                    self.cached_payloads.remove(&key);
-                }
-                _ => {}
-            }
-            self.process_message(msg)
-        } else {
-            UpdateResult::Idle
-        }
-    }
-
     fn close_dialog(&mut self) -> UpdateResult {
-        self.overlay = None;
+        self.dialog = None;
         UpdateResult::Idle
     }
 
     // === Secrets ===
-
-    fn load_secrets(&mut self) -> UpdateResult {
-        self.loading = Some("Loading secrets...");
-        if let Some(client) = &self.client {
-            FetchSecretsCmd::new(client.clone(), self.msg_tx.clone()).into()
-        } else {
-            UpdateResult::Error("Client not initialized".to_string())
-        }
-    }
 
     fn show_create_secret_dialog(&mut self) -> UpdateResult {
         self.show_overlay(CreateSecretNameOverlay::new());
@@ -294,7 +380,7 @@ impl SecretManager {
     fn delete_secret(&mut self, secret: Secret) -> UpdateResult {
         self.loading = Some("Deleting secret...");
         if let Some(client) = &self.client {
-            DeleteSecretCmd::new(client.clone(), secret, self.msg_tx.clone()).into()
+            secrets::delete_secret_cmd::new(client.clone(), secret, self.msg_tx.clone()).into()
         } else {
             UpdateResult::Error("Client not initialized".to_string())
         }
@@ -454,7 +540,7 @@ impl Service for SecretManager {
             return false;
         }
 
-        if let Some(overlay) = &mut self.overlay {
+        if let Some(overlay) = &mut self.dialog {
             match overlay.handle_key(*key) {
                 KeyResult::Event(msg) => {
                     self.queue(msg);
@@ -513,7 +599,7 @@ impl Service for SecretManager {
         }
 
         // Render overlay on top if present
-        if let Some(overlay) = &mut self.overlay {
+        if let Some(overlay) = &mut self.dialog {
             overlay.render(frame, area, theme);
         }
     }
@@ -526,5 +612,37 @@ impl Service for SecretManager {
         }
 
         bc
+    }
+}
+
+// === Commands ===
+
+/// Initialize the Secret Manager client.
+struct InitClientCmd {
+    project_id: String,
+    account: String,
+    tx: UnboundedSender<SecretManagerMsg>,
+}
+
+impl InitClientCmd {
+    pub fn new(project_id: String, account: String, tx: UnboundedSender<SecretManagerMsg>) -> Self {
+        Self {
+            project_id,
+            account,
+            tx,
+        }
+    }
+}
+
+#[async_trait]
+impl Command for InitClientCmd {
+    fn name(&self) -> &'static str {
+        "Initializing Secret Manager"
+    }
+
+    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+        let client = SecretManagerClient::new(self.project_id.clone(), &self.account).await?;
+        self.tx.send(SecretManagerMsg::ClientInitialized(client))?;
+        Ok(())
     }
 }
