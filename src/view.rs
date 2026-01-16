@@ -15,8 +15,8 @@ mod table;
 mod text_input;
 mod theme_selector;
 
-pub use command_status::{CommandId, CommandStatusView};
 pub use confirm_dialog::{ConfirmDialog, ConfirmEvent};
+pub use command_status::{CommandId, CommandStatusView};
 pub use context_selector::ContextSelectorView;
 pub use help::{HelpEvent, HelpView, Keybinding};
 pub use list::{ListEvent, ListRow, ListView};
@@ -67,7 +67,8 @@ pub trait View {
     /// - `Ignored` - key was not handled, parent should process it
     /// - `Consumed` - key was handled but produced no event
     /// - `Event(e)` - key was handled and produced an event
-    fn handle_key(&mut self, _key: KeyEvent) -> KeyResult<Self::Event> {
+    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
+        _ = key;
         KeyResult::Ignored
     }
 

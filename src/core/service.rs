@@ -15,7 +15,7 @@ use crate::Theme;
 use ratatui::layout::Rect;
 use ratatui::Frame;
 
-/// Result from `update()` - the ONLY way for a service to affect the application.
+/// Result from `update()`
 pub enum UpdateResult {
     /// No action needed
     Idle,

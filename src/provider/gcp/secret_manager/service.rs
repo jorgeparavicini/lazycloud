@@ -48,8 +48,6 @@ pub enum SecretManagerMsg {
     // === Async Results ===
     /// Client initialization completed
     ClientInitialized(SecretManagerClient),
-    /// Secret list loaded from API
-    SecretsLoaded(Vec<Secret>),
     /// Version list loaded for a secret
     VersionsLoaded {
         secret: Secret,
@@ -61,10 +59,6 @@ pub enum SecretManagerMsg {
         version: Option<SecretVersion>,
         payload: SecretPayload,
     },
-    /// Secret created successfully
-    SecretCreated(Secret),
-    /// Secret deleted successfully
-    SecretDeleted(String),
     /// Version added successfully
     VersionAdded { secret: Secret },
     /// Version disabled successfully
@@ -117,9 +111,7 @@ impl ServiceProvider for SecretManagerProvider {
 }
 
 /// A view within the Secret Manager service that provides breadcrumb context.
-pub trait SecretManagerView: View<Event = SecretManagerMsg> {
-    fn breadcrumbs(&self) -> Vec<String>;
-}
+pub trait SecretManagerView: View<Event = SecretManagerMsg> {}
 
 /// Service for managing GCP Secret Manager secrets.
 pub struct SecretManager<'a> {
@@ -127,17 +119,18 @@ pub struct SecretManager<'a> {
     spinner: SpinnerView,
     client: Option<SecretManagerClient>,
     /// Navigation stack - top is current view.
-    view_stack: Vec<Box<dyn SecretManagerView>>,
+    view_stack: Vec<Box<dyn View<Event = SecretManagerMsg>>>,
     /// Loading overlay label (None = not loading).
     loading: Option<&'static str>,
     /// Active overlay dialog.
-    dialog: Option<Box<dyn View<Event = SecretManagerMsg>>>,
+    overlay: Option<Box<dyn View<Event = SecretManagerMsg>>>,
     msg_tx: UnboundedSender<SecretManagerMsg>,
     msg_rx: UnboundedReceiver<SecretManagerMsg>,
+    cached_secrets: Option<Vec<Secret>>,
     /// Cached versions by secret name.
-    cached_versions: HashMap<String, Rc<Vec<SecretVersion>>>,
+    cached_versions: HashMap<String, Vec<SecretVersion>>,
     /// Cached payloads by "secret_name/version_id".
-    cached_payloads: HashMap<String, Rc<SecretPayload>>,
+    cached_payloads: HashMap<String, SecretPayload>,
 }
 
 impl<'a> SecretManager<'a> {
@@ -149,33 +142,13 @@ impl<'a> SecretManager<'a> {
             client: None,
             view_stack: Vec::new(),
             loading: Some("Initializing..."),
-            dialog: None,
+            overlay: None,
             msg_tx,
             msg_rx,
+            cached_secrets: None,
             cached_versions: HashMap::new(),
             cached_payloads: HashMap::new(),
         }
-    }
-
-    pub(super) fn get_cached_versions(&self, secret: &Secret) -> Option<Rc<Vec<SecretVersion>>> {
-        self.cached_versions.get(&secret.name).cloned()
-    }
-
-    pub(super) fn get_cached_payload(
-        &self,
-        secret: &Secret,
-        version: &Option<SecretVersion>,
-    ) -> Option<Rc<SecretPayload>> {
-        let version_id = version
-            .as_ref()
-            .map(|v| v.version_id.as_str())
-            .unwrap_or("latest");
-        let payload_id = format!("{}/{}", secret.name, version_id);
-        self.cached_payloads.get(&payload_id).cloned()
-    }
-
-    pub(super) fn show_loader(&mut self, label: &'static str) {
-        self.loading = Some(label);
     }
 
     pub(super) fn get_client(&self) -> color_eyre::Result<SecretManagerClient> {
@@ -188,9 +161,80 @@ impl<'a> SecretManager<'a> {
         self.msg_tx.clone()
     }
 
-    pub(super) fn display_dialog(&mut self, overlay: Box<dyn View<Event = SecretManagerMsg>>) {
-        self.dialog = Some(overlay);
+    pub(super) fn get_cached_secrets(&self) -> Option<Vec<Secret>> {
+        self.cached_secrets.clone()
     }
+
+    pub(super) fn cache_secrets(&mut self, secrets: &Vec<Secret>) {
+        self.cached_secrets = Some(secrets.clone());
+    }
+
+    pub(super) fn get_cached_versions(&self, secret: &Secret) -> Option<Vec<SecretVersion>> {
+        self.cached_versions.get(&secret.name).cloned()
+    }
+
+    pub(super) fn cache_versions(&mut self, secret: &Secret, versions: Vec<SecretVersion>) {
+        self.cached_versions.insert(secret.name.clone(), versions);
+    }
+
+    pub(super) fn get_cached_payload(
+        &self,
+        secret: &Secret,
+        version: &Option<SecretVersion>,
+    ) -> Option<SecretPayload> {
+        let cache_key = Self::payload_cache_key(secret, version);
+        self.cached_payloads.get(&cache_key).cloned()
+    }
+
+    pub(super) fn cache_payload(
+        &mut self,
+        secret: &Secret,
+        version: &Option<SecretVersion>,
+        payload: SecretPayload,
+    ) {
+        let cache_key = Self::payload_cache_key(secret, version);
+        self.cached_payloads.insert(cache_key, payload);
+    }
+
+    pub(super) fn display_loading_spinner(&mut self, label: &'static str) {
+        self.loading = Some(label);
+    }
+
+    pub(super) fn hide_loading_spinner(&mut self) {
+        self.loading = None;
+    }
+
+    pub(super) fn push_view<T: View<Event = SecretManagerMsg> + 'static>(&mut self, view: T) {
+        self.hide_loading_spinner();
+        self.view_stack.push(Box::new(view));
+    }
+
+    pub(super) fn display_overlay<T: View<Event = SecretManagerMsg> + 'static>(
+        &mut self,
+        overlay: T,
+    ) {
+        self.overlay = Some(Box::new(overlay));
+    }
+
+    pub(super) fn close_overlay(&mut self) {
+        self.overlay = None;
+    }
+
+    fn payload_cache_key(secret: &Secret, version: &Option<SecretVersion>) -> String {
+        let version_id = version
+            .as_ref()
+            .map(|v| v.version_id.as_str())
+            .unwrap_or("latest");
+        format!("{}/{}", secret.name, version_id)
+    }
+
+
+
+
+
+
+
+
 
     /// Queue a message to be processed by update().
     fn queue(&self, msg: SecretManagerMsg) {
@@ -199,11 +243,6 @@ impl<'a> SecretManager<'a> {
 
     fn current_view_mut(&mut self) -> Option<&mut Box<dyn SecretManagerView>> {
         self.view_stack.last_mut()
-    }
-
-    fn push_view<T: SecretManagerView + 'static>(&mut self, view: T) {
-        self.loading = None;
-        self.view_stack.push(Box::new(view));
     }
 
     fn pop_view(&mut self) -> bool {
@@ -216,7 +255,7 @@ impl<'a> SecretManager<'a> {
     }
 
     fn show_overlay<T: View<Event = SecretManagerMsg> + 'static>(&mut self, overlay: T) {
-        self.dialog = Some(Box::new(overlay));
+        self.overlay = Some(Box::new(overlay));
     }
 
     /// Process a single message and return the result.
@@ -342,48 +381,6 @@ impl<'a> SecretManager<'a> {
             self.msg_tx.clone(),
         )
         .into()
-    }
-
-    // === Navigation ===
-
-    fn close_dialog(&mut self) -> UpdateResult {
-        self.dialog = None;
-        UpdateResult::Idle
-    }
-
-    // === Secrets ===
-
-    fn show_create_secret_dialog(&mut self) -> UpdateResult {
-        self.show_overlay(CreateSecretNameOverlay::new());
-        UpdateResult::Idle
-    }
-
-    fn show_create_secret_payload(&mut self, name: String) -> UpdateResult {
-        self.show_overlay(CreateSecretPayloadOverlay::new(name));
-        UpdateResult::Idle
-    }
-
-    fn create_secret(&mut self, name: String, payload: Option<String>) -> UpdateResult {
-        self.loading = Some("Creating secret...");
-        if let Some(client) = &self.client {
-            CreateSecretCmd::new(client.clone(), name, payload, self.msg_tx.clone()).into()
-        } else {
-            UpdateResult::Error("Client not initialized".to_string())
-        }
-    }
-
-    fn show_delete_secret_dialog(&mut self, secret: Secret) -> UpdateResult {
-        self.show_overlay(DeleteSecretOverlay::new(secret));
-        UpdateResult::Idle
-    }
-
-    fn delete_secret(&mut self, secret: Secret) -> UpdateResult {
-        self.loading = Some("Deleting secret...");
-        if let Some(client) = &self.client {
-            secrets::delete_secret_cmd::new(client.clone(), secret, self.msg_tx.clone()).into()
-        } else {
-            UpdateResult::Error("Client not initialized".to_string())
-        }
     }
 
     // === Versions ===
@@ -540,7 +537,7 @@ impl Service for SecretManager {
             return false;
         }
 
-        if let Some(overlay) = &mut self.dialog {
+        if let Some(overlay) = &mut self.overlay {
             match overlay.handle_key(*key) {
                 KeyResult::Event(msg) => {
                     self.queue(msg);
@@ -599,7 +596,7 @@ impl Service for SecretManager {
         }
 
         // Render overlay on top if present
-        if let Some(overlay) = &mut self.dialog {
+        if let Some(overlay) = &mut self.overlay {
             overlay.render(frame, area, theme);
         }
     }
