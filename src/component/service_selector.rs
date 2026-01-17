@@ -1,6 +1,7 @@
 use crate::model::CloudContext;
 use crate::registry::{ServiceId, ServiceProvider, ServiceRegistry};
-use crate::view::{KeyResult, ListEvent, ListRow, ListView, View};
+use crate::component::{ListComponent, ListEvent, ListRow};
+use crate::ui::{Component, Handled, Result};
 use crate::Theme;
 use crossterm::event::KeyEvent;
 use ratatui::{
@@ -11,7 +12,6 @@ use ratatui::{
 };
 use std::sync::Arc;
 
-/// Wrapper for displaying service providers in the list.
 #[derive(Clone)]
 struct ServiceItem {
     provider: Arc<dyn ServiceProvider>,
@@ -28,13 +28,11 @@ impl ListRow for ServiceItem {
     }
 }
 
-/// View for selecting a cloud service.
 pub struct ServiceSelectorView {
-    service_list: ListView<ServiceItem>,
+    service_list: ListComponent<ServiceItem>,
 }
 
 impl ServiceSelectorView {
-    /// Create a new service selector for the given context.
     pub fn new(registry: Arc<ServiceRegistry>, context: CloudContext) -> Self {
         let services: Vec<ServiceItem> = registry
             .available_services(&context)
@@ -43,24 +41,21 @@ impl ServiceSelectorView {
             .collect();
 
         Self {
-            service_list: ListView::new(services),
+            service_list: ListComponent::new(services),
         }
     }
 }
 
-impl View for ServiceSelectorView {
-    type Event = ServiceId;
+impl Component for ServiceSelectorView {
+    type Output = ServiceId;
 
-    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
-        let result = self.service_list.handle_key(key);
-        if let KeyResult::Event(ListEvent::Activated(item)) = result {
-            return item.provider.service_id().into();
-        }
-        if result.is_consumed() {
-            KeyResult::Consumed
-        } else {
-            KeyResult::Ignored
-        }
+    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Output>> {
+        let result = self.service_list.handle_key(key)?;
+        Ok(match result {
+            Handled::Event(ListEvent::Activated(item)) => item.provider.service_id().into(),
+            Handled::Consumed | Handled::Event(_) => Handled::Consumed,
+            Handled::Ignored => Handled::Ignored,
+        })
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {

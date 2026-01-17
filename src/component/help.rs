@@ -1,4 +1,4 @@
-use crate::view::{KeyResult, View};
+use crate::ui::{Component, Handled, Result};
 use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -9,7 +9,6 @@ use ratatui::{
     Frame,
 };
 
-/// A keybinding entry for the help view.
 pub struct Keybinding {
     pub key: &'static str,
     pub description: &'static str,
@@ -21,13 +20,10 @@ impl Keybinding {
     }
 }
 
-/// Event emitted by [`HelpView`].
 pub enum HelpEvent {
-    /// User wants to close the help view.
     Close,
 }
 
-/// Help overlay view that displays keybindings in a centered popup.
 pub struct HelpView {
     keybindings: &'static [Keybinding],
 }
@@ -38,14 +34,14 @@ impl HelpView {
     }
 }
 
-impl View for HelpView {
-    type Event = HelpEvent;
+impl Component for HelpView {
+    type Output = HelpEvent;
 
-    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
-        match key.code {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Output>> {
+        Ok(match key.code {
             KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => HelpEvent::Close.into(),
-            _ => KeyResult::Ignored,
-        }
+            _ => Handled::Ignored,
+        })
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {

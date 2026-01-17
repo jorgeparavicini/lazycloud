@@ -1,4 +1,8 @@
 use crate::Theme;
+use crate::component::{
+    ColumnDef, ConfirmDialogComponent, ConfirmEvent, TableComponent, TableEvent, TableRow,
+    TextInputComponent, TextInputEvent,
+};
 use crate::core::{Command, UpdateResult};
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
@@ -6,10 +10,7 @@ use crate::provider::gcp::secret_manager::payload::PayloadMsg;
 use crate::provider::gcp::secret_manager::secrets::Secret;
 use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::search::Matcher;
-use crate::view::{
-    ColumnDef, ConfirmDialog, ConfirmEvent, KeyResult, TableEvent, TableRow, TableView,
-    TextInputEvent, TextInputView, View,
-};
+use crate::ui::{Component, Handled, Modal, Result, Screen};
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
@@ -61,36 +62,24 @@ impl TableRow for SecretVersion {
 
 #[derive(Debug, Clone)]
 pub enum VersionsMsg {
-    /// Load versions for a secret
     Load(Secret),
-    /// Versions loaded successfully
     Loaded { secret: Secret, versions: Vec<SecretVersion> },
 
-    /// Show dialog to add a new version
     StartCreation(Secret),
-    /// Add a new version to a secret
     Create { secret: Secret, payload: String },
-    /// Version created successfully
     Created { secret: Secret },
 
-    /// Disable a secret version
     Disable { secret: Secret, version: SecretVersion },
-    /// Version disabled successfully
     Disabled { secret: Secret },
 
-    /// Enable a secret version
     Enable { secret: Secret, version: SecretVersion },
-    /// Version enabled successfully
     Enabled { secret: Secret },
 
-    /// Show destroy confirmation for a version
     ConfirmDestroy { secret: Secret, version: SecretVersion },
-    /// Confirmed destruction of a version
+    /// Permanently destroys the version. Cannot be undone.
     Destroy { secret: Secret, version: SecretVersion },
-    /// Version destroyed successfully
     Destroyed { secret: Secret },
 
-    /// View payload for a specific version
     ViewPayload { secret: Secret, version: SecretVersion },
 }
 
@@ -100,9 +89,9 @@ impl From<VersionsMsg> for SecretManagerMsg {
     }
 }
 
-impl From<VersionsMsg> for KeyResult<SecretManagerMsg> {
+impl From<VersionsMsg> for Handled<SecretManagerMsg> {
     fn from(msg: VersionsMsg) -> Self {
-        KeyResult::Event(SecretManagerMsg::Version(msg))
+        Handled::Event(SecretManagerMsg::Version(msg))
     }
 }
 
@@ -110,7 +99,7 @@ impl From<VersionsMsg> for KeyResult<SecretManagerMsg> {
 
 pub struct VersionListScreen {
     secret: Secret,
-    table: TableView<SecretVersion>,
+    table: TableComponent<SecretVersion>,
 }
 
 impl VersionListScreen {
@@ -118,30 +107,30 @@ impl VersionListScreen {
         let title = format!(" {} - Versions ", secret.name);
         Self {
             secret,
-            table: TableView::new(versions).with_title(title),
+            table: TableComponent::new(versions).with_title(title),
         }
     }
 }
 
-impl View for VersionListScreen {
-    type Event = SecretManagerMsg;
+impl Screen for VersionListScreen {
+    type Msg = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
         // Delegate to table first (handles search mode, navigation, etc.)
-        let result = self.table.handle_key(key);
-        if let KeyResult::Event(TableEvent::Activated(version)) = result {
-            return VersionsMsg::ViewPayload {
+        let result = self.table.handle_key(key)?;
+        if let Handled::Event(TableEvent::Activated(version)) = result {
+            return Ok(VersionsMsg::ViewPayload {
                 secret: self.secret.clone(),
                 version,
             }
-            .into();
+            .into());
         }
         if result.is_consumed() {
-            return KeyResult::Consumed;
+            return Ok(Handled::Consumed);
         }
 
         // Handle local shortcuts only if table didn't consume the key
-        match key.code {
+        Ok(match key.code {
             KeyCode::Char('r') => VersionsMsg::Load(self.secret.clone()).into(),
             // Add new version
             KeyCode::Char('a') | KeyCode::Char('n') => {
@@ -154,7 +143,7 @@ impl View for VersionListScreen {
                     version: v.clone(),
                 }
                 .into(),
-                _ => KeyResult::Ignored,
+                _ => Handled::Ignored,
             },
             // Enable version (only for Disabled versions)
             KeyCode::Char('e') => match self.table.selected_item() {
@@ -163,7 +152,7 @@ impl View for VersionListScreen {
                     version: v.clone(),
                 }
                 .into(),
-                _ => KeyResult::Ignored,
+                _ => Handled::Ignored,
             },
             // Destroy version (shift+D, only for non-Destroyed versions)
             KeyCode::Char('D') => match self.table.selected_item() {
@@ -172,10 +161,10 @@ impl View for VersionListScreen {
                     version: v.clone(),
                 }
                 .into(),
-                _ => KeyResult::Ignored,
+                _ => Handled::Ignored,
             },
-            _ => KeyResult::Ignored,
-        }
+            _ => Handled::Ignored,
+        })
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -187,34 +176,34 @@ impl View for VersionListScreen {
 
 pub struct CreateVersionDialog {
     secret: Secret,
-    input: TextInputView,
+    input: TextInputComponent,
 }
 
 impl CreateVersionDialog {
     pub fn new(secret: Secret) -> Self {
         Self {
             secret,
-            input: TextInputView::new("New Version Payload"),
+            input: TextInputComponent::new("New Version Payload"),
         }
     }
 }
 
-impl View for CreateVersionDialog {
-    type Event = SecretManagerMsg;
+impl Modal for CreateVersionDialog {
+    type Msg = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
-        match self.input.handle_key(key) {
-            KeyResult::Event(TextInputEvent::Submitted(payload)) if !payload.is_empty() => {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+        Ok(match self.input.handle_key(key)? {
+            Handled::Event(TextInputEvent::Submitted(payload)) if !payload.is_empty() => {
                 VersionsMsg::Create {
                     secret: self.secret.clone(),
                     payload,
                 }
                 .into()
             }
-            KeyResult::Event(TextInputEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
-            KeyResult::Event(_) => KeyResult::Consumed, // Empty submission
-            _ => KeyResult::Consumed,
-        }
+            Handled::Event(TextInputEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
+            Handled::Event(_) => Handled::Consumed, // Empty submission
+            _ => Handled::Consumed,
+        })
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -225,12 +214,12 @@ impl View for CreateVersionDialog {
 pub struct DestroyVersionDialog {
     secret: Secret,
     version: SecretVersion,
-    dialog: ConfirmDialog,
+    dialog: ConfirmDialogComponent,
 }
 
 impl DestroyVersionDialog {
     pub fn new(secret: Secret, version: SecretVersion) -> Self {
-        let dialog = ConfirmDialog::new(format!(
+        let dialog = ConfirmDialogComponent::new(format!(
             "Destroy version '{}'? This is permanent and cannot be undone.",
             version.version_id
         ))
@@ -246,19 +235,19 @@ impl DestroyVersionDialog {
     }
 }
 
-impl View for DestroyVersionDialog {
-    type Event = SecretManagerMsg;
+impl Modal for DestroyVersionDialog {
+    type Msg = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
-        match self.dialog.handle_key(key) {
-            KeyResult::Event(ConfirmEvent::Confirmed) => VersionsMsg::Destroy {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+        Ok(match self.dialog.handle_key(key)? {
+            Handled::Event(ConfirmEvent::Confirmed) => VersionsMsg::Destroy {
                 secret: self.secret.clone(),
                 version: self.version.clone(),
             }
             .into(),
-            KeyResult::Event(ConfirmEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
-            _ => KeyResult::Consumed,
-        }
+            Handled::Event(ConfirmEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
+            _ => Handled::Consumed,
+        })
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -400,7 +389,6 @@ pub(super) fn update(
 
 // === Commands ===
 
-/// Fetch versions for a secret.
 struct FetchVersionsCmd {
     client: SecretManagerClient,
     secret: Secret,
@@ -426,7 +414,6 @@ impl Command for FetchVersionsCmd {
     }
 }
 
-/// Add a new version to a secret.
 struct AddVersionCmd {
     client: SecretManagerClient,
     secret: Secret,
@@ -450,7 +437,6 @@ impl Command for AddVersionCmd {
     }
 }
 
-/// Disable a secret version.
 struct DisableVersionCmd {
     client: SecretManagerClient,
     secret: Secret,
@@ -474,7 +460,6 @@ impl Command for DisableVersionCmd {
     }
 }
 
-/// Enable a secret version.
 struct EnableVersionCmd {
     client: SecretManagerClient,
     secret: Secret,
@@ -498,7 +483,6 @@ impl Command for EnableVersionCmd {
     }
 }
 
-/// Destroy a secret version.
 struct DestroyVersionCmd {
     client: SecretManagerClient,
     secret: Secret,

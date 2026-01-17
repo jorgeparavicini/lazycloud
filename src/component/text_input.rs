@@ -1,4 +1,4 @@
-use crate::view::{KeyResult, View};
+use crate::ui::{Component, Handled, Result};
 use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
@@ -9,30 +9,20 @@ use ratatui::{
     Frame,
 };
 
-/// Event emitted by [`TextInputView`].
 pub enum TextInputEvent {
-    /// User submitted the input value.
     Submitted(String),
-    /// User cancelled the input.
     Cancelled,
 }
 
-/// A single-line text input popup view.
-pub struct TextInputView {
-    /// The label/title for the input field.
+pub struct TextInputComponent {
     label: String,
-    /// Current input value.
     value: String,
-    /// Cursor position in the value string.
     cursor: usize,
-    /// Optional placeholder text shown when value is empty.
     placeholder: Option<String>,
-    /// Whether to mask the input (for passwords).
     masked: bool,
 }
 
-impl TextInputView {
-    /// Create a new text input view with the given label.
+impl TextInputComponent {
     pub fn new(label: impl Into<String>) -> Self {
         Self {
             label: label.into(),
@@ -43,26 +33,22 @@ impl TextInputView {
         }
     }
 
-    /// Set an initial value for the input.
     pub fn with_value(mut self, value: impl Into<String>) -> Self {
         self.value = value.into();
         self.cursor = self.value.len();
         self
     }
 
-    /// Set placeholder text shown when input is empty.
     pub fn with_placeholder(mut self, placeholder: impl Into<String>) -> Self {
         self.placeholder = Some(placeholder.into());
         self
     }
 
-    /// Enable input masking (for passwords).
     pub fn masked(mut self) -> Self {
         self.masked = true;
         self
     }
 
-    /// Get the current value.
     pub fn value(&self) -> &str {
         &self.value
     }
@@ -125,11 +111,11 @@ impl TextInputView {
     }
 }
 
-impl View for TextInputView {
-    type Event = TextInputEvent;
+impl Component for TextInputComponent {
+    type Output = TextInputEvent;
 
-    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
-        match (key.code, key.modifiers) {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Output>> {
+        Ok(match (key.code, key.modifiers) {
             // Submit
             (KeyCode::Enter, _) => TextInputEvent::Submitted(self.value.clone()).into(),
 
@@ -139,49 +125,49 @@ impl View for TextInputView {
             // Delete
             (KeyCode::Backspace, KeyModifiers::ALT) => {
                 self.delete_word_before_cursor();
-                KeyResult::Consumed
+                Handled::Consumed
             }
             (KeyCode::Backspace, _) => {
                 self.delete_char_before_cursor();
-                KeyResult::Consumed
+                Handled::Consumed
             }
             (KeyCode::Delete, _) => {
                 self.delete_char_at_cursor();
-                KeyResult::Consumed
+                Handled::Consumed
             }
 
             // Navigation
             (KeyCode::Left, _) => {
                 self.move_cursor_left();
-                KeyResult::Consumed
+                Handled::Consumed
             }
             (KeyCode::Right, _) => {
                 self.move_cursor_right();
-                KeyResult::Consumed
+                Handled::Consumed
             }
             (KeyCode::Home, _) | (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
                 self.move_cursor_start();
-                KeyResult::Consumed
+                Handled::Consumed
             }
             (KeyCode::End, _) | (KeyCode::Char('e'), KeyModifiers::CONTROL) => {
                 self.move_cursor_end();
-                KeyResult::Consumed
+                Handled::Consumed
             }
 
             // Clear line
             (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
                 self.clear_line();
-                KeyResult::Consumed
+                Handled::Consumed
             }
 
             // Character input
             (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                 self.insert_char(c);
-                KeyResult::Consumed
+                Handled::Consumed
             }
 
-            _ => KeyResult::Consumed, // Consume all keys to prevent propagation
-        }
+            _ => Handled::Consumed, // Consume all keys to prevent propagation
+        })
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {

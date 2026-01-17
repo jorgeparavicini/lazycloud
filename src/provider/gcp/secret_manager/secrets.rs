@@ -1,4 +1,8 @@
 use crate::Theme;
+use crate::component::{
+    ColumnDef, ConfirmDialogComponent, ConfirmEvent, TableComponent, TableEvent, TableRow,
+    TextInputComponent, TextInputEvent,
+};
 use crate::core::{Command, UpdateResult};
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
@@ -6,10 +10,7 @@ use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::versions::VersionsMsg;
 use crate::provider::gcp::secret_manager::payload::PayloadMsg;
 use crate::search::Matcher;
-use crate::view::{
-    ColumnDef, ConfirmDialog, ConfirmEvent, KeyResult, TableEvent, TableRow, TableView,
-    TextInputEvent, TextInputView, View,
-};
+use crate::ui::{Component, Handled, Modal, Result, Screen};
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
@@ -118,7 +119,6 @@ pub enum ReplicationConfig {
 }
 
 impl ReplicationConfig {
-    /// Short display string for table column.
     pub fn short_display(&self) -> String {
         match self {
             ReplicationConfig::Automatic => "Automatic".to_string(),
@@ -132,13 +132,11 @@ impl ReplicationConfig {
     }
 }
 
-/// IAM policy for a secret.
 #[derive(Debug, Clone)]
 pub struct IamPolicy {
     pub bindings: Vec<IamBinding>,
 }
 
-/// IAM binding (role + members).
 #[derive(Debug, Clone)]
 pub struct IamBinding {
     pub role: String,
@@ -178,7 +176,6 @@ impl TableRow for IamBinding {
     }
 }
 
-/// A label entry for display in the table.
 #[derive(Clone, Debug)]
 pub struct LabelEntry {
     pub key: String,
@@ -208,54 +205,28 @@ impl TableRow for LabelEntry {
 
 #[derive(Debug, Clone)]
 pub enum SecretsMsg {
-    /// Load secrets list
     Load,
-    /// List of secrets successfully loaded
     Loaded(Vec<Secret>),
 
-    /// Show the wizard to create a new secret
     StartCreation,
-    /// Create a new secret with the given name and optional payload
-    Create {
-        name: String,
-        payload: Option<String>,
-    },
-    /// Secret created successfully
+    Create { name: String, payload: Option<String> },
     Created(Secret),
 
-    /// Show delete secret confirmation dialog
     ConfirmDelete(Secret),
-    /// Delete a secret
     Delete(Secret),
-    /// Secret deleted successfully
     Deleted(String),
 
-    /// Show labels for a secret
     ViewLabels(Secret),
-    /// Update labels for a secret
-    UpdateLabels {
-        secret: Secret,
-        labels: HashMap<String, String>,
-    },
-    /// Labels updated successfully
+    UpdateLabels { secret: Secret, labels: HashMap<String, String> },
     LabelsUpdated(Secret),
 
-    /// Show IAM policy for a secret
     ViewIamPolicy(Secret),
-    /// IAM policy loaded successfully
     IamPolicyLoaded { secret: Secret, policy: IamPolicy },
 
-    /// Show replication info for a secret
     ViewReplicationInfo(Secret),
-    /// Replication info loaded successfully
-    ReplicationInfoLoaded {
-        secret: Secret,
-        replication: ReplicationConfig,
-    },
+    ReplicationInfoLoaded { secret: Secret, replication: ReplicationConfig },
 
-    /// Navigate to secret versions view
     ViewVersions(Secret),
-    /// Navigate to secret payload view
     ViewPayload(Secret),
 }
 
@@ -265,64 +236,64 @@ impl From<SecretsMsg> for SecretManagerMsg {
     }
 }
 
-impl From<SecretsMsg> for KeyResult<SecretManagerMsg> {
+impl From<SecretsMsg> for Handled<SecretManagerMsg> {
     fn from(msg: SecretsMsg) -> Self {
-        KeyResult::Event(SecretManagerMsg::Secret(msg))
+        Handled::Event(SecretManagerMsg::Secret(msg))
     }
 }
 
 // === Screens ===
 
 pub struct SecretListScreen {
-    table: TableView<Secret>,
+    table: TableComponent<Secret>,
 }
 
 impl SecretListScreen {
     pub fn new(secrets: Vec<Secret>) -> Self {
         Self {
-            table: TableView::new(secrets).with_title(" Secrets "),
+            table: TableComponent::new(secrets).with_title(" Secrets "),
         }
     }
 }
 
-impl View for SecretListScreen {
-    type Event = SecretManagerMsg;
+impl Screen for SecretListScreen {
+    type Msg = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
-        let result = self.table.handle_key(key);
+    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+        let result = self.table.handle_key(key)?;
 
-        if let KeyResult::Event(TableEvent::Activated(secret)) = result {
-            return SecretsMsg::ViewPayload(secret).into();
+        if let Handled::Event(TableEvent::Activated(secret)) = result {
+            return Ok(SecretsMsg::ViewPayload(secret).into());
         }
         if result.is_consumed() {
-            return KeyResult::Consumed;
+            return Ok(Handled::Consumed);
         }
 
-        match key.code {
-            KeyCode::Char('r') => KeyResult::Event(SecretsMsg::Load.into()),
+        Ok(match key.code {
+            KeyCode::Char('r') => Handled::Event(SecretsMsg::Load.into()),
             KeyCode::Char('n') | KeyCode::Char('c') => SecretsMsg::StartCreation.into(),
             KeyCode::Char('d') | KeyCode::Delete => match self.table.selected_item() {
-                None => KeyResult::Ignored,
+                None => Handled::Ignored,
                 Some(secret) => SecretsMsg::ConfirmDelete(secret.clone()).into(),
             },
             KeyCode::Char('v') => match self.table.selected_item() {
-                None => KeyResult::Ignored,
+                None => Handled::Ignored,
                 Some(secret) => SecretsMsg::ViewVersions(secret.clone()).into(),
             },
             KeyCode::Char('l') => match self.table.selected_item() {
-                None => KeyResult::Ignored,
+                None => Handled::Ignored,
                 Some(secret) => SecretsMsg::ViewLabels(secret.clone()).into(),
             },
             KeyCode::Char('i') => match self.table.selected_item() {
-                None => KeyResult::Ignored,
+                None => Handled::Ignored,
                 Some(secret) => SecretsMsg::ViewIamPolicy(secret.clone()).into(),
             },
             KeyCode::Char('R') => match self.table.selected_item() {
-                None => KeyResult::Ignored,
+                None => Handled::Ignored,
                 Some(secret) => SecretsMsg::ViewReplicationInfo(secret.clone()).into(),
             },
-            _ => KeyResult::Ignored,
-        }
+            _ => Handled::Ignored,
+        })
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -332,7 +303,7 @@ impl View for SecretListScreen {
 
 pub struct LabelsScreen {
     secret: Secret,
-    table: TableView<LabelEntry>,
+    table: TableComponent<LabelEntry>,
 }
 
 impl LabelsScreen {
@@ -349,27 +320,27 @@ impl LabelsScreen {
         let title = format!(" {} - Labels ", secret.name);
         Self {
             secret,
-            table: TableView::new(labels).with_title(title),
+            table: TableComponent::new(labels).with_title(title),
         }
     }
 }
 
-impl View for LabelsScreen {
-    type Event = SecretManagerMsg;
+impl Screen for LabelsScreen {
+    type Msg = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
-        let result = self.table.handle_key(key);
-        if let KeyResult::Event(TableEvent::Activated(_)) = result {
-            return KeyResult::Consumed;
+    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+        let result = self.table.handle_key(key)?;
+        if let Handled::Event(TableEvent::Activated(_)) = result {
+            return Ok(Handled::Consumed);
         }
         if result.is_consumed() {
-            return KeyResult::Consumed;
+            return Ok(Handled::Consumed);
         }
 
-        match key.code {
+        Ok(match key.code {
             KeyCode::Char('r') => SecretsMsg::ViewLabels(self.secret.clone()).into(),
-            _ => KeyResult::Ignored,
-        }
+            _ => Handled::Ignored,
+        })
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -379,7 +350,7 @@ impl View for LabelsScreen {
 
 pub struct IamPolicyScreen {
     secret: Secret,
-    table: TableView<IamBinding>,
+    table: TableComponent<IamBinding>,
 }
 
 impl IamPolicyScreen {
@@ -387,24 +358,24 @@ impl IamPolicyScreen {
         let title = format!(" {} - IAM Policy ", secret.name);
         Self {
             secret,
-            table: TableView::new(policy.bindings).with_title(title),
+            table: TableComponent::new(policy.bindings).with_title(title),
         }
     }
 }
 
-impl View for IamPolicyScreen {
-    type Event = SecretManagerMsg;
+impl Screen for IamPolicyScreen {
+    type Msg = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
-        let result = self.table.handle_key(key);
+    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+        let result = self.table.handle_key(key)?;
         if result.is_consumed() {
-            return KeyResult::Consumed;
+            return Ok(Handled::Consumed);
         }
 
-        match key.code {
+        Ok(match key.code {
             KeyCode::Char('r') => SecretsMsg::ViewIamPolicy(self.secret.clone()).into(),
-            _ => KeyResult::Ignored,
-        }
+            _ => Handled::Ignored,
+        })
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -426,14 +397,14 @@ impl ReplicationScreen {
     }
 }
 
-impl View for ReplicationScreen {
-    type Event = SecretManagerMsg;
+impl Screen for ReplicationScreen {
+    type Msg = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
-        match key.code {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+        Ok(match key.code {
             KeyCode::Char('r') => SecretsMsg::ViewReplicationInfo(self.secret.clone()).into(),
-            _ => KeyResult::Ignored,
-        }
+            _ => Handled::Ignored,
+        })
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -516,37 +487,37 @@ enum CreateSecretWizardStep {
 
 pub struct CreateSecretWizard {
     step: CreateSecretWizardStep,
-    name_input: TextInputView,
-    payload_input: TextInputView,
+    name_input: TextInputComponent,
+    payload_input: TextInputComponent,
 }
 
 impl CreateSecretWizard {
     pub fn new() -> Self {
         Self {
             step: CreateSecretWizardStep::Name,
-            name_input: TextInputView::new("Secret Name").with_placeholder("my-secret"),
-            payload_input: TextInputView::new("Initial Payload (optional)"),
+            name_input: TextInputComponent::new("Secret Name").with_placeholder("my-secret"),
+            payload_input: TextInputComponent::new("Initial Payload (optional)"),
         }
     }
 }
 
-impl View for CreateSecretWizard {
-    type Event = SecretManagerMsg;
+impl Modal for CreateSecretWizard {
+    type Msg = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
-        match self.step {
-            CreateSecretWizardStep::Name => match self.name_input.handle_key(key) {
-                KeyResult::Event(TextInputEvent::Submitted(name)) if !name.is_empty() => {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+        Ok(match self.step {
+            CreateSecretWizardStep::Name => match self.name_input.handle_key(key)? {
+                Handled::Event(TextInputEvent::Submitted(name)) if !name.is_empty() => {
                     self.step = CreateSecretWizardStep::Payload;
-                    KeyResult::Consumed
+                    Handled::Consumed
                 }
-                KeyResult::Event(TextInputEvent::Cancelled) => {
+                Handled::Event(TextInputEvent::Cancelled) => {
                     SecretManagerMsg::DialogCancelled.into()
                 }
-                _ => KeyResult::Consumed,
+                _ => Handled::Consumed,
             },
-            CreateSecretWizardStep::Payload => match self.payload_input.handle_key(key) {
-                KeyResult::Event(TextInputEvent::Submitted(payload)) => {
+            CreateSecretWizardStep::Payload => match self.payload_input.handle_key(key)? {
+                Handled::Event(TextInputEvent::Submitted(payload)) => {
                     let name = self.name_input.value().to_string();
                     let payload = if payload.is_empty() {
                         None
@@ -555,12 +526,12 @@ impl View for CreateSecretWizard {
                     };
                     SecretsMsg::Create { name, payload }.into()
                 }
-                KeyResult::Event(TextInputEvent::Cancelled) => {
+                Handled::Event(TextInputEvent::Cancelled) => {
                     SecretManagerMsg::DialogCancelled.into()
                 }
-                _ => KeyResult::Consumed,
+                _ => Handled::Consumed,
             },
-        }
+        })
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -573,12 +544,12 @@ impl View for CreateSecretWizard {
 
 pub struct DeleteSecretDialog {
     secret: Secret,
-    dialog: ConfirmDialog,
+    dialog: ConfirmDialogComponent,
 }
 
 impl DeleteSecretDialog {
     pub fn new(secret: Secret) -> Self {
-        let dialog = ConfirmDialog::new(format!(
+        let dialog = ConfirmDialogComponent::new(format!(
             "Are you sure you want to delete the secret \"{}\"?",
             secret.name
         ))
@@ -591,17 +562,17 @@ impl DeleteSecretDialog {
     }
 }
 
-impl View for DeleteSecretDialog {
-    type Event = SecretManagerMsg;
+impl Modal for DeleteSecretDialog {
+    type Msg = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
-        match self.dialog.handle_key(key) {
-            KeyResult::Event(ConfirmEvent::Confirmed) => {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+        Ok(match self.dialog.handle_key(key)? {
+            Handled::Event(ConfirmEvent::Confirmed) => {
                 SecretsMsg::Delete(self.secret.clone()).into()
             }
-            KeyResult::Event(ConfirmEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
-            _ => KeyResult::Consumed,
-        }
+            Handled::Event(ConfirmEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
+            _ => Handled::Consumed,
+        })
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -759,8 +730,6 @@ pub(super) fn update(
 
 // === Helper Functions ===
 
-/// Format labels for display in the table.
-/// When a query is provided, shows the best matching label first.
 fn format_labels(labels: &HashMap<String, String>, query: &str) -> String {
     if labels.is_empty() {
         return "—".to_string();
@@ -804,7 +773,6 @@ fn format_labels(labels: &HashMap<String, String>, query: &str) -> String {
 
 // === Commands ===
 
-/// Fetch the list of secrets.
 struct FetchSecretsCmd {
     client: SecretManagerClient,
     tx: UnboundedSender<SecretManagerMsg>,
@@ -823,7 +791,6 @@ impl Command for FetchSecretsCmd {
     }
 }
 
-/// Create a new secret.
 struct CreateSecretCmd {
     client: SecretManagerClient,
     name: String,
@@ -850,7 +817,6 @@ impl Command for CreateSecretCmd {
     }
 }
 
-/// Delete a secret.
 struct DeleteSecretCmd {
     client: SecretManagerClient,
     secret: Secret,
@@ -871,7 +837,6 @@ impl Command for DeleteSecretCmd {
     }
 }
 
-/// Update secret labels.
 struct UpdateLabelsCmd {
     client: SecretManagerClient,
     secret: Secret,
@@ -895,7 +860,6 @@ impl Command for UpdateLabelsCmd {
     }
 }
 
-/// Fetch IAM policy for a secret.
 struct FetchIamPolicyCmd {
     client: SecretManagerClient,
     secret: Secret,
@@ -921,7 +885,6 @@ impl Command for FetchIamPolicyCmd {
     }
 }
 
-/// Fetch secret metadata including replication info.
 struct FetchSecretMetadataCmd {
     client: SecretManagerClient,
     secret: Secret,

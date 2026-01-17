@@ -1,4 +1,4 @@
-use crate::view::View;
+use crate::ui::Component;
 use crate::Theme;
 use ratatui::{
     layout::Rect,
@@ -11,11 +11,9 @@ use std::collections::VecDeque;
 use std::time::Instant;
 use throbber_widgets_tui::{Throbber, ThrobberState, WhichUse, BRAILLE_SIX};
 
-/// Unique identifier for a tracked command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CommandId(u64);
 
-/// A running command being tracked.
 #[derive(Debug)]
 struct RunningCommand {
     id: CommandId,
@@ -23,14 +21,12 @@ struct RunningCommand {
     started_at: Instant,
 }
 
-/// A completed command in history.
 #[derive(Debug)]
 struct CompletedCommand {
     name: &'static str,
     success: bool,
 }
 
-/// View that tracks running and recently completed commands.
 pub struct CommandStatusView {
     running: Vec<RunningCommand>,
     history: VecDeque<CompletedCommand>,
@@ -52,7 +48,6 @@ impl CommandStatusView {
         }
     }
 
-    /// Start tracking a new command, returns its ID.
     pub fn start(&mut self, name: &'static str) -> CommandId {
         let id = CommandId(self.next_id);
         self.next_id += 1;
@@ -64,7 +59,6 @@ impl CommandStatusView {
         id
     }
 
-    /// Mark a command as completed.
     pub fn complete(&mut self, id: CommandId, success: bool) {
         if let Some(pos) = self.running.iter().position(|c| c.id == id) {
             let cmd = self.running.remove(pos);
@@ -72,29 +66,24 @@ impl CommandStatusView {
                 name: cmd.name,
                 success,
             });
-            // Trim history
             while self.history.len() > self.max_history {
                 self.history.pop_back();
             }
         }
     }
 
-    /// Toggle expanded view.
     pub fn toggle_expanded(&mut self) {
         self.expanded = !self.expanded;
     }
 
-    /// Check if expanded.
     pub fn is_expanded(&self) -> bool {
         self.expanded
     }
 
-    /// Get number of running commands.
     pub fn running_count(&self) -> usize {
         self.running.len()
     }
 
-    /// Check if any commands are running.
     pub fn has_running(&self) -> bool {
         !self.running.is_empty()
     }
@@ -217,8 +206,8 @@ impl Default for CommandStatusView {
     }
 }
 
-impl View for CommandStatusView {
-    type Event = ();
+impl Component for CommandStatusView {
+    type Output = ();
 
     fn on_tick(&mut self) {
         self.throbber_state.calc_next();

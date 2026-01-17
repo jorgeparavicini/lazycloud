@@ -1,5 +1,6 @@
 use crate::model::context::{get_available_contexts, CloudContext};
-use crate::view::{KeyResult, ListEvent, ListRow, ListView, View};
+use crate::component::{ListComponent, ListEvent, ListRow};
+use crate::ui::{Component, Handled, Result};
 use crate::Theme;
 use crossterm::event::KeyEvent;
 use ratatui::{
@@ -15,16 +16,15 @@ impl ListRow for CloudContext {
     }
 }
 
-/// View for selecting a cloud context.
 pub struct ContextSelectorView {
-    context_list: ListView<CloudContext>,
+    context_list: ListComponent<CloudContext>,
 }
 
 impl ContextSelectorView {
     pub fn new() -> Self {
         let contexts = get_available_contexts();
         Self {
-            context_list: ListView::new(contexts),
+            context_list: ListComponent::new(contexts),
         }
     }
 }
@@ -35,19 +35,16 @@ impl Default for ContextSelectorView {
     }
 }
 
-impl View for ContextSelectorView {
-    type Event = CloudContext;
+impl Component for ContextSelectorView {
+    type Output = CloudContext;
 
-    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
-        let result = self.context_list.handle_key(key);
-        if let KeyResult::Event(ListEvent::Activated(context)) = result {
-            return context.into();
-        }
-        if result.is_consumed() {
-            KeyResult::Consumed
-        } else {
-            KeyResult::Ignored
-        }
+    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Output>> {
+        let result = self.context_list.handle_key(key)?;
+        Ok(match result {
+            Handled::Event(ListEvent::Activated(context)) => context.into(),
+            Handled::Consumed | Handled::Event(_) => Handled::Consumed,
+            Handled::Ignored => Handled::Ignored,
+        })
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {

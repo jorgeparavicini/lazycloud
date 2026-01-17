@@ -6,7 +6,7 @@ use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::secrets::Secret;
 use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::versions::SecretVersion;
-use crate::view::{KeyResult, View};
+use crate::ui::{Handled, Result, Screen};
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
@@ -27,18 +27,8 @@ pub struct SecretPayload {
 
 #[derive(Debug, Clone)]
 pub enum PayloadMsg {
-    /// Load payload for a secret (optionally for a specific version)
-    Load {
-        secret: Secret,
-        version: Option<SecretVersion>,
-    },
-    /// Payload loaded successfully
-    Loaded {
-        secret: Secret,
-        version: Option<SecretVersion>,
-        payload: SecretPayload,
-    },
-    /// Copy payload to clipboard
+    Load { secret: Secret, version: Option<SecretVersion> },
+    Loaded { secret: Secret, version: Option<SecretVersion>, payload: SecretPayload },
     Copy(String),
 }
 
@@ -48,9 +38,9 @@ impl From<PayloadMsg> for SecretManagerMsg {
     }
 }
 
-impl From<PayloadMsg> for KeyResult<SecretManagerMsg> {
+impl From<PayloadMsg> for Handled<SecretManagerMsg> {
     fn from(msg: PayloadMsg) -> Self {
-        KeyResult::Event(SecretManagerMsg::Payload(msg))
+        Handled::Event(SecretManagerMsg::Payload(msg))
     }
 }
 
@@ -72,19 +62,19 @@ impl PayloadScreen {
     }
 }
 
-impl View for PayloadScreen {
-    type Event = SecretManagerMsg;
+impl Screen for PayloadScreen {
+    type Msg = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
-        match key.code {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+        Ok(match key.code {
             KeyCode::Char('r') => PayloadMsg::Load {
                 secret: self.secret.clone(),
                 version: self.version.clone(),
             }
             .into(),
             KeyCode::Char('y') => PayloadMsg::Copy(self.payload.data.clone()).into(),
-            _ => KeyResult::Ignored,
-        }
+            _ => Handled::Ignored,
+        })
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -163,7 +153,6 @@ pub(super) fn update(
 
 // === Commands ===
 
-/// Fetch payload for a specific version.
 struct FetchPayloadCmd {
     client: SecretManagerClient,
     secret: Secret,
@@ -194,7 +183,6 @@ impl Command for FetchPayloadCmd {
     }
 }
 
-/// Fetch payload for the latest version.
 struct FetchLatestPayloadCmd {
     client: SecretManagerClient,
     secret: Secret,

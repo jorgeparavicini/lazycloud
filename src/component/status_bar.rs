@@ -1,5 +1,5 @@
 use crate::model::CloudContext;
-use crate::view::View;
+use crate::ui::Component;
 use crate::Theme;
 use ratatui::{
     layout::Rect,
@@ -8,7 +8,6 @@ use ratatui::{
     Frame,
 };
 
-/// Status bar view displaying context and error information.
 pub struct StatusBarView {
     active_context: Option<CloudContext>,
     error_message: Option<String>,
@@ -45,8 +44,8 @@ impl Default for StatusBarView {
     }
 }
 
-impl View for StatusBarView {
-    type Event = ();
+impl Component for StatusBarView {
+    type Output = ();
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         let context_name = match &self.active_context {

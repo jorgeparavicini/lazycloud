@@ -1,4 +1,5 @@
 use crate::Theme;
+use crate::component::SpinnerWidget;
 use crate::core::command::Command;
 use crate::core::event::Event;
 use crate::core::service::{Service, UpdateResult};
@@ -9,7 +10,7 @@ use crate::provider::gcp::secret_manager::secrets::{Secret, SecretsMsg};
 use crate::provider::gcp::secret_manager::versions::{SecretVersion, VersionsMsg};
 use crate::provider::gcp::secret_manager::{payload, secrets, versions};
 use crate::registry::ServiceProvider;
-use crate::view::{KeyResult, SpinnerView, View};
+use crate::ui::{Component, HandledResultExt, Modal, Screen};
 use async_trait::async_trait;
 use crossterm::event::KeyCode;
 use ratatui::Frame;
@@ -19,34 +20,22 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 // === Messages ===
 
-/// Messages for the Secret Manager service.
 #[derive(Debug, Clone)]
 pub enum SecretManagerMsg {
-    // === Lifecycle ===
-    /// Initialize the service client
     Initialize,
-    /// Client initialization completed
     ClientInitialized(SecretManagerClient),
 
-    // === Navigation ===
-    /// Navigate back to the previous view
     NavigateBack,
-    /// User cancelled a dialog
     DialogCancelled,
 
-    // === Feature Dispatching ===
-    /// Secret-related messages
     Secret(SecretsMsg),
-    /// Version-related messages
     Version(VersionsMsg),
-    /// Payload-related messages
     Payload(PayloadMsg),
 }
 
 
 // === Provider ===
 
-/// Provider for GCP Secret Manager.
 pub struct SecretManagerProvider;
 
 impl ServiceProvider for SecretManagerProvider {
@@ -80,24 +69,19 @@ impl ServiceProvider for SecretManagerProvider {
 
 // === Service ===
 
-/// Service for managing GCP Secret Manager secrets.
 pub struct SecretManager {
     context: GcpContext,
-    spinner: SpinnerView,
+    spinner: SpinnerWidget,
     client: Option<SecretManagerClient>,
-    /// Navigation stack - top is current view.
-    view_stack: Vec<Box<dyn View<Event = SecretManagerMsg>>>,
-    /// Loading overlay label (None = not loading).
+    screen_stack: Vec<Box<dyn Screen<Msg = SecretManagerMsg>>>,
     loading: Option<&'static str>,
-    /// Active overlay dialog.
-    overlay: Option<Box<dyn View<Event = SecretManagerMsg>>>,
+    modal: Option<Box<dyn Modal<Msg = SecretManagerMsg>>>,
     msg_tx: UnboundedSender<SecretManagerMsg>,
     msg_rx: UnboundedReceiver<SecretManagerMsg>,
-    /// Cached secrets list.
     cached_secrets: Option<Vec<Secret>>,
-    /// Cached versions by secret name.
+    /// Key: secret name
     cached_versions: HashMap<String, Vec<SecretVersion>>,
-    /// Cached payloads by "secret_name/version_id".
+    /// Key: "secret_name/version_id"
     cached_payloads: HashMap<String, SecretPayload>,
 }
 
@@ -106,11 +90,11 @@ impl SecretManager {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
         Self {
             context: ctx,
-            spinner: SpinnerView::new(),
+            spinner: SpinnerWidget::new(),
             client: None,
-            view_stack: Vec::new(),
+            screen_stack: Vec::new(),
             loading: Some("Initializing..."),
-            overlay: None,
+            modal: None,
             msg_tx,
             msg_rx,
             cached_secrets: None,
@@ -135,16 +119,16 @@ impl SecretManager {
         let _ = self.msg_tx.send(msg);
     }
 
-    // === View stack management ===
+    // === Screen stack management ===
 
-    pub(super) fn push_view<T: View<Event = SecretManagerMsg> + 'static>(&mut self, view: T) {
+    pub(super) fn push_view<T: Screen<Msg = SecretManagerMsg> + 'static>(&mut self, screen: T) {
         self.hide_loading_spinner();
-        self.view_stack.push(Box::new(view));
+        self.screen_stack.push(Box::new(screen));
     }
 
     pub(super) fn pop_view(&mut self) -> bool {
-        if self.view_stack.len() > 1 {
-            self.view_stack.pop();
+        if self.screen_stack.len() > 1 {
+            self.screen_stack.pop();
             true
         } else {
             false
@@ -152,23 +136,23 @@ impl SecretManager {
     }
 
     pub(super) fn pop_to_root(&mut self) {
-        while self.view_stack.len() > 1 {
-            self.view_stack.pop();
+        while self.screen_stack.len() > 1 {
+            self.screen_stack.pop();
         }
-        self.view_stack.clear();
+        self.screen_stack.clear();
     }
 
-    // === Overlay management ===
+    // === Modal management ===
 
-    pub(super) fn display_overlay<T: View<Event = SecretManagerMsg> + 'static>(
+    pub(super) fn display_overlay<T: Modal<Msg = SecretManagerMsg> + 'static>(
         &mut self,
-        overlay: T,
+        modal: T,
     ) {
-        self.overlay = Some(Box::new(overlay));
+        self.modal = Some(Box::new(modal));
     }
 
     pub(super) fn close_overlay(&mut self) {
-        self.overlay = None;
+        self.modal = None;
     }
 
     // === Loading spinner ===
@@ -240,8 +224,8 @@ impl SecretManager {
 
     // === Message processing ===
 
-    fn current_view_mut(&mut self) -> Option<&mut Box<dyn View<Event = SecretManagerMsg>>> {
-        self.view_stack.last_mut()
+    fn current_screen_mut(&mut self) -> Option<&mut Box<dyn Screen<Msg = SecretManagerMsg>>> {
+        self.screen_stack.last_mut()
     }
 
     fn process_message(&mut self, msg: SecretManagerMsg) -> color_eyre::Result<UpdateResult> {
@@ -305,27 +289,25 @@ impl Service for SecretManager {
             return false;
         }
 
-        // Handle overlay first if present
-        if let Some(overlay) = &mut self.overlay {
-            match overlay.handle_key(*key) {
-                KeyResult::Event(msg) => {
-                    self.queue(msg);
-                    return true;
-                }
-                KeyResult::Consumed => return true,
-                KeyResult::Ignored => {}
+        // Handle modal first if present (captures all input)
+        if let Some(modal) = &mut self.modal {
+            let (consumed, msg) = modal.handle_key(*key).process();
+            if let Some(msg) = msg {
+                self.queue(msg);
+            }
+            if consumed {
+                return true;
             }
         }
 
-        // Handle current view
-        if let Some(view) = self.current_view_mut() {
-            match view.handle_key(*key) {
-                KeyResult::Event(msg) => {
-                    self.queue(msg);
-                    return true;
-                }
-                KeyResult::Consumed => return true,
-                KeyResult::Ignored => {}
+        // Handle current screen
+        if let Some(screen) = self.current_screen_mut() {
+            let (consumed, msg) = screen.handle_key(*key).process();
+            if let Some(msg) = msg {
+                self.queue(msg);
+            }
+            if consumed {
+                return true;
             }
         }
 
@@ -362,13 +344,13 @@ impl Service for SecretManager {
         if let Some(label) = self.loading {
             self.spinner.set_label(label);
             self.spinner.render(frame, area, theme);
-        } else if let Some(view) = self.current_view_mut() {
-            view.render(frame, area, theme);
+        } else if let Some(screen) = self.current_screen_mut() {
+            screen.render(frame, area, theme);
         }
 
-        // Render overlay on top if present
-        if let Some(overlay) = &mut self.overlay {
-            overlay.render(frame, area, theme);
+        // Render modal on top if present
+        if let Some(modal) = &mut self.modal {
+            modal.render(frame, area, theme);
         }
     }
 
@@ -379,7 +361,6 @@ impl Service for SecretManager {
 
 // === Commands ===
 
-/// Initialize the Secret Manager client.
 struct InitClientCmd {
     project_id: String,
     account: String,
