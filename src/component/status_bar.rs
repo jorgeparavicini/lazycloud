@@ -1,5 +1,5 @@
 use crate::model::CloudContext;
-use crate::view::View;
+use crate::ui::Component;
 use crate::Theme;
 use ratatui::{
     layout::Rect,
@@ -8,17 +8,14 @@ use ratatui::{
     Frame,
 };
 
-/// Status bar view displaying context and error information.
 pub struct StatusBarView {
     active_context: Option<CloudContext>,
-    error_message: Option<String>,
 }
 
 impl StatusBarView {
     pub fn new() -> Self {
         Self {
             active_context: None,
-            error_message: None,
         }
     }
 
@@ -29,14 +26,6 @@ impl StatusBarView {
     pub fn clear_context(&mut self) {
         self.active_context = None;
     }
-
-    pub fn set_error(&mut self, message: String) {
-        self.error_message = Some(message);
-    }
-
-    pub fn clear_error(&mut self) {
-        self.error_message = None;
-    }
 }
 
 impl Default for StatusBarView {
@@ -45,8 +34,8 @@ impl Default for StatusBarView {
     }
 }
 
-impl View for StatusBarView {
-    type Event = ();
+impl Component for StatusBarView {
+    type Output = ();
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         let context_name = match &self.active_context {
@@ -56,17 +45,7 @@ impl View for StatusBarView {
             None => "None".to_string(),
         };
 
-        let (status_text, style) = if let Some(err) = &self.error_message {
-            (
-                format!("Error: {} | Context: {}", err, context_name),
-                Style::default().fg(theme.error()),
-            )
-        } else {
-            (
-                format!("Lazycloud | Context: {}", context_name),
-                Style::default().fg(theme.subtext0()),
-            )
-        };
+        let status_text = format!("Lazycloud | Context: {}", context_name);
 
         let block = Block::default()
             .borders(Borders::ALL)
@@ -74,7 +53,9 @@ impl View for StatusBarView {
             .border_style(Style::default().fg(theme.surface1()))
             .title(" Status ")
             .title_style(Style::default().fg(theme.blue()).add_modifier(Modifier::BOLD));
-        let paragraph = Paragraph::new(status_text).style(style).block(block);
+        let paragraph = Paragraph::new(status_text)
+            .style(Style::default().fg(theme.subtext0()))
+            .block(block);
         frame.render_widget(paragraph, area);
     }
 }

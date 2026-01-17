@@ -2,13 +2,14 @@ use crate::app::App;
 use crate::registry::ServiceRegistry;
 
 mod app;
+mod component;
 mod core;
 mod model;
 mod provider;
 mod registry;
 mod search;
 mod theme;
-mod view;
+mod ui;
 
 pub use theme::Theme;
 

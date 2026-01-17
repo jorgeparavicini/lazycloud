@@ -1,4 +1,4 @@
-use crate::view::View;
+use crate::ui::Component;
 use crate::Theme;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::Style;
@@ -6,13 +6,12 @@ use ratatui::Frame;
 use throbber_widgets_tui::WhichUse::Spin;
 use throbber_widgets_tui::{Throbber, ThrobberState, BRAILLE_SIX};
 
-/// A spinner/loading indicator view.
-pub struct SpinnerView {
+pub struct SpinnerWidget {
     throbber_state: ThrobberState,
     label: Option<&'static str>,
 }
 
-impl SpinnerView {
+impl SpinnerWidget {
     pub fn new() -> Self {
         Self {
             throbber_state: ThrobberState::default(),
@@ -25,14 +24,14 @@ impl SpinnerView {
     }
 }
 
-impl Default for SpinnerView {
+impl Default for SpinnerWidget {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl View for SpinnerView {
-    type Event = ();
+impl Component for SpinnerWidget {
+    type Output = ();
 
     fn on_tick(&mut self) {
         self.throbber_state.calc_next();

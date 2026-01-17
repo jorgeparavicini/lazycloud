@@ -1,4 +1,4 @@
-use crate::view::{KeyResult, View};
+use crate::ui::{Component, Handled, Result};
 use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -6,17 +6,12 @@ use ratatui::prelude::{Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Borders, Cell, Paragraph, Row, Table, TableState};
 use ratatui::Frame;
 
-/// Event emitted by [`TableView`].
 pub enum TableEvent<T> {
-    /// Selection changed to a new item.
     Changed(T),
-    /// Item was activated (Enter pressed).
     Activated(T),
-    /// Search query changed (for server-side filtering).
     SearchChanged(String),
 }
 
-/// Column definition for a table.
 pub struct ColumnDef {
     pub header: &'static str,
     pub constraint: Constraint,
@@ -28,28 +23,21 @@ impl ColumnDef {
     }
 }
 
-/// Trait for items that can be displayed in a table.
 pub trait TableRow {
-    /// Column definitions for this row type.
     fn columns() -> &'static [ColumnDef];
-
-    /// Render this row's cells with full styling control.
     fn render_cells(&self, theme: &Theme) -> Vec<Cell<'static>>;
 
-    /// Render cells with the current search query for context-aware display.
-    /// Default implementation ignores the query and calls render_cells.
+    /// Override to render cells differently based on the current search query.
     fn render_cells_with_query(&self, theme: &Theme, query: &str) -> Vec<Cell<'static>> {
         _ = query;
         self.render_cells(theme)
     }
 
-    /// Check if this row matches the search query (case-insensitive).
-    /// Used for local filtering. Return true if the row should be shown.
+    /// Return true if this row matches the search query for local filtering.
     fn matches(&self, query: &str) -> bool;
 }
 
-/// A selectable table view with keyboard navigation and search.
-pub struct TableView<T: TableRow + Clone> {
+pub struct TableComponent<T: TableRow + Clone> {
     items: Vec<T>,
     filtered_indices: Vec<usize>,
     state: TableState,
@@ -58,7 +46,7 @@ pub struct TableView<T: TableRow + Clone> {
     query: String,
 }
 
-impl<T: TableRow + Clone> TableView<T> {
+impl<T: TableRow + Clone> TableComponent<T> {
     pub fn new(items: Vec<T>) -> Self {
         let filtered_indices: Vec<usize> = (0..items.len()).collect();
         let mut state = TableState::default();
@@ -146,7 +134,7 @@ impl<T: TableRow + Clone> TableView<T> {
         }
     }
 
-    fn get_change_event(&self, before: Option<usize>) -> KeyResult<TableEvent<T>> {
+    fn get_change_event(&self, before: Option<usize>) -> Handled<TableEvent<T>> {
         if let Some(selected) = self.state.selected() {
             if Some(selected) != before {
                 if let Some(&idx) = self.filtered_indices.get(selected) {
@@ -154,11 +142,11 @@ impl<T: TableRow + Clone> TableView<T> {
                 }
             }
         }
-        KeyResult::Consumed
+        Handled::Consumed
     }
 
-    fn handle_search_key(&mut self, key: KeyEvent) -> KeyResult<TableEvent<T>> {
-        match key.code {
+    fn handle_search_key(&mut self, key: KeyEvent) -> Result<Handled<TableEvent<T>>> {
+        Ok(match key.code {
             KeyCode::Esc => {
                 // Exit search mode and clear filter
                 self.searching = false;
@@ -168,13 +156,13 @@ impl<T: TableRow + Clone> TableView<T> {
                 if had_query {
                     TableEvent::SearchChanged(String::new()).into()
                 } else {
-                    KeyResult::Consumed
+                    Handled::Consumed
                 }
             }
             KeyCode::Enter => {
                 // Exit search mode but keep filter
                 self.searching = false;
-                KeyResult::Consumed
+                Handled::Consumed
             }
             KeyCode::Backspace => {
                 self.query.pop();
@@ -187,14 +175,14 @@ impl<T: TableRow + Clone> TableView<T> {
                 TableEvent::SearchChanged(self.query.clone()).into()
             }
             // Consume all other keys in search mode
-            _ => KeyResult::Consumed,
-        }
+            _ => Handled::Consumed,
+        })
     }
 
-    fn handle_navigation_key(&mut self, key: KeyEvent) -> KeyResult<TableEvent<T>> {
+    fn handle_navigation_key(&mut self, key: KeyEvent) -> Result<Handled<TableEvent<T>>> {
         let before = self.state.selected();
 
-        match key.code {
+        Ok(match key.code {
             KeyCode::Down | KeyCode::Char('j') => {
                 self.select_next();
                 self.get_change_event(before)
@@ -240,30 +228,30 @@ impl<T: TableRow + Clone> TableView<T> {
                     self.filtered_indices
                         .get(selected)
                         .map(|&idx| TableEvent::Activated(self.items[idx].clone()).into())
-                        .unwrap_or(KeyResult::Ignored)
+                        .unwrap_or(Handled::Ignored)
                 } else {
-                    KeyResult::Ignored
+                    Handled::Ignored
                 }
             }
             KeyCode::Char('/') => {
                 self.searching = true;
-                KeyResult::Consumed
+                Handled::Consumed
             }
             KeyCode::Esc if !self.query.is_empty() => {
                 // Clear filter when not searching
                 self.query.clear();
                 self.update_filter();
-                KeyResult::Consumed
+                Handled::Consumed
             }
-            _ => KeyResult::Ignored,
-        }
+            _ => Handled::Ignored,
+        })
     }
 }
 
-impl<T: TableRow + Clone> View for TableView<T> {
-    type Event = TableEvent<T>;
+impl<T: TableRow + Clone> Component for TableComponent<T> {
+    type Output = TableEvent<T>;
 
-    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Output>> {
         if self.searching {
             self.handle_search_key(key)
         } else {

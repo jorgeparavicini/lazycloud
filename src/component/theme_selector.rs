@@ -1,5 +1,6 @@
 use crate::theme::{available_themes, ThemeInfo};
-use crate::view::{KeyResult, ListEvent, ListRow, ListView, View};
+use crate::component::{ListComponent, ListEvent, ListRow};
+use crate::ui::{Component, Handled, Result};
 use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -15,24 +16,20 @@ impl ListRow for ThemeInfo {
     }
 }
 
-/// Event emitted by [`ThemeSelectorView`].
 pub enum ThemeEvent {
-    /// User cancelled selection.
     Cancelled,
-    /// User selected a theme.
     Selected(Theme),
 }
 
-/// View for selecting the application theme.
 pub struct ThemeSelectorView {
-    list: ListView<ThemeInfo>,
+    list: ListComponent<ThemeInfo>,
 }
 
 impl ThemeSelectorView {
     pub fn new() -> Self {
         let themes = available_themes();
         Self {
-            list: ListView::new(themes),
+            list: ListComponent::new(themes),
         }
     }
 }
@@ -43,27 +40,22 @@ impl Default for ThemeSelectorView {
     }
 }
 
-impl View for ThemeSelectorView {
-    type Event = ThemeEvent;
+impl Component for ThemeSelectorView {
+    type Output = ThemeEvent;
 
-    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Output>> {
         // Handle escape/toggle to close
         if matches!(key.code, KeyCode::Esc | KeyCode::Char('t')) {
-            return ThemeEvent::Cancelled.into();
+            return Ok(ThemeEvent::Cancelled.into());
         }
 
         // Delegate to list
-        let result = self.list.handle_key(key);
-        if let KeyResult::Event(ListEvent::Activated(info)) = result {
-            return ThemeEvent::Selected(info.theme).into();
-        }
-
-        // Propagate consumed state from list
-        if result.is_consumed() {
-            KeyResult::Consumed
-        } else {
-            KeyResult::Ignored
-        }
+        let result = self.list.handle_key(key)?;
+        Ok(match result {
+            Handled::Event(ListEvent::Activated(info)) => ThemeEvent::Selected(info.theme).into(),
+            Handled::Consumed | Handled::Event(_) => Handled::Consumed,
+            Handled::Ignored => Handled::Ignored,
+        })
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {

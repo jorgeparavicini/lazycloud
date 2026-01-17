@@ -1,4 +1,4 @@
-use crate::view::{KeyResult, View};
+use crate::ui::{Component, Handled, Result};
 use crate::Theme;
 use crossterm::event::KeyEvent;
 use ratatui::layout::Rect;
@@ -6,27 +6,21 @@ use ratatui::prelude::{Modifier, Style};
 use ratatui::widgets::{List, ListItem, ListState};
 use ratatui::Frame;
 
-/// Event emitted by [`ListView`].
 pub enum ListEvent<T> {
-    /// Selection changed to a new item.
     Changed(T),
-    /// Item was activated (Enter pressed).
     Activated(T),
 }
 
-/// Trait for items that can be displayed in a list.
 pub trait ListRow {
-    /// Render this item as a list item with full styling control.
     fn render_row(&self, theme: &Theme) -> ListItem<'static>;
 }
 
-/// A selectable list view with keyboard navigation.
-pub struct ListView<T: ListRow + Clone> {
+pub struct ListComponent<T: ListRow + Clone> {
     items: Vec<T>,
     state: ListState,
 }
 
-impl<T: ListRow + Clone> ListView<T> {
+impl<T: ListRow + Clone> ListComponent<T> {
     pub fn new(items: Vec<T>) -> Self {
         let mut state = ListState::default();
         if !items.is_empty() {
@@ -53,25 +47,25 @@ impl<T: ListRow + Clone> ListView<T> {
         }
     }
 
-    fn get_change_event(&self, before: Option<usize>) -> KeyResult<ListEvent<T>> {
+    fn get_change_event(&self, before: Option<usize>) -> Handled<ListEvent<T>> {
         if let Some(selected) = self.state.selected() {
             if Some(selected) != before {
                 return ListEvent::Changed(self.items[selected].clone()).into();
             }
         }
-        KeyResult::Consumed
+        Handled::Consumed
     }
 }
 
-impl<T: ListRow + Clone> View for ListView<T> {
-    type Event = ListEvent<T>;
+impl<T: ListRow + Clone> Component for ListComponent<T> {
+    type Output = ListEvent<T>;
 
-    fn handle_key(&mut self, key: KeyEvent) -> KeyResult<Self::Event> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Output>> {
         use crossterm::event::KeyCode::*;
 
         let before = self.state.selected();
 
-        match key.code {
+        Ok(match key.code {
             Down | Char('j') => {
                 self.state.select_next();
                 self.get_change_event(before)
@@ -110,11 +104,11 @@ impl<T: ListRow + Clone> View for ListView<T> {
                 if let Some(selected) = self.state.selected() {
                     ListEvent::Activated(self.items[selected].clone()).into()
                 } else {
-                    KeyResult::Ignored
+                    Handled::Ignored
                 }
             }
-            _ => KeyResult::Ignored,
-        }
+            _ => Handled::Ignored,
+        })
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {

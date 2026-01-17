@@ -1,3 +1,7 @@
+use crate::component::{
+    CommandStatusView, ContextSelectorView, ErrorDialog, ErrorDialogEvent, HelpEvent, HelpView,
+    Keybinding, ServiceSelectorView, StatusBarView, ThemeEvent, ThemeSelectorView,
+};
 use crate::core::command::Command;
 use crate::core::event::Event;
 use crate::core::message::AppMessage;
@@ -5,10 +9,7 @@ use crate::core::service::{Service, UpdateResult};
 use crate::core::tui::Tui;
 use crate::model::CloudContext;
 use crate::registry::ServiceRegistry;
-use crate::view::{
-    CommandStatusView, ContextSelectorView, HelpEvent, HelpView, Keybinding, KeyResult,
-    ServiceSelectorView, StatusBarView, ThemeEvent, ThemeSelectorView, View,
-};
+use crate::ui::{Component, Handled};
 use crate::Theme;
 use crossterm::event::KeyCode;
 use log::debug;
@@ -43,10 +44,10 @@ enum AppState {
     ActiveService(Box<dyn Service>),
 }
 
-/// Active popup overlay - only one can be open at a time.
 enum ActivePopup {
     Help(HelpView),
     ThemeSelector(ThemeSelectorView),
+    Error(ErrorDialog),
 }
 
 pub struct App {
@@ -199,19 +200,26 @@ impl App {
             if let Event::Key(key) = event {
                 match popup {
                     ActivePopup::Help(help) => {
-                        if let KeyResult::Event(HelpEvent::Close) = help.handle_key(*key) {
+                        if let Ok(Handled::Event(HelpEvent::Close)) = help.handle_key(*key) {
                             self.msg_tx.send(AppMessage::ClosePopup)?;
                         }
                     }
                     ActivePopup::ThemeSelector(selector) => {
                         match selector.handle_key(*key) {
-                            KeyResult::Event(ThemeEvent::Selected(theme)) => {
+                            Ok(Handled::Event(ThemeEvent::Selected(theme))) => {
                                 self.msg_tx.send(AppMessage::SelectTheme(theme))?;
                             }
-                            KeyResult::Event(ThemeEvent::Cancelled) => {
+                            Ok(Handled::Event(ThemeEvent::Cancelled)) => {
                                 self.msg_tx.send(AppMessage::ClosePopup)?;
                             }
                             _ => {}
+                        }
+                    }
+                    ActivePopup::Error(dialog) => {
+                        if let Ok(Handled::Event(ErrorDialogEvent::Dismissed)) =
+                            dialog.handle_key(*key)
+                        {
+                            self.msg_tx.send(AppMessage::ClosePopup)?;
                         }
                     }
                 }
@@ -232,24 +240,28 @@ impl App {
         let handled = match &mut self.state {
             AppState::SelectingContext(selector) => {
                 if let Event::Key(key) = event {
-                    let result = selector.handle_key(*key);
-                    if let KeyResult::Event(context) = result {
-                        self.msg_tx.send(AppMessage::SelectContext(context))?;
-                        return Ok(());
+                    match selector.handle_key(*key) {
+                        Ok(Handled::Event(context)) => {
+                            self.msg_tx.send(AppMessage::SelectContext(context))?;
+                            return Ok(());
+                        }
+                        Ok(Handled::Consumed) => true,
+                        Ok(Handled::Ignored) | Err(_) => false,
                     }
-                    result.is_consumed()
                 } else {
                     false
                 }
             }
             AppState::SelectingService(selector) => {
                 if let Event::Key(key) = event {
-                    let result = selector.handle_key(*key);
-                    if let KeyResult::Event(service_id) = result {
-                        self.msg_tx.send(AppMessage::SelectService(service_id))?;
-                        return Ok(());
+                    match selector.handle_key(*key) {
+                        Ok(Handled::Event(service_id)) => {
+                            self.msg_tx.send(AppMessage::SelectService(service_id))?;
+                            return Ok(());
+                        }
+                        Ok(Handled::Consumed) => true,
+                        Ok(Handled::Ignored) | Err(_) => false,
                     }
-                    result.is_consumed()
                 } else {
                     false
                 }
@@ -309,8 +321,8 @@ impl App {
             }
             AppMessage::Render => self.render(tui)?,
             AppMessage::DisplayError(err) => {
-                self.status_bar.set_error(err.clone());
                 log::error!("Error: {}", err);
+                self.popup = Some(ActivePopup::Error(ErrorDialog::new(err)));
             }
             AppMessage::DisplayHelp => {
                 self.popup = Some(ActivePopup::Help(HelpView::new(GLOBAL_KEYBINDINGS)));
@@ -412,6 +424,9 @@ impl App {
                     }
                     ActivePopup::ThemeSelector(selector) => {
                         selector.render(frame, frame.area(), &self.theme);
+                    }
+                    ActivePopup::Error(dialog) => {
+                        dialog.render(frame, frame.area(), &self.theme);
                     }
                 }
             }

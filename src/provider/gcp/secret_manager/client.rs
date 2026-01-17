@@ -1,7 +1,7 @@
 use crate::provider::gcp::context::load_credentials_json;
-use crate::provider::gcp::secret_manager::model::{
-    IamBinding, IamPolicy, ReplicationConfig, Secret, SecretPayload, SecretVersion,
-};
+use crate::provider::gcp::secret_manager::payload::SecretPayload;
+use crate::provider::gcp::secret_manager::secrets::{IamBinding, IamPolicy, ReplicationConfig, Secret};
+use crate::provider::gcp::secret_manager::versions::SecretVersion;
 use chrono::{DateTime, Utc};
 use google_cloud_auth::credentials::user_account;
 use google_cloud_secretmanager_v1::client::SecretManagerService as GcpSecretManagerClient;

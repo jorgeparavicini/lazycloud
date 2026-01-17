@@ -15,7 +15,7 @@ use crate::Theme;
 use ratatui::layout::Rect;
 use ratatui::Frame;
 
-/// Result from `update()` - the ONLY way for a service to affect the application.
+/// Result from `update()`
 pub enum UpdateResult {
     /// No action needed
     Idle,
@@ -23,8 +23,7 @@ pub enum UpdateResult {
     Commands(Vec<Box<dyn Command>>),
     /// Close this service (go back to service selection)
     Close,
-    // TODO: Should we use a variant or return a result instead?
-    /// Display an error message to the user
+    /// Report an error
     Error(String),
 }
 
