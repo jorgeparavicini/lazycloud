@@ -23,6 +23,8 @@ pub enum UpdateResult {
     Commands(Vec<Box<dyn Command>>),
     /// Close this service (go back to service selection)
     Close,
+    /// Report an error
+    Error(String),
 }
 
 impl<T: Command> From<T> for UpdateResult {

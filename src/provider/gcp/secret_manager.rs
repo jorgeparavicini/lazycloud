@@ -1,9 +1,7 @@
 mod client;
-mod command;
-mod service;
-mod secrets;
-mod versions;
 mod payload;
+mod secrets;
+mod service;
+mod versions;
 
-pub use service::SecretManagerProvider;
-pub use service::SecretManager;
+pub use service::{SecretManager, SecretManagerProvider};
