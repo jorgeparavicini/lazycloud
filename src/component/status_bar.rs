@@ -10,14 +10,12 @@ use ratatui::{
 
 pub struct StatusBarView {
     active_context: Option<CloudContext>,
-    error_message: Option<String>,
 }
 
 impl StatusBarView {
     pub fn new() -> Self {
         Self {
             active_context: None,
-            error_message: None,
         }
     }
 
@@ -27,14 +25,6 @@ impl StatusBarView {
 
     pub fn clear_context(&mut self) {
         self.active_context = None;
-    }
-
-    pub fn set_error(&mut self, message: String) {
-        self.error_message = Some(message);
-    }
-
-    pub fn clear_error(&mut self) {
-        self.error_message = None;
     }
 }
 
@@ -55,17 +45,7 @@ impl Component for StatusBarView {
             None => "None".to_string(),
         };
 
-        let (status_text, style) = if let Some(err) = &self.error_message {
-            (
-                format!("Error: {} | Context: {}", err, context_name),
-                Style::default().fg(theme.error()),
-            )
-        } else {
-            (
-                format!("Lazycloud | Context: {}", context_name),
-                Style::default().fg(theme.subtext0()),
-            )
-        };
+        let status_text = format!("Lazycloud | Context: {}", context_name);
 
         let block = Block::default()
             .borders(Borders::ALL)
@@ -73,7 +53,9 @@ impl Component for StatusBarView {
             .border_style(Style::default().fg(theme.surface1()))
             .title(" Status ")
             .title_style(Style::default().fg(theme.blue()).add_modifier(Modifier::BOLD));
-        let paragraph = Paragraph::new(status_text).style(style).block(block);
+        let paragraph = Paragraph::new(status_text)
+            .style(Style::default().fg(theme.subtext0()))
+            .block(block);
         frame.render_widget(paragraph, area);
     }
 }

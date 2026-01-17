@@ -6,6 +6,7 @@
 mod command_status;
 mod confirm_dialog;
 mod context_selector;
+mod error_dialog;
 mod help;
 mod list;
 mod service_selector;
@@ -17,6 +18,7 @@ mod theme_selector;
 
 pub use command_status::{CommandId, CommandStatusView};
 pub use confirm_dialog::{ConfirmDialogComponent, ConfirmEvent, ConfirmStyle};
+pub use error_dialog::{ErrorDialog, ErrorDialogEvent};
 pub use context_selector::ContextSelectorView;
 pub use help::{HelpEvent, HelpView, Keybinding};
 pub use list::{ListComponent, ListEvent, ListRow};

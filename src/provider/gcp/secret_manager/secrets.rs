@@ -20,6 +20,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Cell, Paragraph};
 use std::collections::HashMap;
 use std::fmt::Display;
+use color_eyre::eyre::eyre;
 use tokio::sync::mpsc::UnboundedSender;
 
 // === Models ===

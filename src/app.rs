@@ -1,6 +1,6 @@
 use crate::component::{
-    CommandStatusView, ContextSelectorView, HelpEvent, HelpView, Keybinding,
-    ServiceSelectorView, StatusBarView, ThemeEvent, ThemeSelectorView,
+    CommandStatusView, ContextSelectorView, ErrorDialog, ErrorDialogEvent, HelpEvent, HelpView,
+    Keybinding, ServiceSelectorView, StatusBarView, ThemeEvent, ThemeSelectorView,
 };
 use crate::core::command::Command;
 use crate::core::event::Event;
@@ -44,10 +44,10 @@ enum AppState {
     ActiveService(Box<dyn Service>),
 }
 
-/// Active popup overlay - only one can be open at a time.
 enum ActivePopup {
     Help(HelpView),
     ThemeSelector(ThemeSelectorView),
+    Error(ErrorDialog),
 }
 
 pub struct App {
@@ -215,6 +215,13 @@ impl App {
                             _ => {}
                         }
                     }
+                    ActivePopup::Error(dialog) => {
+                        if let Ok(Handled::Event(ErrorDialogEvent::Dismissed)) =
+                            dialog.handle_key(*key)
+                        {
+                            self.msg_tx.send(AppMessage::ClosePopup)?;
+                        }
+                    }
                 }
                 return Ok(());
             }
@@ -314,8 +321,8 @@ impl App {
             }
             AppMessage::Render => self.render(tui)?,
             AppMessage::DisplayError(err) => {
-                self.status_bar.set_error(err.clone());
                 log::error!("Error: {}", err);
+                self.popup = Some(ActivePopup::Error(ErrorDialog::new(err)));
             }
             AppMessage::DisplayHelp => {
                 self.popup = Some(ActivePopup::Help(HelpView::new(GLOBAL_KEYBINDINGS)));
@@ -417,6 +424,9 @@ impl App {
                     }
                     ActivePopup::ThemeSelector(selector) => {
                         selector.render(frame, frame.area(), &self.theme);
+                    }
+                    ActivePopup::Error(dialog) => {
+                        dialog.render(frame, frame.area(), &self.theme);
                     }
                 }
             }
