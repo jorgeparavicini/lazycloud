@@ -1,6 +1,6 @@
 use crate::Theme;
 use crate::component::{
-    ColumnDef, ConfirmDialogComponent, ConfirmEvent, TableComponent, TableEvent, TableRow,
+    ColumnDef, ConfirmDialogComponent, ConfirmEvent, Keybinding, TableComponent, TableEvent, TableRow,
     TextInputComponent, TextInputEvent,
 };
 use crate::core::{Command, UpdateResult};
@@ -97,6 +97,16 @@ impl From<VersionsMsg> for Handled<SecretManagerMsg> {
 
 // === Screens ===
 
+const VERSION_LIST_KEYBINDINGS: &[Keybinding] = &[
+    Keybinding::hint("Enter", "Payload"),
+    Keybinding::hint("a", "Add version"),
+    Keybinding::hint("/", "Search"),
+    Keybinding::new("d", "Disable"),
+    Keybinding::new("e", "Enable"),
+    Keybinding::new("D", "Destroy"),
+    Keybinding::new("r", "Reload"),
+];
+
 pub struct VersionListScreen {
     secret: Secret,
     table: TableComponent<SecretVersion>,
@@ -169,6 +179,10 @@ impl Screen for VersionListScreen {
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         self.table.render(frame, area, theme);
+    }
+
+    fn keybindings(&self) -> &'static [Keybinding] {
+        VERSION_LIST_KEYBINDINGS
     }
 }
 

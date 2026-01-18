@@ -1,5 +1,6 @@
 //! Screen trait for full-page views.
 
+use crate::component::Keybinding;
 use crate::ui::{Handled, Result};
 use crate::Theme;
 use crossterm::event::KeyEvent;
@@ -45,5 +46,10 @@ pub trait Screen {
     /// For example: `["Secrets", "my-secret", "Versions"]`
     fn breadcrumbs(&self) -> Vec<String> {
         vec![]
+    }
+
+    /// Returns the keybindings for this screen.
+    fn keybindings(&self) -> &'static [Keybinding] {
+        &[]
     }
 }

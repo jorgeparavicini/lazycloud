@@ -1,8 +1,9 @@
 use crate::Theme;
 use crate::component::{
-    ColumnDef, ConfirmDialogComponent, ConfirmEvent, TableComponent, TableEvent, TableRow,
+    ColumnDef, ConfirmDialogComponent, ConfirmEvent, Keybinding, TableComponent, TableEvent, TableRow,
     TextInputComponent, TextInputEvent,
 };
+use crate::core::command::CopyToClipboardCmd;
 use crate::core::{Command, UpdateResult};
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
@@ -229,6 +230,9 @@ pub enum SecretsMsg {
 
     ViewVersions(Secret),
     ViewPayload(Secret),
+
+    CopyPayload(Secret),
+    PayloadCopied(String),
 }
 
 impl From<SecretsMsg> for SecretManagerMsg {
@@ -244,6 +248,33 @@ impl From<SecretsMsg> for Handled<SecretManagerMsg> {
 }
 
 // === Screens ===
+
+const SECRET_LIST_KEYBINDINGS: &[Keybinding] = &[
+    Keybinding::hint("Enter", "Payload"),
+    Keybinding::hint("y", "Copy"),
+    Keybinding::hint("v", "Versions"),
+    Keybinding::hint("n", "New"),
+    Keybinding::hint("d", "Delete"),
+    Keybinding::hint("/", "Search"),
+    Keybinding::new("l", "Labels"),
+    Keybinding::new("i", "IAM"),
+    Keybinding::new("R", "Replication"),
+    Keybinding::new("r", "Reload"),
+];
+
+const LABELS_KEYBINDINGS: &[Keybinding] = &[
+    Keybinding::hint("/", "Search"),
+    Keybinding::new("r", "Reload"),
+];
+
+const IAM_POLICY_KEYBINDINGS: &[Keybinding] = &[
+    Keybinding::hint("/", "Search"),
+    Keybinding::new("r", "Reload"),
+];
+
+const REPLICATION_KEYBINDINGS: &[Keybinding] = &[
+    Keybinding::new("r", "Reload"),
+];
 
 pub struct SecretListScreen {
     table: TableComponent<Secret>,
@@ -273,6 +304,10 @@ impl Screen for SecretListScreen {
         Ok(match key.code {
             KeyCode::Char('r') => Handled::Event(SecretsMsg::Load.into()),
             KeyCode::Char('n') | KeyCode::Char('c') => SecretsMsg::StartCreation.into(),
+            KeyCode::Char('y') => match self.table.selected_item() {
+                None => Handled::Ignored,
+                Some(secret) => SecretsMsg::CopyPayload(secret.clone()).into(),
+            },
             KeyCode::Char('d') | KeyCode::Delete => match self.table.selected_item() {
                 None => Handled::Ignored,
                 Some(secret) => SecretsMsg::ConfirmDelete(secret.clone()).into(),
@@ -299,6 +334,10 @@ impl Screen for SecretListScreen {
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         self.table.render(frame, area, theme);
+    }
+
+    fn keybindings(&self) -> &'static [Keybinding] {
+        SECRET_LIST_KEYBINDINGS
     }
 }
 
@@ -347,6 +386,10 @@ impl Screen for LabelsScreen {
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         self.table.render(frame, area, theme);
     }
+
+    fn keybindings(&self) -> &'static [Keybinding] {
+        LABELS_KEYBINDINGS
+    }
 }
 
 pub struct IamPolicyScreen {
@@ -381,6 +424,10 @@ impl Screen for IamPolicyScreen {
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         self.table.render(frame, area, theme);
+    }
+
+    fn keybindings(&self) -> &'static [Keybinding] {
+        IAM_POLICY_KEYBINDINGS
     }
 }
 
@@ -476,6 +523,10 @@ impl Screen for ReplicationScreen {
         let paragraph = Paragraph::new(lines).block(block);
 
         frame.render_widget(paragraph, area);
+    }
+
+    fn keybindings(&self) -> &'static [Keybinding] {
+        REPLICATION_KEYBINDINGS
     }
 }
 
@@ -726,6 +777,22 @@ pub(super) fn update(
             state.push_view(ReplicationScreen::new(secret, replication));
             Ok(UpdateResult::Idle)
         }
+
+        SecretsMsg::CopyPayload(secret) => {
+            state.display_loading_spinner("Copying payload...");
+
+            Ok(FetchAndCopyPayloadCmd {
+                secret,
+                client: state.get_client()?,
+                tx: state.get_msg_sender(),
+            }
+            .into())
+        }
+
+        SecretsMsg::PayloadCopied(data) => {
+            state.hide_loading_spinner();
+            Ok(CopyToClipboardCmd::new(data).into())
+        }
     }
 }
 
@@ -908,6 +975,25 @@ impl Command for FetchSecretMetadataCmd {
             }
             .into(),
         )?;
+        Ok(())
+    }
+}
+
+struct FetchAndCopyPayloadCmd {
+    client: SecretManagerClient,
+    secret: Secret,
+    tx: UnboundedSender<SecretManagerMsg>,
+}
+
+#[async_trait]
+impl Command for FetchAndCopyPayloadCmd {
+    fn name(&self) -> &'static str {
+        "Fetching payload"
+    }
+
+    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+        let payload = self.client.access_latest_version(&self.secret.name).await?;
+        self.tx.send(SecretsMsg::PayloadCopied(payload.data).into())?;
         Ok(())
     }
 }

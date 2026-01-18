@@ -1,4 +1,5 @@
 use crate::Theme;
+use crate::component::Keybinding;
 use crate::core::command::CopyToClipboardCmd;
 use crate::core::{Command, UpdateResult};
 use crate::provider::gcp::secret_manager::SecretManager;
@@ -45,6 +46,11 @@ impl From<PayloadMsg> for Handled<SecretManagerMsg> {
 }
 
 // === Screens ===
+
+const PAYLOAD_KEYBINDINGS: &[Keybinding] = &[
+    Keybinding::hint("y", "Copy"),
+    Keybinding::new("r", "Reload"),
+];
 
 pub struct PayloadScreen {
     secret: Secret,
@@ -100,6 +106,10 @@ impl Screen for PayloadScreen {
             );
 
         frame.render_widget(p, area);
+    }
+
+    fn keybindings(&self) -> &'static [Keybinding] {
+        PAYLOAD_KEYBINDINGS
     }
 }
 

@@ -9,6 +9,7 @@
 //! Only `update()` can return commands, close the service, or report errors.
 //! This ensures all side effects flow through one place.
 
+use crate::component::Keybinding;
 use crate::core::command::Command;
 use crate::core::event::Event;
 use crate::Theme;
@@ -86,4 +87,9 @@ pub trait Service {
 
     /// Breadcrumb segments for the navigation bar.
     fn breadcrumbs(&self) -> Vec<String>;
+
+    /// Returns the keybindings for the current view in this service.
+    fn keybindings(&self) -> &'static [Keybinding] {
+        &[]
+    }
 }

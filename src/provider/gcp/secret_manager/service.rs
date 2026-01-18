@@ -1,5 +1,5 @@
 use crate::Theme;
-use crate::component::SpinnerWidget;
+use crate::component::{Keybinding, SpinnerWidget};
 use crate::core::command::Command;
 use crate::core::event::Event;
 use crate::core::service::{Service, UpdateResult};
@@ -224,6 +224,10 @@ impl SecretManager {
 
     // === Message processing ===
 
+    fn current_screen(&self) -> Option<&Box<dyn Screen<Msg = SecretManagerMsg>>> {
+        self.screen_stack.last()
+    }
+
     fn current_screen_mut(&mut self) -> Option<&mut Box<dyn Screen<Msg = SecretManagerMsg>>> {
         self.screen_stack.last_mut()
     }
@@ -355,7 +359,17 @@ impl Service for SecretManager {
     }
 
     fn breadcrumbs(&self) -> Vec<String> {
-        vec!["Secret Manager".to_string()]
+        let mut bc = vec!["Secret Manager".to_string()];
+        for screen in &self.screen_stack {
+            bc.extend(screen.breadcrumbs());
+        }
+        bc
+    }
+
+    fn keybindings(&self) -> &'static [Keybinding] {
+        self.current_screen()
+            .map(|s| s.keybindings())
+            .unwrap_or(&[])
     }
 }
 

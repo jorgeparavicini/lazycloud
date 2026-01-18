@@ -1,6 +1,6 @@
 use crate::component::{
     CommandStatusView, ContextSelectorView, ErrorDialog, ErrorDialogEvent, HelpEvent, HelpView,
-    Keybinding, ServiceSelectorView, StatusBarView, ThemeEvent, ThemeSelectorView,
+    KeybindingSection, ServiceSelectorView, StatusBarView, ThemeEvent, ThemeSelectorView,
 };
 use crate::core::command::Command;
 use crate::core::event::Event;
@@ -19,20 +19,6 @@ use ratatui::widgets::{Block, Paragraph};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-
-/// Global keybindings shown in the help overlay.
-const GLOBAL_KEYBINDINGS: &[Keybinding] = &[
-    Keybinding::new("?", "Toggle help"),
-    Keybinding::new("t", "Select theme"),
-    Keybinding::new("q / Ctrl+C", "Quit application"),
-    Keybinding::new("Esc", "Go back / Close"),
-    Keybinding::new("Enter", "Select item"),
-    Keybinding::new("j / Down", "Move down"),
-    Keybinding::new("k / Up", "Move up"),
-    Keybinding::new("r", "Reload current view"),
-    Keybinding::new("y", "Copy to clipboard"),
-    Keybinding::new("c", "Toggle command status"),
-];
 
 /// Application state - what the user is currently doing.
 enum AppState {
@@ -325,7 +311,22 @@ impl App {
                 self.popup = Some(ActivePopup::Error(ErrorDialog::new(err)));
             }
             AppMessage::DisplayHelp => {
-                self.popup = Some(ActivePopup::Help(HelpView::new(GLOBAL_KEYBINDINGS)));
+                let local = match &self.state {
+                    AppState::ActiveService(service) => service.keybindings(),
+                    _ => &[],
+                };
+                let local_title = match &self.state {
+                    AppState::ActiveService(service) => service
+                        .breadcrumbs()
+                        .last()
+                        .cloned()
+                        .unwrap_or_else(|| "Current View".to_string()),
+                    _ => "Navigation".to_string(),
+                };
+                self.popup = Some(ActivePopup::Help(HelpView::with_sections(vec![
+                    KeybindingSection::new(&local_title, local),
+                    KeybindingSection::new("Global", StatusBarView::global_keybindings()),
+                ])));
             }
             AppMessage::DisplayThemeSelector => {
                 self.popup = Some(ActivePopup::ThemeSelector(ThemeSelectorView::new()));
@@ -378,17 +379,24 @@ impl App {
                 frame.area(),
             );
 
+            // Get keybindings for status bar
+            let local_keybindings = match &self.state {
+                AppState::ActiveService(service) => service.keybindings(),
+                _ => &[],
+            };
+
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
-                    Constraint::Length(3), // Status bar
+                    Constraint::Length(9), // Status bar (logo + keybindings + context)
                     Constraint::Min(0),    // Main content
                     Constraint::Length(1), // Breadcrumbs
                 ])
                 .split(frame.area());
 
-            // Render status bar
-            self.status_bar.render(frame, chunks[0], &self.theme);
+            // Render status bar with keybinding hints
+            self.status_bar
+                .render_with_keybindings(frame, chunks[0], &self.theme, local_keybindings);
 
             // Render current state
             match &mut self.state {
@@ -413,7 +421,7 @@ impl App {
             );
             frame.render_widget(bc_widget, chunks[2]);
 
-            // Render command status (bottom right)
+            // Render command status (bottom right of main content)
             self.command_tracker.render(frame, chunks[1], &self.theme);
 
             // Render popup overlay on top

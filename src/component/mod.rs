@@ -20,7 +20,7 @@ pub use command_status::{CommandId, CommandStatusView};
 pub use confirm_dialog::{ConfirmDialogComponent, ConfirmEvent, ConfirmStyle};
 pub use error_dialog::{ErrorDialog, ErrorDialogEvent};
 pub use context_selector::ContextSelectorView;
-pub use help::{HelpEvent, HelpView, Keybinding};
+pub use help::{HelpEvent, HelpView, Keybinding, KeybindingSection};
 pub use list::{ListComponent, ListEvent, ListRow};
 pub use service_selector::ServiceSelectorView;
 pub use spinner::SpinnerWidget;

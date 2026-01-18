@@ -12,11 +12,41 @@ use ratatui::{
 pub struct Keybinding {
     pub key: &'static str,
     pub description: &'static str,
+    /// Whether this keybinding should be shown in the hints line at the bottom.
+    pub hint: bool,
 }
 
 impl Keybinding {
     pub const fn new(key: &'static str, description: &'static str) -> Self {
-        Self { key, description }
+        Self {
+            key,
+            description,
+            hint: false,
+        }
+    }
+
+    /// Create a keybinding that is also shown as a hint at the bottom of the screen.
+    pub const fn hint(key: &'static str, description: &'static str) -> Self {
+        Self {
+            key,
+            description,
+            hint: true,
+        }
+    }
+}
+
+/// A section of keybindings for the help overlay.
+pub struct KeybindingSection {
+    pub title: String,
+    pub keybindings: &'static [Keybinding],
+}
+
+impl KeybindingSection {
+    pub fn new(title: &str, keybindings: &'static [Keybinding]) -> Self {
+        Self {
+            title: title.to_string(),
+            keybindings,
+        }
     }
 }
 
@@ -25,12 +55,18 @@ pub enum HelpEvent {
 }
 
 pub struct HelpView {
-    keybindings: &'static [Keybinding],
+    sections: Vec<KeybindingSection>,
 }
 
 impl HelpView {
     pub fn new(keybindings: &'static [Keybinding]) -> Self {
-        Self { keybindings }
+        Self {
+            sections: vec![KeybindingSection::new("Keybindings", keybindings)],
+        }
+    }
+
+    pub fn with_sections(sections: Vec<KeybindingSection>) -> Self {
+        Self { sections }
     }
 }
 
@@ -51,23 +87,36 @@ impl Component for HelpView {
         // Clear the area behind the popup
         frame.render_widget(Clear, popup_area);
 
-        // Build keybinding lines
+        // Build keybinding lines with sections
         let key_style = Style::default()
             .fg(theme.peach())
             .add_modifier(Modifier::BOLD);
         let desc_style = Style::default().fg(theme.text());
+        let section_style = Style::default()
+            .fg(theme.subtext0())
+            .add_modifier(Modifier::BOLD);
 
-        let lines: Vec<Line> = self
-            .keybindings
-            .iter()
-            .map(|kb| {
-                Line::from(vec![
+        let mut lines: Vec<Line> = Vec::new();
+
+        for (i, section) in self.sections.iter().enumerate() {
+            // Add blank line between sections (but not before first)
+            if i > 0 {
+                lines.push(Line::from(""));
+            }
+
+            // Section header
+            let header = format!("── {} ──", section.title);
+            lines.push(Line::from(Span::styled(header, section_style)));
+
+            // Keybindings in this section
+            for kb in section.keybindings {
+                lines.push(Line::from(vec![
                     Span::styled(format!("{:>12}", kb.key), key_style),
                     Span::raw("  "),
                     Span::styled(kb.description, desc_style),
-                ])
-            })
-            .collect();
+                ]));
+            }
+        }
 
         let block = Block::default()
             .title(" Help (press ? or Esc to close) ")
