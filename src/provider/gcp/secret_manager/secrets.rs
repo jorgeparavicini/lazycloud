@@ -1,16 +1,16 @@
 use crate::Theme;
 use crate::component::{
-    ColumnDef, ConfirmDialogComponent, ConfirmEvent, Keybinding, TableComponent, TableEvent, TableRow,
-    TextInputComponent, TextInputEvent,
+    ColumnDef, ConfirmDialogComponent, ConfirmEvent, Keybinding, TableComponent, TableEvent,
+    TableRow, TextInputComponent, TextInputEvent,
 };
 use crate::config::{KeyResolver, SearchAction, SecretsAction};
 use crate::core::command::CopyToClipboardCmd;
 use crate::core::{Command, UpdateResult};
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
+use crate::provider::gcp::secret_manager::payload::PayloadMsg;
 use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::versions::VersionsMsg;
-use crate::provider::gcp::secret_manager::payload::PayloadMsg;
 use crate::search::Matcher;
 use crate::ui::{Component, Handled, Modal, Result, Screen};
 use async_trait::async_trait;
@@ -174,8 +174,7 @@ impl TableRow for IamBinding {
 
     fn matches(&self, query: &str) -> bool {
         let matcher = Matcher::new();
-        matcher.matches(&self.role, query)
-            || self.members.iter().any(|m| matcher.matches(m, query))
+        matcher.matches(&self.role, query) || self.members.iter().any(|m| matcher.matches(m, query))
     }
 }
 
@@ -212,7 +211,10 @@ pub enum SecretsMsg {
     Loaded(Vec<Secret>),
 
     StartCreation,
-    Create { name: String, payload: Option<String> },
+    Create {
+        name: String,
+        payload: Option<String>,
+    },
     Created(Secret),
 
     ConfirmDelete(Secret),
@@ -220,20 +222,32 @@ pub enum SecretsMsg {
     Deleted(String),
 
     ViewLabels(Secret),
-    UpdateLabels { secret: Secret, labels: HashMap<String, String> },
+    UpdateLabels {
+        secret: Secret,
+        labels: HashMap<String, String>,
+    },
     LabelsUpdated(Secret),
 
     ViewIamPolicy(Secret),
-    IamPolicyLoaded { secret: Secret, policy: IamPolicy },
+    IamPolicyLoaded {
+        secret: Secret,
+        policy: IamPolicy,
+    },
 
     ViewReplicationInfo(Secret),
-    ReplicationInfoLoaded { secret: Secret, replication: ReplicationConfig },
+    ReplicationInfoLoaded {
+        secret: Secret,
+        replication: ReplicationConfig,
+    },
 
     ViewVersions(Secret),
     ViewPayload(Secret),
 
     CopyPayload(Secret),
-    PayloadLoaded(String),
+    PayloadLoaded {
+        data: String,
+        secret_name: String,
+    },
 }
 
 impl From<SecretsMsg> for SecretManagerMsg {
@@ -308,7 +322,10 @@ impl Screen for SecretListScreen {
                 return Ok(SecretsMsg::ViewIamPolicy(secret.clone()).into());
             }
         }
-        if self.resolver.matches_secrets(&key, SecretsAction::Replication) {
+        if self
+            .resolver
+            .matches_secrets(&key, SecretsAction::Replication)
+        {
             if let Some(secret) = self.table.selected_item() {
                 return Ok(SecretsMsg::ViewReplicationInfo(secret.clone()).into());
             }
@@ -323,16 +340,34 @@ impl Screen for SecretListScreen {
 
     fn keybindings(&self) -> Vec<Keybinding> {
         vec![
-            Keybinding::hint(self.resolver.display_secrets(SecretsAction::ViewPayload), "Payload"),
+            Keybinding::hint(
+                self.resolver.display_secrets(SecretsAction::ViewPayload),
+                "Payload",
+            ),
             Keybinding::hint(self.resolver.display_secrets(SecretsAction::Copy), "Copy"),
-            Keybinding::hint(self.resolver.display_secrets(SecretsAction::Versions), "Versions"),
+            Keybinding::hint(
+                self.resolver.display_secrets(SecretsAction::Versions),
+                "Versions",
+            ),
             Keybinding::hint(self.resolver.display_secrets(SecretsAction::New), "New"),
-            Keybinding::hint(self.resolver.display_secrets(SecretsAction::Delete), "Delete"),
+            Keybinding::hint(
+                self.resolver.display_secrets(SecretsAction::Delete),
+                "Delete",
+            ),
             Keybinding::hint(self.resolver.display_search(SearchAction::Toggle), "Search"),
-            Keybinding::new(self.resolver.display_secrets(SecretsAction::Labels), "Labels"),
+            Keybinding::new(
+                self.resolver.display_secrets(SecretsAction::Labels),
+                "Labels",
+            ),
             Keybinding::new(self.resolver.display_secrets(SecretsAction::Iam), "IAM"),
-            Keybinding::new(self.resolver.display_secrets(SecretsAction::Replication), "Replication"),
-            Keybinding::new(self.resolver.display_secrets(SecretsAction::Reload), "Reload"),
+            Keybinding::new(
+                self.resolver.display_secrets(SecretsAction::Replication),
+                "Replication",
+            ),
+            Keybinding::new(
+                self.resolver.display_secrets(SecretsAction::Reload),
+                "Reload",
+            ),
         ]
     }
 }
@@ -389,7 +424,10 @@ impl Screen for LabelsScreen {
     fn keybindings(&self) -> Vec<Keybinding> {
         vec![
             Keybinding::hint(self.resolver.display_search(SearchAction::Toggle), "Search"),
-            Keybinding::new(self.resolver.display_secrets(SecretsAction::Reload), "Reload"),
+            Keybinding::new(
+                self.resolver.display_secrets(SecretsAction::Reload),
+                "Reload",
+            ),
         ]
     }
 }
@@ -434,7 +472,10 @@ impl Screen for IamPolicyScreen {
     fn keybindings(&self) -> Vec<Keybinding> {
         vec![
             Keybinding::hint(self.resolver.display_search(SearchAction::Toggle), "Search"),
-            Keybinding::new(self.resolver.display_secrets(SecretsAction::Reload), "Reload"),
+            Keybinding::new(
+                self.resolver.display_secrets(SecretsAction::Reload),
+                "Reload",
+            ),
         ]
     }
 }
@@ -536,9 +577,10 @@ impl Screen for ReplicationScreen {
     }
 
     fn keybindings(&self) -> Vec<Keybinding> {
-        vec![
-            Keybinding::new(self.resolver.display_secrets(SecretsAction::Reload), "Reload"),
-        ]
+        vec![Keybinding::new(
+            self.resolver.display_secrets(SecretsAction::Reload),
+            "Reload",
+        )]
     }
 }
 
@@ -614,7 +656,10 @@ pub struct DeleteSecretDialog {
 impl DeleteSecretDialog {
     pub fn new(secret: Secret, resolver: Arc<KeyResolver>) -> Self {
         let dialog = ConfirmDialogComponent::new(
-            format!("Are you sure you want to delete the secret \"{}\"?", secret.name),
+            format!(
+                "Are you sure you want to delete the secret \"{}\"?",
+                secret.name
+            ),
             resolver,
         )
         .with_title("Delete Secret")
@@ -729,7 +774,13 @@ pub(super) fn update(
         }
 
         SecretsMsg::ViewPayload(secret) => {
-            state.queue(PayloadMsg::Load { secret, version: None }.into());
+            state.queue(
+                PayloadMsg::Load {
+                    secret,
+                    version: None,
+                }
+                .into(),
+            );
             Ok(UpdateResult::Idle)
         }
 
@@ -786,26 +837,25 @@ pub(super) fn update(
             .into())
         }
 
-        SecretsMsg::ReplicationInfoLoaded { secret, replication } => {
+        SecretsMsg::ReplicationInfoLoaded {
+            secret,
+            replication,
+        } => {
             state.hide_loading_spinner();
             state.push_view(ReplicationScreen::new(secret, replication, resolver));
             Ok(UpdateResult::Idle)
         }
 
-        SecretsMsg::CopyPayload(secret) => {
-            state.display_loading_spinner("Loading payload...");
-
-            Ok(LoadPayloadCmd {
-                secret,
-                client: state.get_client()?,
-                tx: state.get_msg_sender(),
-            }
-            .into())
+        SecretsMsg::CopyPayload(secret) => Ok(LoadPayloadCmd {
+            secret,
+            client: state.get_client()?,
+            tx: state.get_msg_sender(),
         }
+        .into()),
 
-        SecretsMsg::PayloadLoaded(data) => {
-            state.hide_loading_spinner();
-            Ok(CopyToClipboardCmd::new(data).into())
+        SecretsMsg::PayloadLoaded { data, secret_name } => {
+            let desc = format!("payload for '{}'", secret_name);
+            Ok(CopyToClipboardCmd::new(data, desc, state.get_cmd_env()).into())
         }
     }
 }
@@ -913,8 +963,7 @@ impl Command for DeleteSecretCmd {
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
         self.client.delete_secret(&self.secret.name).await?;
-        self.tx
-            .send(SecretsMsg::Deleted(self.secret.name).into())?;
+        self.tx.send(SecretsMsg::Deleted(self.secret.name).into())?;
         Ok(())
     }
 }
@@ -1007,7 +1056,13 @@ impl Command for LoadPayloadCmd {
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
         let payload = self.client.access_latest_version(&self.secret.name).await?;
-        self.tx.send(SecretsMsg::PayloadLoaded(payload.data).into())?;
+        self.tx.send(
+            SecretsMsg::PayloadLoaded {
+                data: payload.data,
+                secret_name: self.secret.name,
+            }
+            .into(),
+        )?;
         Ok(())
     }
 }

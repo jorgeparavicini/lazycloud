@@ -1,7 +1,7 @@
 use crate::Theme;
 use crate::component::{Keybinding, SpinnerWidget};
 use crate::config::{GlobalAction, KeyResolver};
-use crate::core::command::Command;
+use crate::core::command::{Command, CommandEnv};
 use crate::core::event::Event;
 use crate::core::service::{Service, UpdateResult};
 use crate::model::{CloudContext, GcpContext, Provider};
@@ -34,7 +34,6 @@ pub enum SecretManagerMsg {
     Payload(PayloadMsg),
 }
 
-
 // === Provider ===
 
 pub struct SecretManagerProvider;
@@ -60,11 +59,16 @@ impl ServiceProvider for SecretManagerProvider {
         Some("🔐")
     }
 
-    fn create_service(&self, ctx: &CloudContext, resolver: Arc<KeyResolver>) -> Box<dyn Service> {
+    fn create_service(
+        &self,
+        ctx: &CloudContext,
+        resolver: Arc<KeyResolver>,
+        cmd_env: CommandEnv,
+    ) -> Box<dyn Service> {
         let CloudContext::Gcp(gcp_ctx) = ctx else {
             panic!("SecretManagerProvider requires GcpContext");
         };
-        Box::new(SecretManager::new(gcp_ctx.clone(), resolver))
+        Box::new(SecretManager::new(gcp_ctx.clone(), resolver, cmd_env))
     }
 }
 
@@ -79,6 +83,7 @@ pub struct SecretManager {
     modal: Option<Box<dyn Modal<Msg = SecretManagerMsg>>>,
     msg_tx: UnboundedSender<SecretManagerMsg>,
     msg_rx: UnboundedReceiver<SecretManagerMsg>,
+    cmd_env: CommandEnv,
     cached_secrets: Option<Vec<Secret>>,
     /// Key: secret name
     cached_versions: HashMap<String, Vec<SecretVersion>>,
@@ -88,7 +93,7 @@ pub struct SecretManager {
 }
 
 impl SecretManager {
-    pub fn new(ctx: GcpContext, resolver: Arc<KeyResolver>) -> Self {
+    pub fn new(ctx: GcpContext, resolver: Arc<KeyResolver>, cmd_env: CommandEnv) -> Self {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
         Self {
             context: ctx,
@@ -99,6 +104,7 @@ impl SecretManager {
             modal: None,
             msg_tx,
             msg_rx,
+            cmd_env,
             cached_secrets: None,
             cached_versions: HashMap::new(),
             cached_payloads: HashMap::new(),
@@ -108,6 +114,10 @@ impl SecretManager {
 
     pub(super) fn get_resolver(&self) -> Arc<KeyResolver> {
         self.resolver.clone()
+    }
+
+    pub(super) fn get_cmd_env(&self) -> CommandEnv {
+        self.cmd_env.clone()
     }
 
     // === Public helpers for feature slices ===
@@ -151,10 +161,7 @@ impl SecretManager {
 
     // === Modal management ===
 
-    pub(super) fn display_overlay<T: Modal<Msg = SecretManagerMsg> + 'static>(
-        &mut self,
-        modal: T,
-    ) {
+    pub(super) fn display_overlay<T: Modal<Msg = SecretManagerMsg> + 'static>(&mut self, modal: T) {
         self.modal = Some(Box::new(modal));
     }
 

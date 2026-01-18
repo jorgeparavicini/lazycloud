@@ -1,15 +1,15 @@
-use crate::ui::Component;
 use crate::Theme;
+use crate::ui::Component;
 use ratatui::{
+    Frame,
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
-    Frame,
 };
 use std::collections::VecDeque;
 use std::time::Instant;
-use throbber_widgets_tui::{Throbber, ThrobberState, WhichUse, BRAILLE_SIX};
+use throbber_widgets_tui::{BRAILLE_SIX, Throbber, ThrobberState, WhichUse};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CommandId(u64);
@@ -97,7 +97,11 @@ impl CommandStatusView {
         let status = if self.running.len() == 1 {
             format!(" {} ", self.running[0].name)
         } else {
-            format!(" {} (+{} more) ", self.running[0].name, self.running.len() - 1)
+            format!(
+                " {} (+{} more) ",
+                self.running[0].name,
+                self.running.len() - 1
+            )
         };
 
         let width = status.len() as u16 + 3; // +3 for spinner and padding
@@ -150,7 +154,11 @@ impl CommandStatusView {
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(theme.surface1()))
             .title(" Commands ")
-            .title_style(Style::default().fg(theme.mauve()).add_modifier(Modifier::BOLD))
+            .title_style(
+                Style::default()
+                    .fg(theme.mauve())
+                    .add_modifier(Modifier::BOLD),
+            )
             .style(Style::default().bg(theme.base()));
 
         let inner = block.inner(widget_area);
@@ -162,7 +170,9 @@ impl CommandStatusView {
         if !self.running.is_empty() {
             lines.push(Line::from(Span::styled(
                 "Running:",
-                Style::default().fg(theme.peach()).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme.peach())
+                    .add_modifier(Modifier::BOLD),
             )));
             for cmd in &self.running {
                 let elapsed = cmd.started_at.elapsed().as_secs();
@@ -170,7 +180,10 @@ impl CommandStatusView {
                     Span::raw("  "),
                     Span::styled("● ", Style::default().fg(theme.peach())),
                     Span::styled(cmd.name, Style::default().fg(theme.text())),
-                    Span::styled(format!(" ({}s)", elapsed), Style::default().fg(theme.overlay0())),
+                    Span::styled(
+                        format!(" ({}s)", elapsed),
+                        Style::default().fg(theme.overlay0()),
+                    ),
                 ]));
             }
         }
@@ -182,11 +195,17 @@ impl CommandStatusView {
             }
             lines.push(Line::from(Span::styled(
                 "Recent:",
-                Style::default().fg(theme.subtext0()).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme.subtext0())
+                    .add_modifier(Modifier::BOLD),
             )));
             for cmd in self.history.iter().take(5) {
                 let icon = if cmd.success { "✓" } else { "✗" };
-                let color = if cmd.success { theme.green() } else { theme.red() };
+                let color = if cmd.success {
+                    theme.green()
+                } else {
+                    theme.red()
+                };
                 lines.push(Line::from(vec![
                     Span::raw("  "),
                     Span::styled(format!("{} ", icon), Style::default().fg(color)),

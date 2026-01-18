@@ -17,24 +17,12 @@ impl Default for GlobalKeybindings {
 impl Default for NavigationKeybindings {
     fn default() -> Self {
         Self {
-            up: KeyBinding::multiple(vec![
-                Key::new(KeyCode::Char('k')),
-                Key::new(KeyCode::Up),
-            ]),
-            down: KeyBinding::multiple(vec![
-                Key::new(KeyCode::Char('j')),
-                Key::new(KeyCode::Down),
-            ]),
+            up: KeyBinding::multiple(vec![Key::new(KeyCode::Char('k')), Key::new(KeyCode::Up)]),
+            down: KeyBinding::multiple(vec![Key::new(KeyCode::Char('j')), Key::new(KeyCode::Down)]),
             page_up: Key::new(KeyCode::PageUp).into(),
             page_down: Key::new(KeyCode::PageDown).into(),
-            home: KeyBinding::multiple(vec![
-                Key::new(KeyCode::Char('g')),
-                Key::new(KeyCode::Home),
-            ]),
-            end: KeyBinding::multiple(vec![
-                Key::new(KeyCode::Char('G')),
-                Key::new(KeyCode::End),
-            ]),
+            home: KeyBinding::multiple(vec![Key::new(KeyCode::Char('g')), Key::new(KeyCode::Home)]),
+            end: KeyBinding::multiple(vec![Key::new(KeyCode::Char('G')), Key::new(KeyCode::End)]),
             select: Key::new(KeyCode::Enter).into(),
         }
     }

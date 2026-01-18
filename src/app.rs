@@ -1,9 +1,12 @@
+use crate::Theme;
 use crate::component::{
     CommandStatusView, ContextSelectorView, ErrorDialog, ErrorDialogEvent, HelpEvent, HelpView,
-    KeybindingSection, ServiceSelectorView, StatusBarView, ThemeEvent, ThemeSelectorView,
+    KeybindingSection, ServiceSelectorView, StatusBarView, ThemeEvent, ThemeSelectorView, Toast,
+    ToastManager, ToastType,
 };
-use crate::config::{save_theme, AppConfig, GlobalAction, KeyResolver};
+use crate::config::{AppConfig, GlobalAction, KeyResolver, save_theme};
 use crate::core::command::Command;
+use crate::core::command::CommandEnv;
 use crate::core::event::Event;
 use crate::core::message::AppMessage;
 use crate::core::service::{Service, UpdateResult};
@@ -11,7 +14,6 @@ use crate::core::tui::Tui;
 use crate::model::CloudContext;
 use crate::registry::ServiceRegistry;
 use crate::ui::{Component, Handled};
-use crate::Theme;
 use log::debug;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
@@ -42,6 +44,8 @@ pub struct App {
     popup: Option<ActivePopup>,
     status_bar: StatusBarView,
     command_tracker: CommandStatusView,
+    toast_manager: ToastManager,
+    cmd_env: CommandEnv,
     should_quit: bool,
     should_suspend: bool,
     active_context: Option<CloudContext>,
@@ -62,12 +66,16 @@ impl App {
     ) -> Self {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
 
+        let cmd_env = CommandEnv::new(msg_tx.clone());
+
         Self {
             state: AppState::SelectingContext(ContextSelectorView::new(resolver.clone())),
             theme,
             popup: None,
             status_bar: StatusBarView::new(resolver.clone()),
             command_tracker: CommandStatusView::new(),
+            toast_manager: ToastManager::new(),
+            cmd_env,
             should_quit: false,
             should_suspend: false,
             active_context: None,
@@ -203,17 +211,15 @@ impl App {
                             self.msg_tx.send(AppMessage::ClosePopup)?;
                         }
                     }
-                    ActivePopup::ThemeSelector(selector) => {
-                        match selector.handle_key(*key) {
-                            Ok(Handled::Event(ThemeEvent::Selected(theme_info))) => {
-                                self.msg_tx.send(AppMessage::SelectTheme(theme_info))?;
-                            }
-                            Ok(Handled::Event(ThemeEvent::Cancelled)) => {
-                                self.msg_tx.send(AppMessage::ClosePopup)?;
-                            }
-                            _ => {}
+                    ActivePopup::ThemeSelector(selector) => match selector.handle_key(*key) {
+                        Ok(Handled::Event(ThemeEvent::Selected(theme_info))) => {
+                            self.msg_tx.send(AppMessage::SelectTheme(theme_info))?;
                         }
-                    }
+                        Ok(Handled::Event(ThemeEvent::Cancelled)) => {
+                            self.msg_tx.send(AppMessage::ClosePopup)?;
+                        }
+                        _ => {}
+                    },
                     ActivePopup::Error(dialog) => {
                         if let Ok(Handled::Event(ErrorDialogEvent::Dismissed)) =
                             dialog.handle_key(*key)
@@ -226,9 +232,10 @@ impl App {
             }
         }
 
-        // Handle tick separately - always goes to service and command tracker
+        // Handle tick separately - always goes to service, command tracker, and toast manager
         if matches!(event, Event::Tick) {
             self.command_tracker.on_tick();
+            self.toast_manager.on_tick();
             if let AppState::ActiveService(service) = &mut self.state {
                 service.handle_tick();
             }
@@ -291,7 +298,10 @@ impl App {
                         self.msg_tx.send(AppMessage::DisplayHelp)?;
                     } else if self.resolver.matches_global(key, GlobalAction::Theme) {
                         self.msg_tx.send(AppMessage::DisplayThemeSelector)?;
-                    } else if self.resolver.matches_global(key, GlobalAction::CommandsToggle) {
+                    } else if self
+                        .resolver
+                        .matches_global(key, GlobalAction::CommandsToggle)
+                    {
                         self.msg_tx.send(AppMessage::ToggleCommandStatus)?;
                     } else if self.resolver.matches_global(key, GlobalAction::Back) {
                         self.msg_tx.send(AppMessage::GoBack)?;
@@ -305,7 +315,10 @@ impl App {
     }
 
     fn handle_message(&mut self, tui: &mut Tui, msg: AppMessage) -> color_eyre::Result<()> {
-        if !matches!(msg, AppMessage::Tick | AppMessage::Render | AppMessage::CommandCompleted { .. }) {
+        if !matches!(
+            msg,
+            AppMessage::Tick | AppMessage::Render | AppMessage::CommandCompleted { .. }
+        ) {
             debug!("Handling message: {:?}", msg);
         }
 
@@ -324,7 +337,10 @@ impl App {
             AppMessage::Render => self.render(tui)?,
             AppMessage::DisplayError(err) => {
                 log::error!("Error: {}", err);
-                self.popup = Some(ActivePopup::Error(ErrorDialog::new(err, self.resolver.clone())));
+                self.popup = Some(ActivePopup::Error(ErrorDialog::new(
+                    err,
+                    self.resolver.clone(),
+                )));
             }
             AppMessage::DisplayHelp => {
                 let local = match &self.state {
@@ -374,13 +390,27 @@ impl App {
             AppMessage::ToggleCommandStatus => {
                 self.command_tracker.toggle_expanded();
             }
+            AppMessage::ShowToast {
+                message,
+                toast_type,
+            } => {
+                let toast = match toast_type {
+                    ToastType::Success => Toast::success(message),
+                    ToastType::Info => Toast::info(message),
+                };
+                self.toast_manager.show(toast);
+            }
             AppMessage::SelectContext(context) => {
                 self.go_to_service_selection(context);
             }
             AppMessage::SelectService(service_id) => {
                 if let Some(ctx) = &self.active_context {
                     if let Some(provider) = self.registry.get(&service_id) {
-                        let service = provider.create_service(ctx, self.resolver.clone());
+                        let service = provider.create_service(
+                            ctx,
+                            self.resolver.clone(),
+                            self.cmd_env.clone(),
+                        );
                         self.go_to_active_service(service);
                     }
                 }
@@ -417,8 +447,12 @@ impl App {
                 .split(frame.area());
 
             // Render status bar with keybinding hints
-            self.status_bar
-                .render_with_keybindings(frame, chunks[0], &self.theme, &local_keybindings);
+            self.status_bar.render_with_keybindings(
+                frame,
+                chunks[0],
+                &self.theme,
+                &local_keybindings,
+            );
 
             // Render current state
             match &mut self.state {
@@ -445,6 +479,9 @@ impl App {
 
             // Render command status (bottom right of main content)
             self.command_tracker.render(frame, chunks[1], &self.theme);
+
+            // Render toasts (bottom right, above command status)
+            self.toast_manager.render(frame, chunks[1], &self.theme);
 
             // Render popup overlay on top
             if let Some(ref mut popup) = self.popup {

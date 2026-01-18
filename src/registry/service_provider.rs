@@ -1,5 +1,6 @@
 use crate::config::KeyResolver;
 use crate::core::Service;
+use crate::core::command::CommandEnv;
 use crate::model::{CloudContext, Provider};
 use crate::registry::ServiceId;
 use std::sync::Arc;
@@ -35,7 +36,12 @@ pub trait ServiceProvider: Send + Sync {
     }
 
     /// Create a new service instance.
-    fn create_service(&self, ctx: &CloudContext, resolver: Arc<KeyResolver>) -> Box<dyn Service>;
+    fn create_service(
+        &self,
+        ctx: &CloudContext,
+        resolver: Arc<KeyResolver>,
+        cmd_env: CommandEnv,
+    ) -> Box<dyn Service>;
 
     /// Check if this service is available for the given context.
     fn is_available(&self, ctx: &CloudContext) -> bool {

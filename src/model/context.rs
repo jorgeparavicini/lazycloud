@@ -48,11 +48,7 @@ impl fmt::Display for CloudContext {
                 ctx.subscription_id, ctx.tenant_id
             ),
             CloudContext::Gcp(ctx) => {
-                write!(
-                    f,
-                    "GCP - {} ({})",
-                    ctx.config_name, ctx.project_id
-                )
+                write!(f, "GCP - {} ({})", ctx.config_name, ctx.project_id)
             }
         }
     }
@@ -108,7 +104,9 @@ pub fn load_contexts() -> Vec<CloudContext> {
                 project_id: ctx.project_id,
                 account: ctx.account,
                 region: ctx.region,
-                credentials_path: ctx.credentials_path.map(|p| p.to_string_lossy().to_string()),
+                credentials_path: ctx
+                    .credentials_path
+                    .map(|p| p.to_string_lossy().to_string()),
             }));
         }
     }

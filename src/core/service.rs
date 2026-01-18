@@ -9,12 +9,12 @@
 //! Only `update()` can return commands, close the service, or report errors.
 //! This ensures all side effects flow through one place.
 
+use crate::Theme;
 use crate::component::Keybinding;
 use crate::core::command::Command;
 use crate::core::event::Event;
-use crate::Theme;
-use ratatui::layout::Rect;
 use ratatui::Frame;
+use ratatui::layout::Rect;
 
 /// Result from `update()`
 pub enum UpdateResult {

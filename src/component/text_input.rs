@@ -1,12 +1,12 @@
-use crate::ui::{Component, Handled, Result};
 use crate::Theme;
+use crate::ui::{Component, Handled, Result};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
+    Frame,
     layout::{Constraint, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
-    Frame,
 };
 
 pub enum TextInputEvent {
@@ -185,13 +185,11 @@ impl Component for TextInputComponent {
         };
 
         // Create the input line with cursor
-        let (before_cursor, after_cursor) = display_value.split_at(
-            if self.masked {
-                self.cursor
-            } else {
-                self.cursor.min(display_value.len())
-            },
-        );
+        let (before_cursor, after_cursor) = display_value.split_at(if self.masked {
+            self.cursor
+        } else {
+            self.cursor.min(display_value.len())
+        });
 
         let cursor_char = after_cursor.chars().next().unwrap_or(' ');
         let after_cursor_rest: String = after_cursor.chars().skip(1).collect();

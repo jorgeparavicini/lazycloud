@@ -30,9 +30,19 @@ pub struct SecretPayload {
 
 #[derive(Debug, Clone)]
 pub enum PayloadMsg {
-    Load { secret: Secret, version: Option<SecretVersion> },
-    Loaded { secret: Secret, version: Option<SecretVersion>, payload: SecretPayload },
-    Copy(String),
+    Load {
+        secret: Secret,
+        version: Option<SecretVersion>,
+    },
+    Loaded {
+        secret: Secret,
+        version: Option<SecretVersion>,
+        payload: SecretPayload,
+    },
+    Copy {
+        data: String,
+        description: String,
+    },
 }
 
 impl From<PayloadMsg> for SecretManagerMsg {
@@ -84,7 +94,15 @@ impl Screen for PayloadScreen {
             .into());
         }
         if self.resolver.matches_payload(&key, PayloadAction::Copy) {
-            return Ok(PayloadMsg::Copy(self.payload.data.clone()).into());
+            let description = match &self.version {
+                Some(v) => format!("payload for '{}' (v{})", self.secret.name, v.version_id),
+                None => format!("payload for '{}' (latest)", self.secret.name),
+            };
+            return Ok(PayloadMsg::Copy {
+                data: self.payload.data.clone(),
+                description,
+            }
+            .into());
         }
         Ok(Handled::Ignored)
     }
@@ -135,7 +153,12 @@ pub(super) fn update(
         PayloadMsg::Load { secret, version } => {
             // Use cached payload if available
             if let Some(payload) = state.get_cached_payload(&secret, &version) {
-                state.push_view(PayloadScreen::new(secret, version, payload, state.get_resolver()));
+                state.push_view(PayloadScreen::new(
+                    secret,
+                    version,
+                    payload,
+                    state.get_resolver(),
+                ));
                 return Ok(UpdateResult::Idle);
             }
 
@@ -165,11 +188,18 @@ pub(super) fn update(
         } => {
             state.hide_loading_spinner();
             state.cache_payload(&secret, &version, payload.clone());
-            state.push_view(PayloadScreen::new(secret, version, payload, state.get_resolver()));
+            state.push_view(PayloadScreen::new(
+                secret,
+                version,
+                payload,
+                state.get_resolver(),
+            ));
             Ok(UpdateResult::Idle)
         }
 
-        PayloadMsg::Copy(data) => Ok(CopyToClipboardCmd::new(data).into()),
+        PayloadMsg::Copy { data, description } => {
+            Ok(CopyToClipboardCmd::new(data, description, state.get_cmd_env()).into())
+        }
     }
 }
 

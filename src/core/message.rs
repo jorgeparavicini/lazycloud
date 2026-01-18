@@ -13,7 +13,7 @@
 //! Service-specific messages are handled locally within each service
 //! using their own message channels (e.g., `SecretManagerMsg`).
 
-use crate::component::CommandId;
+use crate::component::{CommandId, ToastType};
 use crate::model::CloudContext;
 use crate::registry::ServiceId;
 use crate::theme::ThemeInfo;
@@ -33,8 +33,15 @@ pub enum AppMessage {
     DisplayThemeSelector,
     ClosePopup,
 
-    CommandCompleted { id: CommandId, success: bool },
+    CommandCompleted {
+        id: CommandId,
+        success: bool,
+    },
     ToggleCommandStatus,
+    ShowToast {
+        message: String,
+        toast_type: ToastType,
+    },
 
     SelectContext(CloudContext),
     SelectService(ServiceId),

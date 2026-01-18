@@ -83,8 +83,7 @@ fn parse_gcloud_config(
 
     Ok(DiscoveredGcpContext {
         config_name,
-        project_id: project_id
-            .ok_or_else(|| color_eyre::eyre::eyre!("No project in config"))?,
+        project_id: project_id.ok_or_else(|| color_eyre::eyre::eyre!("No project in config"))?,
         account: account.ok_or_else(|| color_eyre::eyre::eyre!("No account in config"))?,
         region,
         credentials_path: None,

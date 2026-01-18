@@ -5,8 +5,10 @@
 //! completion detection and status tracking.
 
 mod clipboard;
+mod env;
 
 pub use clipboard::CopyToClipboardCmd;
+pub use env::CommandEnv;
 
 use async_trait::async_trait;
 

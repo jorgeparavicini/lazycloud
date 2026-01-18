@@ -1,11 +1,11 @@
+use crate::Theme;
 use crate::config::{KeyResolver, NavAction, SearchAction};
 use crate::ui::{Component, Handled, Result};
-use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::prelude::{Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Borders, Cell, Paragraph, Row, Table, TableState};
-use ratatui::Frame;
 use std::sync::Arc;
 
 pub enum TableEvent<T> {
@@ -93,7 +93,11 @@ impl<T: TableRow + Clone> TableComponent<T> {
         // Reset selection to first item if current selection is invalid
         if self.filtered_indices.is_empty() {
             self.state.select(None);
-        } else if self.state.selected().map_or(true, |i| i >= self.filtered_indices.len()) {
+        } else if self
+            .state
+            .selected()
+            .map_or(true, |i| i >= self.filtered_indices.len())
+        {
             self.state.select(Some(0));
         }
     }
@@ -232,7 +236,8 @@ impl<T: TableRow + Clone> TableComponent<T> {
         }
         if self.resolver.matches_nav(&key, NavAction::Select) {
             if let Some(selected) = self.state.selected() {
-                return Ok(self.filtered_indices
+                return Ok(self
+                    .filtered_indices
                     .get(selected)
                     .map(|&idx| TableEvent::Activated(self.items[idx].clone()).into())
                     .unwrap_or(Handled::Ignored));
@@ -319,7 +324,11 @@ impl<T: TableRow + Clone> Component for TableComponent<T> {
                 .border_type(BorderType::Rounded)
                 .border_style(Style::default().fg(theme.border()))
                 .title(title.as_str())
-                .title_style(Style::default().fg(theme.mauve()).add_modifier(Modifier::BOLD));
+                .title_style(
+                    Style::default()
+                        .fg(theme.mauve())
+                        .add_modifier(Modifier::BOLD),
+                );
             table = table.block(block);
         }
 

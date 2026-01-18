@@ -1,12 +1,12 @@
-use crate::ui::{Component, Handled, Result};
 use crate::Theme;
+use crate::ui::{Component, Handled, Result};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
+    Frame,
     layout::{Constraint, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
-    Frame,
 };
 
 pub struct Keybinding {
@@ -120,7 +120,11 @@ impl Component for HelpView {
 
         let block = Block::default()
             .title(" Help (press ? or Esc to close) ")
-            .title_style(Style::default().fg(theme.mauve()).add_modifier(Modifier::BOLD))
+            .title_style(
+                Style::default()
+                    .fg(theme.mauve())
+                    .add_modifier(Modifier::BOLD),
+            )
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(theme.lavender()))

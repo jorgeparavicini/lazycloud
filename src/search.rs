@@ -3,8 +3,8 @@
 //! This module encapsulates the search/matching logic, allowing the underlying
 //! implementation to be changed without affecting the rest of the codebase.
 
-use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
+use fuzzy_matcher::skim::SkimMatcherV2;
 
 /// A matcher for fuzzy searching text.
 ///

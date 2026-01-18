@@ -54,7 +54,9 @@ impl Key {
                     event.modifiers
                 };
 
-                chars_match && (expected_mods & !KeyModifiers::SHIFT) == (actual_mods & !KeyModifiers::SHIFT)
+                chars_match
+                    && (expected_mods & !KeyModifiers::SHIFT)
+                        == (actual_mods & !KeyModifiers::SHIFT)
             }
             _ => self.code == event.code && self.modifiers == event.modifiers,
         }
@@ -207,19 +209,20 @@ impl KeyBinding {
     pub fn display(&self) -> String {
         match self {
             KeyBinding::Single(key) => key.display(),
-            KeyBinding::Multiple(keys) => {
-                keys.iter()
-                    .map(|k| k.display())
-                    .collect::<Vec<_>>()
-                    .join("/")
-            }
+            KeyBinding::Multiple(keys) => keys
+                .iter()
+                .map(|k| k.display())
+                .collect::<Vec<_>>()
+                .join("/"),
         }
     }
 
     pub fn first_key(&self) -> &Key {
         match self {
             KeyBinding::Single(key) => key,
-            KeyBinding::Multiple(keys) => keys.first().expect("Multiple must have at least one key"),
+            KeyBinding::Multiple(keys) => {
+                keys.first().expect("Multiple must have at least one key")
+            }
         }
     }
 }

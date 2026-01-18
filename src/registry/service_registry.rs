@@ -94,12 +94,15 @@ impl Default for ServiceRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Theme;
+    use crate::config::KeyResolver;
+    use crate::core::command::CommandEnv;
     use crate::core::event::Event;
     use crate::core::service::{Service, UpdateResult};
     use crate::model::GcpContext;
-    use ratatui::layout::Rect;
     use ratatui::Frame;
-    use crate::Theme;
+    use ratatui::layout::Rect;
+    use std::sync::Arc;
 
     struct MockProvider;
 
@@ -116,7 +119,12 @@ mod tests {
             "Mock Service"
         }
 
-        fn create_service(&self, _ctx: &CloudContext) -> Box<dyn Service> {
+        fn create_service(
+            &self,
+            _ctx: &CloudContext,
+            _resolver: Arc<KeyResolver>,
+            _cmd_env: CommandEnv,
+        ) -> Box<dyn Service> {
             Box::new(MockService)
         }
     }

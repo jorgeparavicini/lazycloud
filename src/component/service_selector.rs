@@ -1,11 +1,11 @@
+use crate::Theme;
 use crate::component::{ListComponent, ListEvent, ListRow};
 use crate::config::KeyResolver;
 use crate::model::CloudContext;
 use crate::registry::{ServiceId, ServiceProvider, ServiceRegistry};
 use crate::ui::{Component, Handled, Result};
-use crate::Theme;
 use crossterm::event::KeyEvent;
-use ratatui::{layout::Rect, style::Style, widgets::ListItem, Frame};
+use ratatui::{Frame, layout::Rect, style::Style, widgets::ListItem};
 use std::sync::Arc;
 
 #[derive(Clone)]

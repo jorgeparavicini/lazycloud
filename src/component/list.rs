@@ -1,11 +1,11 @@
+use crate::Theme;
 use crate::config::{KeyResolver, NavAction};
 use crate::ui::{Component, Handled, Result};
-use crate::Theme;
 use crossterm::event::KeyEvent;
+use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::prelude::{Modifier, Style};
 use ratatui::widgets::{List, ListItem, ListState};
-use ratatui::Frame;
 use std::sync::Arc;
 
 pub enum ListEvent<T> {
@@ -29,7 +29,11 @@ impl<T: ListRow + Clone> ListComponent<T> {
         if !items.is_empty() {
             state.select(Some(0));
         }
-        Self { items, state, resolver }
+        Self {
+            items,
+            state,
+            resolver,
+        }
     }
 
     pub fn selected(&self) -> Option<&T> {
@@ -112,11 +116,7 @@ impl<T: ListRow + Clone> Component for ListComponent<T> {
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        let items: Vec<ListItem> = self
-            .items
-            .iter()
-            .map(|i| i.render_row(theme))
-            .collect();
+        let items: Vec<ListItem> = self.items.iter().map(|i| i.render_row(theme)).collect();
 
         let list = List::new(items)
             .highlight_style(

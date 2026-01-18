@@ -1,13 +1,13 @@
+use crate::Theme;
 use crate::config::{DialogAction, KeyResolver};
 use crate::ui::{Component, Handled, Result};
-use crate::Theme;
 use crossterm::event::KeyEvent;
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap},
-    Frame,
 };
 use std::sync::Arc;
 

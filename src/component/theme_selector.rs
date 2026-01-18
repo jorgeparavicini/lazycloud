@@ -1,14 +1,14 @@
+use crate::Theme;
 use crate::component::{ListComponent, ListEvent, ListRow};
 use crate::config::KeyResolver;
-use crate::theme::{available_themes, ThemeInfo};
+use crate::theme::{ThemeInfo, available_themes};
 use crate::ui::{Component, Handled, Result};
-use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
+    Frame,
     layout::{Constraint, Rect},
     style::{Modifier, Style},
     widgets::{Block, BorderType, Borders, Clear, ListItem},
-    Frame,
 };
 use std::sync::Arc;
 

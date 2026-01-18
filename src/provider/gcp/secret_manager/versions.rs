@@ -1,7 +1,7 @@
 use crate::Theme;
 use crate::component::{
-    ColumnDef, ConfirmDialogComponent, ConfirmEvent, Keybinding, TableComponent, TableEvent, TableRow,
-    TextInputComponent, TextInputEvent,
+    ColumnDef, ConfirmDialogComponent, ConfirmEvent, Keybinding, TableComponent, TableEvent,
+    TableRow, TextInputComponent, TextInputEvent,
 };
 use crate::config::{KeyResolver, SearchAction, VersionsAction};
 use crate::core::{Command, UpdateResult};
@@ -65,24 +65,53 @@ impl TableRow for SecretVersion {
 #[derive(Debug, Clone)]
 pub enum VersionsMsg {
     Load(Secret),
-    Loaded { secret: Secret, versions: Vec<SecretVersion> },
+    Loaded {
+        secret: Secret,
+        versions: Vec<SecretVersion>,
+    },
 
     StartCreation(Secret),
-    Create { secret: Secret, payload: String },
-    Created { secret: Secret },
+    Create {
+        secret: Secret,
+        payload: String,
+    },
+    Created {
+        secret: Secret,
+    },
 
-    Disable { secret: Secret, version: SecretVersion },
-    Disabled { secret: Secret },
+    Disable {
+        secret: Secret,
+        version: SecretVersion,
+    },
+    Disabled {
+        secret: Secret,
+    },
 
-    Enable { secret: Secret, version: SecretVersion },
-    Enabled { secret: Secret },
+    Enable {
+        secret: Secret,
+        version: SecretVersion,
+    },
+    Enabled {
+        secret: Secret,
+    },
 
-    ConfirmDestroy { secret: Secret, version: SecretVersion },
+    ConfirmDestroy {
+        secret: Secret,
+        version: SecretVersion,
+    },
     /// Permanently destroys the version. Cannot be undone.
-    Destroy { secret: Secret, version: SecretVersion },
-    Destroyed { secret: Secret },
+    Destroy {
+        secret: Secret,
+        version: SecretVersion,
+    },
+    Destroyed {
+        secret: Secret,
+    },
 
-    ViewPayload { secret: Secret, version: SecretVersion },
+    ViewPayload {
+        secret: Secret,
+        version: SecretVersion,
+    },
 }
 
 impl From<VersionsMsg> for SecretManagerMsg {
@@ -140,7 +169,10 @@ impl Screen for VersionListScreen {
         if self.resolver.matches_versions(&key, VersionsAction::Add) {
             return Ok(VersionsMsg::StartCreation(self.secret.clone()).into());
         }
-        if self.resolver.matches_versions(&key, VersionsAction::Disable) {
+        if self
+            .resolver
+            .matches_versions(&key, VersionsAction::Disable)
+        {
             if let Some(v) = self.table.selected_item() {
                 if v.state.contains("Enabled") {
                     return Ok(VersionsMsg::Disable {
@@ -162,7 +194,10 @@ impl Screen for VersionListScreen {
                 }
             }
         }
-        if self.resolver.matches_versions(&key, VersionsAction::Destroy) {
+        if self
+            .resolver
+            .matches_versions(&key, VersionsAction::Destroy)
+        {
             if let Some(v) = self.table.selected_item() {
                 if !v.state.contains("Destroyed") {
                     return Ok(VersionsMsg::ConfirmDestroy {
@@ -187,7 +222,10 @@ impl Screen for VersionListScreen {
                 self.resolver.display_versions(VersionsAction::ViewPayload),
                 "Payload",
             ),
-            Keybinding::hint(self.resolver.display_versions(VersionsAction::Add), "Add version"),
+            Keybinding::hint(
+                self.resolver.display_versions(VersionsAction::Add),
+                "Add version",
+            ),
             Keybinding::hint(self.resolver.display_search(SearchAction::Toggle), "Search"),
             Keybinding::new(
                 self.resolver.display_versions(VersionsAction::Disable),
@@ -309,7 +347,11 @@ pub(super) fn update(
         VersionsMsg::Load(secret) => {
             // Use cached versions if available
             if let Some(versions) = state.get_cached_versions(&secret) {
-                state.push_view(VersionListScreen::new(secret, versions, state.get_resolver()));
+                state.push_view(VersionListScreen::new(
+                    secret,
+                    versions,
+                    state.get_resolver(),
+                ));
                 return Ok(UpdateResult::Idle);
             }
 
@@ -326,7 +368,11 @@ pub(super) fn update(
         VersionsMsg::Loaded { secret, versions } => {
             state.hide_loading_spinner();
             state.cache_versions(&secret, versions.clone());
-            state.push_view(VersionListScreen::new(secret, versions, state.get_resolver()));
+            state.push_view(VersionListScreen::new(
+                secret,
+                versions,
+                state.get_resolver(),
+            ));
             Ok(UpdateResult::Idle)
         }
 
@@ -394,7 +440,11 @@ pub(super) fn update(
         }
 
         VersionsMsg::ConfirmDestroy { secret, version } => {
-            state.display_overlay(DestroyVersionDialog::new(secret, version, state.get_resolver()));
+            state.display_overlay(DestroyVersionDialog::new(
+                secret,
+                version,
+                state.get_resolver(),
+            ));
             Ok(UpdateResult::Idle)
         }
 
@@ -475,8 +525,12 @@ impl Command for AddVersionCmd {
         self.client
             .add_secret_version(&self.secret.name, self.payload.as_bytes())
             .await?;
-        self.tx
-            .send(VersionsMsg::Created { secret: self.secret }.into())?;
+        self.tx.send(
+            VersionsMsg::Created {
+                secret: self.secret,
+            }
+            .into(),
+        )?;
         Ok(())
     }
 }
@@ -498,8 +552,12 @@ impl Command for DisableVersionCmd {
         self.client
             .disable_version(&self.secret.name, &self.version.version_id)
             .await?;
-        self.tx
-            .send(VersionsMsg::Disabled { secret: self.secret }.into())?;
+        self.tx.send(
+            VersionsMsg::Disabled {
+                secret: self.secret,
+            }
+            .into(),
+        )?;
         Ok(())
     }
 }
@@ -521,8 +579,12 @@ impl Command for EnableVersionCmd {
         self.client
             .enable_version(&self.secret.name, &self.version.version_id)
             .await?;
-        self.tx
-            .send(VersionsMsg::Enabled { secret: self.secret }.into())?;
+        self.tx.send(
+            VersionsMsg::Enabled {
+                secret: self.secret,
+            }
+            .into(),
+        )?;
         Ok(())
     }
 }
@@ -544,8 +606,12 @@ impl Command for DestroyVersionCmd {
         self.client
             .destroy_version(&self.secret.name, &self.version.version_id)
             .await?;
-        self.tx
-            .send(VersionsMsg::Destroyed { secret: self.secret }.into())?;
+        self.tx.send(
+            VersionsMsg::Destroyed {
+                secret: self.secret,
+            }
+            .into(),
+        )?;
         Ok(())
     }
 }

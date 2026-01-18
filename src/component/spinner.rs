@@ -1,10 +1,10 @@
-use crate::ui::Component;
 use crate::Theme;
+use crate::ui::Component;
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::Style;
-use ratatui::Frame;
 use throbber_widgets_tui::WhichUse::Spin;
-use throbber_widgets_tui::{Throbber, ThrobberState, BRAILLE_SIX};
+use throbber_widgets_tui::{BRAILLE_SIX, Throbber, ThrobberState};
 
 pub struct SpinnerWidget {
     throbber_state: ThrobberState,

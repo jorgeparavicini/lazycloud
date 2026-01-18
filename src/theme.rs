@@ -318,6 +318,9 @@ pub fn theme_from_name(name: &str) -> Theme {
 pub fn theme_name(theme: &Theme) -> Option<&'static str> {
     available_themes()
         .into_iter()
-        .find(|t| std::mem::discriminant(&t.theme.border_type) == std::mem::discriminant(&theme.border_type))
+        .find(|t| {
+            std::mem::discriminant(&t.theme.border_type)
+                == std::mem::discriminant(&theme.border_type)
+        })
         .map(|t| t.name)
 }

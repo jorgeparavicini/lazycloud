@@ -1,10 +1,10 @@
+use crate::Theme;
 use crate::component::{ListComponent, ListEvent, ListRow};
 use crate::config::KeyResolver;
-use crate::model::context::{get_available_contexts, CloudContext};
+use crate::model::context::{CloudContext, get_available_contexts};
 use crate::ui::{Component, Handled, Result};
-use crate::Theme;
 use crossterm::event::KeyEvent;
-use ratatui::{layout::Rect, style::Style, widgets::ListItem, Frame};
+use ratatui::{Frame, layout::Rect, style::Style, widgets::ListItem};
 use std::sync::Arc;
 
 impl ListRow for CloudContext {

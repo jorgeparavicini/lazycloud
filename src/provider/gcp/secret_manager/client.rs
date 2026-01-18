@@ -1,6 +1,8 @@
 use crate::provider::gcp::context::load_credentials_json;
 use crate::provider::gcp::secret_manager::payload::SecretPayload;
-use crate::provider::gcp::secret_manager::secrets::{IamBinding, IamPolicy, ReplicationConfig, Secret};
+use crate::provider::gcp::secret_manager::secrets::{
+    IamBinding, IamPolicy, ReplicationConfig, Secret,
+};
 use crate::provider::gcp::secret_manager::versions::SecretVersion;
 use chrono::{DateTime, Utc};
 use google_cloud_auth::credentials::user_account;
@@ -181,8 +183,7 @@ impl SecretManagerClient {
         let parent = format!("projects/{}", self.project_id);
 
         let secret = model::Secret::default().set_replication(
-            model::Replication::default()
-                .set_automatic(model::replication::Automatic::default()),
+            model::Replication::default().set_automatic(model::replication::Automatic::default()),
         );
 
         let response = self
@@ -240,8 +241,7 @@ impl SecretManagerClient {
     ) -> color_eyre::Result<SecretVersion> {
         let parent = format!("projects/{}/secrets/{}", self.project_id, secret_id);
 
-        let payload_model =
-            model::SecretPayload::default().set_data(Bytes::from(payload.to_vec()));
+        let payload_model = model::SecretPayload::default().set_data(Bytes::from(payload.to_vec()));
 
         let response = self
             .client

@@ -1,13 +1,13 @@
+use crate::Theme;
 use crate::config::{DialogAction, KeyResolver};
 use crate::ui::{Component, Handled, Result};
-use crate::Theme;
 use crossterm::event::KeyEvent;
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
-    Frame,
 };
 use std::sync::Arc;
 
@@ -123,7 +123,11 @@ impl Component for ConfirmDialogComponent {
         let title = format!(" {} ", self.title);
         let block = Block::default()
             .title(title)
-            .title_style(Style::default().fg(title_color).add_modifier(Modifier::BOLD))
+            .title_style(
+                Style::default()
+                    .fg(title_color)
+                    .add_modifier(Modifier::BOLD),
+            )
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(border_color))

@@ -1,13 +1,13 @@
+use crate::Theme;
 use crate::component::Keybinding;
 use crate::config::{GlobalAction, KeyResolver, NavAction};
 use crate::model::CloudContext;
-use crate::Theme;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph},
-    Frame,
 };
 use std::sync::Arc;
 
@@ -89,10 +89,7 @@ impl StatusBarView {
                             .fg(theme.subtext0())
                             .add_modifier(Modifier::BOLD),
                     )),
-                    Line::from(Span::styled(
-                        "GCP",
-                        Style::default().fg(theme.blue()),
-                    )),
+                    Line::from(Span::styled("GCP", Style::default().fg(theme.blue()))),
                     Line::from(Span::styled(
                         truncate_str(&gcp.project_id, area.width as usize - 1),
                         Style::default().fg(theme.text()),
@@ -107,10 +104,7 @@ impl StatusBarView {
                             .fg(theme.subtext0())
                             .add_modifier(Modifier::BOLD),
                     )),
-                    Line::from(Span::styled(
-                        "AWS",
-                        Style::default().fg(theme.peach()),
-                    )),
+                    Line::from(Span::styled("AWS", Style::default().fg(theme.peach()))),
                     Line::from(Span::styled(
                         truncate_str(&aws.profile, area.width as usize - 1),
                         Style::default().fg(theme.text()),
@@ -125,10 +119,7 @@ impl StatusBarView {
                             .fg(theme.subtext0())
                             .add_modifier(Modifier::BOLD),
                     )),
-                    Line::from(Span::styled(
-                        "Azure",
-                        Style::default().fg(theme.sky()),
-                    )),
+                    Line::from(Span::styled("Azure", Style::default().fg(theme.sky()))),
                     Line::from(Span::styled(
                         truncate_str(&azure.subscription_id, area.width as usize - 1),
                         Style::default().fg(theme.text()),
@@ -143,10 +134,7 @@ impl StatusBarView {
                             .fg(theme.subtext0())
                             .add_modifier(Modifier::BOLD),
                     )),
-                    Line::from(Span::styled(
-                        "None",
-                        Style::default().fg(theme.overlay0()),
-                    )),
+                    Line::from(Span::styled("None", Style::default().fg(theme.overlay0()))),
                 ]
             }
         };
@@ -192,19 +180,18 @@ impl StatusBarView {
             }
 
             let line = Line::from(vec![
-                Span::styled(
-                    format!("{:>5}", kb.key),
-                    Style::default().fg(theme.peach()),
-                ),
+                Span::styled(format!("{:>5}", kb.key), Style::default().fg(theme.peach())),
                 Span::raw(" "),
-                Span::styled(kb.description.clone(), Style::default().fg(theme.subtext0())),
+                Span::styled(
+                    kb.description.clone(),
+                    Style::default().fg(theme.subtext0()),
+                ),
             ]);
             columns[col_idx].push(line);
         }
 
         // Create column areas
-        let col_constraints: Vec<Constraint> =
-            vec![Constraint::Length(col_width); num_cols];
+        let col_constraints: Vec<Constraint> = vec![Constraint::Length(col_width); num_cols];
         let col_areas = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(col_constraints)
@@ -259,7 +246,6 @@ impl StatusBarView {
         ]
     }
 }
-
 
 /// Truncate a string to fit within a given width, adding "..." if truncated.
 fn truncate_str(s: &str, max_width: usize) -> String {
