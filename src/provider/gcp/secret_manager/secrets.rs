@@ -232,7 +232,7 @@ pub enum SecretsMsg {
     ViewPayload(Secret),
 
     CopyPayload(Secret),
-    PayloadCopied(String),
+    PayloadLoaded(String),
 }
 
 impl From<SecretsMsg> for SecretManagerMsg {
@@ -779,9 +779,9 @@ pub(super) fn update(
         }
 
         SecretsMsg::CopyPayload(secret) => {
-            state.display_loading_spinner("Copying payload...");
+            state.display_loading_spinner("Loading payload...");
 
-            Ok(FetchAndCopyPayloadCmd {
+            Ok(LoadPayloadCmd {
                 secret,
                 client: state.get_client()?,
                 tx: state.get_msg_sender(),
@@ -789,7 +789,7 @@ pub(super) fn update(
             .into())
         }
 
-        SecretsMsg::PayloadCopied(data) => {
+        SecretsMsg::PayloadLoaded(data) => {
             state.hide_loading_spinner();
             Ok(CopyToClipboardCmd::new(data).into())
         }
@@ -979,21 +979,21 @@ impl Command for FetchSecretMetadataCmd {
     }
 }
 
-struct FetchAndCopyPayloadCmd {
+struct LoadPayloadCmd {
     client: SecretManagerClient,
     secret: Secret,
     tx: UnboundedSender<SecretManagerMsg>,
 }
 
 #[async_trait]
-impl Command for FetchAndCopyPayloadCmd {
+impl Command for LoadPayloadCmd {
     fn name(&self) -> &'static str {
-        "Fetching payload"
+        "Loading payload"
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
         let payload = self.client.access_latest_version(&self.secret.name).await?;
-        self.tx.send(SecretsMsg::PayloadCopied(payload.data).into())?;
+        self.tx.send(SecretsMsg::PayloadLoaded(payload.data).into())?;
         Ok(())
     }
 }
