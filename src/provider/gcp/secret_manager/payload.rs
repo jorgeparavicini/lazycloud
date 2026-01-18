@@ -1,5 +1,6 @@
 use crate::Theme;
 use crate::component::Keybinding;
+use crate::config::{KeyResolver, PayloadAction};
 use crate::core::command::CopyToClipboardCmd;
 use crate::core::{Command, UpdateResult};
 use crate::provider::gcp::secret_manager::SecretManager;
@@ -9,11 +10,12 @@ use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::versions::SecretVersion;
 use crate::ui::{Handled, Result, Screen};
 use async_trait::async_trait;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Borders, Paragraph};
+use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 
 // === Models ===
@@ -47,23 +49,25 @@ impl From<PayloadMsg> for Handled<SecretManagerMsg> {
 
 // === Screens ===
 
-const PAYLOAD_KEYBINDINGS: &[Keybinding] = &[
-    Keybinding::hint("y", "Copy"),
-    Keybinding::new("r", "Reload"),
-];
-
 pub struct PayloadScreen {
     secret: Secret,
     version: Option<SecretVersion>,
     payload: SecretPayload,
+    resolver: Arc<KeyResolver>,
 }
 
 impl PayloadScreen {
-    pub fn new(secret: Secret, version: Option<SecretVersion>, payload: SecretPayload) -> Self {
+    pub fn new(
+        secret: Secret,
+        version: Option<SecretVersion>,
+        payload: SecretPayload,
+        resolver: Arc<KeyResolver>,
+    ) -> Self {
         Self {
             secret,
             version,
             payload,
+            resolver,
         }
     }
 }
@@ -72,15 +76,17 @@ impl Screen for PayloadScreen {
     type Msg = SecretManagerMsg;
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
-        Ok(match key.code {
-            KeyCode::Char('r') => PayloadMsg::Load {
+        if self.resolver.matches_payload(&key, PayloadAction::Reload) {
+            return Ok(PayloadMsg::Load {
                 secret: self.secret.clone(),
                 version: self.version.clone(),
             }
-            .into(),
-            KeyCode::Char('y') => PayloadMsg::Copy(self.payload.data.clone()).into(),
-            _ => Handled::Ignored,
-        })
+            .into());
+        }
+        if self.resolver.matches_payload(&key, PayloadAction::Copy) {
+            return Ok(PayloadMsg::Copy(self.payload.data.clone()).into());
+        }
+        Ok(Handled::Ignored)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -108,8 +114,14 @@ impl Screen for PayloadScreen {
         frame.render_widget(p, area);
     }
 
-    fn keybindings(&self) -> &'static [Keybinding] {
-        PAYLOAD_KEYBINDINGS
+    fn keybindings(&self) -> Vec<Keybinding> {
+        vec![
+            Keybinding::hint(self.resolver.display_payload(PayloadAction::Copy), "Copy"),
+            Keybinding::new(
+                self.resolver.display_payload(PayloadAction::Reload),
+                "Reload",
+            ),
+        ]
     }
 }
 
@@ -123,7 +135,7 @@ pub(super) fn update(
         PayloadMsg::Load { secret, version } => {
             // Use cached payload if available
             if let Some(payload) = state.get_cached_payload(&secret, &version) {
-                state.push_view(PayloadScreen::new(secret, version, payload));
+                state.push_view(PayloadScreen::new(secret, version, payload, state.get_resolver()));
                 return Ok(UpdateResult::Idle);
             }
 
@@ -153,7 +165,7 @@ pub(super) fn update(
         } => {
             state.hide_loading_spinner();
             state.cache_payload(&secret, &version, payload.clone());
-            state.push_view(PayloadScreen::new(secret, version, payload));
+            state.push_view(PayloadScreen::new(secret, version, payload, state.get_resolver()));
             Ok(UpdateResult::Idle)
         }
 

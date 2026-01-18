@@ -1,5 +1,6 @@
-use crate::theme::{available_themes, ThemeInfo};
 use crate::component::{ListComponent, ListEvent, ListRow};
+use crate::config::KeyResolver;
+use crate::theme::{available_themes, ThemeInfo};
 use crate::ui::{Component, Handled, Result};
 use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -9,6 +10,7 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Clear, ListItem},
     Frame,
 };
+use std::sync::Arc;
 
 impl ListRow for ThemeInfo {
     fn render_row(&self, theme: &Theme) -> ListItem<'static> {
@@ -18,7 +20,7 @@ impl ListRow for ThemeInfo {
 
 pub enum ThemeEvent {
     Cancelled,
-    Selected(Theme),
+    Selected(ThemeInfo),
 }
 
 pub struct ThemeSelectorView {
@@ -26,17 +28,11 @@ pub struct ThemeSelectorView {
 }
 
 impl ThemeSelectorView {
-    pub fn new() -> Self {
+    pub fn new(resolver: Arc<KeyResolver>) -> Self {
         let themes = available_themes();
         Self {
-            list: ListComponent::new(themes),
+            list: ListComponent::new(themes, resolver),
         }
-    }
-}
-
-impl Default for ThemeSelectorView {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -52,7 +48,7 @@ impl Component for ThemeSelectorView {
         // Delegate to list
         let result = self.list.handle_key(key)?;
         Ok(match result {
-            Handled::Event(ListEvent::Activated(info)) => ThemeEvent::Selected(info.theme).into(),
+            Handled::Event(ListEvent::Activated(info)) => ThemeEvent::Selected(info).into(),
             Handled::Consumed | Handled::Event(_) => Handled::Consumed,
             Handled::Ignored => Handled::Ignored,
         })

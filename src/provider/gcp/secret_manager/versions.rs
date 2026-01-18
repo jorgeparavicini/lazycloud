@@ -3,6 +3,7 @@ use crate::component::{
     ColumnDef, ConfirmDialogComponent, ConfirmEvent, Keybinding, TableComponent, TableEvent, TableRow,
     TextInputComponent, TextInputEvent,
 };
+use crate::config::{KeyResolver, SearchAction, VersionsAction};
 use crate::core::{Command, UpdateResult};
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
@@ -12,11 +13,12 @@ use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::search::Matcher;
 use crate::ui::{Component, Handled, Modal, Result, Screen};
 use async_trait::async_trait;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::widgets::Cell;
 use std::fmt::Display;
+use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 
 // === Models ===
@@ -97,27 +99,19 @@ impl From<VersionsMsg> for Handled<SecretManagerMsg> {
 
 // === Screens ===
 
-const VERSION_LIST_KEYBINDINGS: &[Keybinding] = &[
-    Keybinding::hint("Enter", "Payload"),
-    Keybinding::hint("a", "Add version"),
-    Keybinding::hint("/", "Search"),
-    Keybinding::new("d", "Disable"),
-    Keybinding::new("e", "Enable"),
-    Keybinding::new("D", "Destroy"),
-    Keybinding::new("r", "Reload"),
-];
-
 pub struct VersionListScreen {
     secret: Secret,
     table: TableComponent<SecretVersion>,
+    resolver: Arc<KeyResolver>,
 }
 
 impl VersionListScreen {
-    pub fn new(secret: Secret, versions: Vec<SecretVersion>) -> Self {
+    pub fn new(secret: Secret, versions: Vec<SecretVersion>, resolver: Arc<KeyResolver>) -> Self {
         let title = format!(" {} - Versions ", secret.name);
         Self {
             secret,
-            table: TableComponent::new(versions).with_title(title),
+            table: TableComponent::new(versions, resolver.clone()).with_title(title),
+            resolver,
         }
     }
 }
@@ -140,49 +134,78 @@ impl Screen for VersionListScreen {
         }
 
         // Handle local shortcuts only if table didn't consume the key
-        Ok(match key.code {
-            KeyCode::Char('r') => VersionsMsg::Load(self.secret.clone()).into(),
-            // Add new version
-            KeyCode::Char('a') | KeyCode::Char('n') => {
-                VersionsMsg::StartCreation(self.secret.clone()).into()
+        if self.resolver.matches_versions(&key, VersionsAction::Reload) {
+            return Ok(VersionsMsg::Load(self.secret.clone()).into());
+        }
+        if self.resolver.matches_versions(&key, VersionsAction::Add) {
+            return Ok(VersionsMsg::StartCreation(self.secret.clone()).into());
+        }
+        if self.resolver.matches_versions(&key, VersionsAction::Disable) {
+            if let Some(v) = self.table.selected_item() {
+                if v.state.contains("Enabled") {
+                    return Ok(VersionsMsg::Disable {
+                        secret: self.secret.clone(),
+                        version: v.clone(),
+                    }
+                    .into());
+                }
             }
-            // Disable version (only for Enabled versions)
-            KeyCode::Char('d') => match self.table.selected_item() {
-                Some(v) if v.state.contains("Enabled") => VersionsMsg::Disable {
-                    secret: self.secret.clone(),
-                    version: v.clone(),
+        }
+        if self.resolver.matches_versions(&key, VersionsAction::Enable) {
+            if let Some(v) = self.table.selected_item() {
+                if v.state.contains("Disabled") {
+                    return Ok(VersionsMsg::Enable {
+                        secret: self.secret.clone(),
+                        version: v.clone(),
+                    }
+                    .into());
                 }
-                .into(),
-                _ => Handled::Ignored,
-            },
-            // Enable version (only for Disabled versions)
-            KeyCode::Char('e') => match self.table.selected_item() {
-                Some(v) if v.state.contains("Disabled") => VersionsMsg::Enable {
-                    secret: self.secret.clone(),
-                    version: v.clone(),
+            }
+        }
+        if self.resolver.matches_versions(&key, VersionsAction::Destroy) {
+            if let Some(v) = self.table.selected_item() {
+                if !v.state.contains("Destroyed") {
+                    return Ok(VersionsMsg::ConfirmDestroy {
+                        secret: self.secret.clone(),
+                        version: v.clone(),
+                    }
+                    .into());
                 }
-                .into(),
-                _ => Handled::Ignored,
-            },
-            // Destroy version (shift+D, only for non-Destroyed versions)
-            KeyCode::Char('D') => match self.table.selected_item() {
-                Some(v) if !v.state.contains("Destroyed") => VersionsMsg::ConfirmDestroy {
-                    secret: self.secret.clone(),
-                    version: v.clone(),
-                }
-                .into(),
-                _ => Handled::Ignored,
-            },
-            _ => Handled::Ignored,
-        })
+            }
+        }
+
+        Ok(Handled::Ignored)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         self.table.render(frame, area, theme);
     }
 
-    fn keybindings(&self) -> &'static [Keybinding] {
-        VERSION_LIST_KEYBINDINGS
+    fn keybindings(&self) -> Vec<Keybinding> {
+        vec![
+            Keybinding::hint(
+                self.resolver.display_versions(VersionsAction::ViewPayload),
+                "Payload",
+            ),
+            Keybinding::hint(self.resolver.display_versions(VersionsAction::Add), "Add version"),
+            Keybinding::hint(self.resolver.display_search(SearchAction::Toggle), "Search"),
+            Keybinding::new(
+                self.resolver.display_versions(VersionsAction::Disable),
+                "Disable",
+            ),
+            Keybinding::new(
+                self.resolver.display_versions(VersionsAction::Enable),
+                "Enable",
+            ),
+            Keybinding::new(
+                self.resolver.display_versions(VersionsAction::Destroy),
+                "Destroy",
+            ),
+            Keybinding::new(
+                self.resolver.display_versions(VersionsAction::Reload),
+                "Reload",
+            ),
+        ]
     }
 }
 
@@ -191,13 +214,15 @@ impl Screen for VersionListScreen {
 pub struct CreateVersionDialog {
     secret: Secret,
     input: TextInputComponent,
+    resolver: Arc<KeyResolver>,
 }
 
 impl CreateVersionDialog {
-    pub fn new(secret: Secret) -> Self {
+    pub fn new(secret: Secret, resolver: Arc<KeyResolver>) -> Self {
         Self {
             secret,
             input: TextInputComponent::new("New Version Payload"),
+            resolver,
         }
     }
 }
@@ -229,14 +254,18 @@ pub struct DestroyVersionDialog {
     secret: Secret,
     version: SecretVersion,
     dialog: ConfirmDialogComponent,
+    resolver: Arc<KeyResolver>,
 }
 
 impl DestroyVersionDialog {
-    pub fn new(secret: Secret, version: SecretVersion) -> Self {
-        let dialog = ConfirmDialogComponent::new(format!(
-            "Destroy version '{}'? This is permanent and cannot be undone.",
-            version.version_id
-        ))
+    pub fn new(secret: Secret, version: SecretVersion, resolver: Arc<KeyResolver>) -> Self {
+        let dialog = ConfirmDialogComponent::new(
+            format!(
+                "Destroy version '{}'? This is permanent and cannot be undone.",
+                version.version_id
+            ),
+            resolver.clone(),
+        )
         .with_title("Destroy Version")
         .with_confirm_text("Destroy")
         .danger();
@@ -245,6 +274,7 @@ impl DestroyVersionDialog {
             secret,
             version,
             dialog,
+            resolver,
         }
     }
 }
@@ -279,7 +309,7 @@ pub(super) fn update(
         VersionsMsg::Load(secret) => {
             // Use cached versions if available
             if let Some(versions) = state.get_cached_versions(&secret) {
-                state.push_view(VersionListScreen::new(secret, versions));
+                state.push_view(VersionListScreen::new(secret, versions, state.get_resolver()));
                 return Ok(UpdateResult::Idle);
             }
 
@@ -296,12 +326,12 @@ pub(super) fn update(
         VersionsMsg::Loaded { secret, versions } => {
             state.hide_loading_spinner();
             state.cache_versions(&secret, versions.clone());
-            state.push_view(VersionListScreen::new(secret, versions));
+            state.push_view(VersionListScreen::new(secret, versions, state.get_resolver()));
             Ok(UpdateResult::Idle)
         }
 
         VersionsMsg::StartCreation(secret) => {
-            state.display_overlay(CreateVersionDialog::new(secret));
+            state.display_overlay(CreateVersionDialog::new(secret, state.get_resolver()));
             Ok(UpdateResult::Idle)
         }
 
@@ -364,7 +394,7 @@ pub(super) fn update(
         }
 
         VersionsMsg::ConfirmDestroy { secret, version } => {
-            state.display_overlay(DestroyVersionDialog::new(secret, version));
+            state.display_overlay(DestroyVersionDialog::new(secret, version, state.get_resolver()));
             Ok(UpdateResult::Idle)
         }
 

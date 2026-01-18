@@ -304,3 +304,20 @@ pub fn available_themes() -> Vec<ThemeInfo> {
         ThemeInfo::new("Catppuccin Latte", Theme::catppuccin_latte()),
     ]
 }
+
+/// Look up a theme by name. Returns the default theme if not found.
+pub fn theme_from_name(name: &str) -> Theme {
+    available_themes()
+        .into_iter()
+        .find(|t| t.name == name)
+        .map(|t| t.theme)
+        .unwrap_or_default()
+}
+
+/// Get the name of a theme that matches the given theme, if any.
+pub fn theme_name(theme: &Theme) -> Option<&'static str> {
+    available_themes()
+        .into_iter()
+        .find(|t| std::mem::discriminant(&t.theme.border_type) == std::mem::discriminant(&theme.border_type))
+        .map(|t| t.name)
+}

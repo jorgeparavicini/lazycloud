@@ -1,3 +1,4 @@
+use crate::config::{KeyResolver, NavAction};
 use crate::ui::{Component, Handled, Result};
 use crate::Theme;
 use crossterm::event::KeyEvent;
@@ -5,6 +6,7 @@ use ratatui::layout::Rect;
 use ratatui::prelude::{Modifier, Style};
 use ratatui::widgets::{List, ListItem, ListState};
 use ratatui::Frame;
+use std::sync::Arc;
 
 pub enum ListEvent<T> {
     Changed(T),
@@ -18,15 +20,16 @@ pub trait ListRow {
 pub struct ListComponent<T: ListRow + Clone> {
     items: Vec<T>,
     state: ListState,
+    resolver: Arc<KeyResolver>,
 }
 
 impl<T: ListRow + Clone> ListComponent<T> {
-    pub fn new(items: Vec<T>) -> Self {
+    pub fn new(items: Vec<T>, resolver: Arc<KeyResolver>) -> Self {
         let mut state = ListState::default();
         if !items.is_empty() {
             state.select(Some(0));
         }
-        Self { items, state }
+        Self { items, state, resolver }
     }
 
     pub fn selected(&self) -> Option<&T> {
@@ -61,54 +64,51 @@ impl<T: ListRow + Clone> Component for ListComponent<T> {
     type Output = ListEvent<T>;
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Output>> {
-        use crossterm::event::KeyCode::*;
-
         let before = self.state.selected();
 
-        Ok(match key.code {
-            Down | Char('j') => {
-                self.state.select_next();
-                self.get_change_event(before)
+        if self.resolver.matches_nav(&key, NavAction::Down) {
+            self.state.select_next();
+            return Ok(self.get_change_event(before));
+        }
+        if self.resolver.matches_nav(&key, NavAction::Up) {
+            self.state.select_previous();
+            return Ok(self.get_change_event(before));
+        }
+        if self.resolver.matches_nav(&key, NavAction::Home) {
+            self.state.select_first();
+            return Ok(self.get_change_event(before));
+        }
+        if self.resolver.matches_nav(&key, NavAction::End) {
+            self.state.select_last();
+            return Ok(self.get_change_event(before));
+        }
+        if self.resolver.matches_nav(&key, NavAction::PageDown) {
+            let step = 5;
+            let new_index = match self.state.selected() {
+                Some(i) => usize::min(i + step, self.items.len().saturating_sub(1)),
+                None => 0,
+            };
+            self.state.select(Some(new_index));
+            return Ok(self.get_change_event(before));
+        }
+        if self.resolver.matches_nav(&key, NavAction::PageUp) {
+            let step = 5;
+            let new_index = match self.state.selected() {
+                Some(i) => i.saturating_sub(step),
+                None => 0,
+            };
+            self.state.select(Some(new_index));
+            return Ok(self.get_change_event(before));
+        }
+        if self.resolver.matches_nav(&key, NavAction::Select) {
+            if let Some(selected) = self.state.selected() {
+                return Ok(ListEvent::Activated(self.items[selected].clone()).into());
+            } else {
+                return Ok(Handled::Ignored);
             }
-            Up | Char('k') => {
-                self.state.select_previous();
-                self.get_change_event(before)
-            }
-            Home | Char('g') => {
-                self.state.select_first();
-                self.get_change_event(before)
-            }
-            End | Char('G') => {
-                self.state.select_last();
-                self.get_change_event(before)
-            }
-            PageDown => {
-                let step = 5;
-                let new_index = match self.state.selected() {
-                    Some(i) => usize::min(i + step, self.items.len().saturating_sub(1)),
-                    None => 0,
-                };
-                self.state.select(Some(new_index));
-                self.get_change_event(before)
-            }
-            PageUp => {
-                let step = 5;
-                let new_index = match self.state.selected() {
-                    Some(i) => i.saturating_sub(step),
-                    None => 0,
-                };
-                self.state.select(Some(new_index));
-                self.get_change_event(before)
-            }
-            Enter => {
-                if let Some(selected) = self.state.selected() {
-                    ListEvent::Activated(self.items[selected].clone()).into()
-                } else {
-                    Handled::Ignored
-                }
-            }
-            _ => Handled::Ignored,
-        })
+        }
+
+        Ok(Handled::Ignored)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {

@@ -1,6 +1,7 @@
+use crate::config::{DialogAction, KeyResolver};
 use crate::ui::{Component, Handled, Result};
 use crate::Theme;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::KeyEvent;
 use ratatui::{
     layout::{Alignment, Constraint, Rect},
     style::{Modifier, Style},
@@ -8,6 +9,7 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
     Frame,
 };
+use std::sync::Arc;
 
 pub enum ConfirmEvent {
     Confirmed,
@@ -28,16 +30,18 @@ pub struct ConfirmDialogComponent {
     confirm_text: String,
     cancel_text: String,
     style: ConfirmStyle,
+    resolver: Arc<KeyResolver>,
 }
 
 impl ConfirmDialogComponent {
-    pub fn new(message: impl Into<String>) -> Self {
+    pub fn new(message: impl Into<String>, resolver: Arc<KeyResolver>) -> Self {
         Self {
             title: "Confirm".to_string(),
             message: message.into(),
             confirm_text: "Yes".to_string(),
             cancel_text: "No".to_string(),
             style: ConfirmStyle::Normal,
+            resolver,
         }
     }
 
@@ -66,20 +70,14 @@ impl Component for ConfirmDialogComponent {
     type Output = ConfirmEvent;
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Output>> {
-        Ok(match key.code {
-            // Confirm
-            KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
-                ConfirmEvent::Confirmed.into()
-            }
-
-            // Cancel
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                ConfirmEvent::Cancelled.into()
-            }
-
-            // Consume all other keys to prevent propagation
-            _ => Handled::Consumed,
-        })
+        if self.resolver.matches_dialog(&key, DialogAction::Confirm) {
+            return Ok(ConfirmEvent::Confirmed.into());
+        }
+        if self.resolver.matches_dialog(&key, DialogAction::Cancel) {
+            return Ok(ConfirmEvent::Cancelled.into());
+        }
+        // Consume all other keys to prevent propagation
+        Ok(Handled::Consumed)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {

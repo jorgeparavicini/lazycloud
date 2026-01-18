@@ -1,14 +1,11 @@
-use crate::model::context::{get_available_contexts, CloudContext};
 use crate::component::{ListComponent, ListEvent, ListRow};
+use crate::config::KeyResolver;
+use crate::model::context::{get_available_contexts, CloudContext};
 use crate::ui::{Component, Handled, Result};
 use crate::Theme;
 use crossterm::event::KeyEvent;
-use ratatui::{
-    layout::Rect,
-    style::Style,
-    widgets::ListItem,
-    Frame,
-};
+use ratatui::{layout::Rect, style::Style, widgets::ListItem, Frame};
+use std::sync::Arc;
 
 impl ListRow for CloudContext {
     fn render_row(&self, theme: &Theme) -> ListItem<'static> {
@@ -21,17 +18,11 @@ pub struct ContextSelectorView {
 }
 
 impl ContextSelectorView {
-    pub fn new() -> Self {
+    pub fn new(resolver: Arc<KeyResolver>) -> Self {
         let contexts = get_available_contexts();
         Self {
-            context_list: ListComponent::new(contexts),
+            context_list: ListComponent::new(contexts, resolver),
         }
-    }
-}
-
-impl Default for ContextSelectorView {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

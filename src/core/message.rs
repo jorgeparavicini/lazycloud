@@ -13,10 +13,10 @@
 //! Service-specific messages are handled locally within each service
 //! using their own message channels (e.g., `SecretManagerMsg`).
 
+use crate::component::CommandId;
 use crate::model::CloudContext;
 use crate::registry::ServiceId;
-use crate::theme::Theme;
-use crate::component::CommandId;
+use crate::theme::ThemeInfo;
 
 #[derive(Debug, Clone)]
 pub enum AppMessage {
@@ -38,6 +38,6 @@ pub enum AppMessage {
 
     SelectContext(CloudContext),
     SelectService(ServiceId),
-    SelectTheme(Theme),
+    SelectTheme(ThemeInfo),
     GoBack,
 }

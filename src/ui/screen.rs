@@ -49,7 +49,7 @@ pub trait Screen {
     }
 
     /// Returns the keybindings for this screen.
-    fn keybindings(&self) -> &'static [Keybinding] {
-        &[]
+    fn keybindings(&self) -> Vec<Keybinding> {
+        vec![]
     }
 }

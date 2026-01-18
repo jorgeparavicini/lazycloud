@@ -1,4 +1,5 @@
 use crate::component::Keybinding;
+use crate::config::{GlobalAction, KeyResolver, NavAction};
 use crate::model::CloudContext;
 use crate::Theme;
 use ratatui::{
@@ -8,19 +9,7 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Paragraph},
     Frame,
 };
-
-/// Global keybindings shown in the status bar hints.
-const GLOBAL_KEYBINDINGS: &[Keybinding] = &[
-    Keybinding::hint("?", "Help"),
-    Keybinding::hint("Esc", "Back"),
-    Keybinding::new("t", "Theme"),
-    Keybinding::new("q", "Quit"),
-    Keybinding::new("c", "Commands"),
-    Keybinding::new("Enter", "Select"),
-    Keybinding::new("j/k", "Navigate"),
-    Keybinding::new("r", "Reload"),
-    Keybinding::new("y", "Copy"),
-];
+use std::sync::Arc;
 
 /// ASCII art logo for the status bar.
 const LOGO: &[&str] = &[
@@ -35,12 +24,14 @@ const LOGO: &[&str] = &[
 
 pub struct StatusBarView {
     active_context: Option<CloudContext>,
+    resolver: Arc<KeyResolver>,
 }
 
 impl StatusBarView {
-    pub fn new() -> Self {
+    pub fn new(resolver: Arc<KeyResolver>) -> Self {
         Self {
             active_context: None,
+            resolver,
         }
     }
 
@@ -171,11 +162,14 @@ impl StatusBarView {
         theme: &Theme,
         local_keybindings: &[Keybinding],
     ) {
+        // Generate global keybindings from resolver
+        let global_keybindings = self.global_keybindings();
+
         // Collect all hint keybindings (local first, then global)
         let hints: Vec<&Keybinding> = local_keybindings
             .iter()
             .filter(|kb| kb.hint)
-            .chain(GLOBAL_KEYBINDINGS.iter().filter(|kb| kb.hint))
+            .chain(global_keybindings.iter().filter(|kb| kb.hint))
             .collect();
 
         if hints.is_empty() {
@@ -203,7 +197,7 @@ impl StatusBarView {
                     Style::default().fg(theme.peach()),
                 ),
                 Span::raw(" "),
-                Span::styled(kb.description, Style::default().fg(theme.subtext0())),
+                Span::styled(kb.description.clone(), Style::default().fg(theme.subtext0())),
             ]);
             columns[col_idx].push(line);
         }
@@ -243,16 +237,29 @@ impl StatusBarView {
     }
 
     /// Get the global keybindings for use in the help overlay.
-    pub fn global_keybindings() -> &'static [Keybinding] {
-        GLOBAL_KEYBINDINGS
+    pub fn global_keybindings(&self) -> Vec<Keybinding> {
+        vec![
+            Keybinding::hint(self.resolver.display_global(GlobalAction::Help), "Help"),
+            Keybinding::hint(self.resolver.display_global(GlobalAction::Back), "Back"),
+            Keybinding::new(self.resolver.display_global(GlobalAction::Theme), "Theme"),
+            Keybinding::new(self.resolver.display_global(GlobalAction::Quit), "Quit"),
+            Keybinding::new(
+                self.resolver.display_global(GlobalAction::CommandsToggle),
+                "Commands",
+            ),
+            Keybinding::new(self.resolver.display_nav(NavAction::Select), "Select"),
+            Keybinding::new(
+                format!(
+                    "{}/{}",
+                    self.resolver.display_nav(NavAction::Up),
+                    self.resolver.display_nav(NavAction::Down)
+                ),
+                "Navigate",
+            ),
+        ]
     }
 }
 
-impl Default for StatusBarView {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 /// Truncate a string to fit within a given width, adding "..." if truncated.
 fn truncate_str(s: &str, max_width: usize) -> String {

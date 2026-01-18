@@ -10,26 +10,26 @@ use ratatui::{
 };
 
 pub struct Keybinding {
-    pub key: &'static str,
-    pub description: &'static str,
+    pub key: String,
+    pub description: String,
     /// Whether this keybinding should be shown in the hints line at the bottom.
     pub hint: bool,
 }
 
 impl Keybinding {
-    pub const fn new(key: &'static str, description: &'static str) -> Self {
+    pub fn new(key: impl Into<String>, description: impl Into<String>) -> Self {
         Self {
-            key,
-            description,
+            key: key.into(),
+            description: description.into(),
             hint: false,
         }
     }
 
     /// Create a keybinding that is also shown as a hint at the bottom of the screen.
-    pub const fn hint(key: &'static str, description: &'static str) -> Self {
+    pub fn hint(key: impl Into<String>, description: impl Into<String>) -> Self {
         Self {
-            key,
-            description,
+            key: key.into(),
+            description: description.into(),
             hint: true,
         }
     }
@@ -38,13 +38,13 @@ impl Keybinding {
 /// A section of keybindings for the help overlay.
 pub struct KeybindingSection {
     pub title: String,
-    pub keybindings: &'static [Keybinding],
+    pub keybindings: Vec<Keybinding>,
 }
 
 impl KeybindingSection {
-    pub fn new(title: &str, keybindings: &'static [Keybinding]) -> Self {
+    pub fn new(title: impl Into<String>, keybindings: Vec<Keybinding>) -> Self {
         Self {
-            title: title.to_string(),
+            title: title.into(),
             keybindings,
         }
     }
@@ -59,7 +59,7 @@ pub struct HelpView {
 }
 
 impl HelpView {
-    pub fn new(keybindings: &'static [Keybinding]) -> Self {
+    pub fn new(keybindings: Vec<Keybinding>) -> Self {
         Self {
             sections: vec![KeybindingSection::new("Keybindings", keybindings)],
         }
@@ -109,11 +109,11 @@ impl Component for HelpView {
             lines.push(Line::from(Span::styled(header, section_style)));
 
             // Keybindings in this section
-            for kb in section.keybindings {
+            for kb in &section.keybindings {
                 lines.push(Line::from(vec![
                     Span::styled(format!("{:>12}", kb.key), key_style),
                     Span::raw("  "),
-                    Span::styled(kb.description, desc_style),
+                    Span::styled(kb.description.clone(), desc_style),
                 ]));
             }
         }

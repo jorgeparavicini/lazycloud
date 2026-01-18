@@ -1,3 +1,4 @@
+use crate::config::{KeyResolver, NavAction, SearchAction};
 use crate::ui::{Component, Handled, Result};
 use crate::Theme;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -5,6 +6,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::prelude::{Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Borders, Cell, Paragraph, Row, Table, TableState};
 use ratatui::Frame;
+use std::sync::Arc;
 
 pub enum TableEvent<T> {
     Changed(T),
@@ -44,10 +46,11 @@ pub struct TableComponent<T: TableRow + Clone> {
     title: Option<String>,
     searching: bool,
     query: String,
+    resolver: Arc<KeyResolver>,
 }
 
 impl<T: TableRow + Clone> TableComponent<T> {
-    pub fn new(items: Vec<T>) -> Self {
+    pub fn new(items: Vec<T>, resolver: Arc<KeyResolver>) -> Self {
         let filtered_indices: Vec<usize> = (0..items.len()).collect();
         let mut state = TableState::default();
         if !filtered_indices.is_empty() {
@@ -60,6 +63,7 @@ impl<T: TableRow + Clone> TableComponent<T> {
             title: None,
             searching: false,
             query: String::new(),
+            resolver,
         }
     }
 
@@ -146,24 +150,27 @@ impl<T: TableRow + Clone> TableComponent<T> {
     }
 
     fn handle_search_key(&mut self, key: KeyEvent) -> Result<Handled<TableEvent<T>>> {
-        Ok(match key.code {
-            KeyCode::Esc => {
-                // Exit search mode and clear filter
-                self.searching = false;
-                let had_query = !self.query.is_empty();
-                self.query.clear();
-                self.update_filter();
-                if had_query {
-                    TableEvent::SearchChanged(String::new()).into()
-                } else {
-                    Handled::Consumed
-                }
-            }
-            KeyCode::Enter => {
-                // Exit search mode but keep filter
-                self.searching = false;
+        // Check for search exit key (Esc)
+        if self.resolver.matches_search(&key, SearchAction::Exit) {
+            // Exit search mode and clear filter
+            self.searching = false;
+            let had_query = !self.query.is_empty();
+            self.query.clear();
+            self.update_filter();
+            return Ok(if had_query {
+                TableEvent::SearchChanged(String::new()).into()
+            } else {
                 Handled::Consumed
-            }
+            });
+        }
+
+        // Check for select (Enter) to exit search but keep filter
+        if self.resolver.matches_nav(&key, NavAction::Select) {
+            self.searching = false;
+            return Ok(Handled::Consumed);
+        }
+
+        Ok(match key.code {
             KeyCode::Backspace => {
                 self.query.pop();
                 self.update_filter();
@@ -182,69 +189,69 @@ impl<T: TableRow + Clone> TableComponent<T> {
     fn handle_navigation_key(&mut self, key: KeyEvent) -> Result<Handled<TableEvent<T>>> {
         let before = self.state.selected();
 
-        Ok(match key.code {
-            KeyCode::Down | KeyCode::Char('j') => {
-                self.select_next();
-                self.get_change_event(before)
-            }
-            KeyCode::Up | KeyCode::Char('k') => {
-                self.select_previous();
-                self.get_change_event(before)
-            }
-            KeyCode::Home | KeyCode::Char('g') => {
-                self.select_first();
-                self.get_change_event(before)
-            }
-            KeyCode::End | KeyCode::Char('G') => {
-                self.select_last();
-                self.get_change_event(before)
-            }
-            KeyCode::PageDown => {
-                let step = 10;
-                let new_index = match self.state.selected() {
-                    Some(i) if !self.filtered_indices.is_empty() => {
-                        usize::min(i + step, self.filtered_indices.len() - 1)
-                    }
-                    _ => 0,
-                };
-                if !self.filtered_indices.is_empty() {
-                    self.state.select(Some(new_index));
+        // Check navigation actions using resolver
+        if self.resolver.matches_nav(&key, NavAction::Down) {
+            self.select_next();
+            return Ok(self.get_change_event(before));
+        }
+        if self.resolver.matches_nav(&key, NavAction::Up) {
+            self.select_previous();
+            return Ok(self.get_change_event(before));
+        }
+        if self.resolver.matches_nav(&key, NavAction::Home) {
+            self.select_first();
+            return Ok(self.get_change_event(before));
+        }
+        if self.resolver.matches_nav(&key, NavAction::End) {
+            self.select_last();
+            return Ok(self.get_change_event(before));
+        }
+        if self.resolver.matches_nav(&key, NavAction::PageDown) {
+            let step = 10;
+            let new_index = match self.state.selected() {
+                Some(i) if !self.filtered_indices.is_empty() => {
+                    usize::min(i + step, self.filtered_indices.len() - 1)
                 }
-                self.get_change_event(before)
+                _ => 0,
+            };
+            if !self.filtered_indices.is_empty() {
+                self.state.select(Some(new_index));
             }
-            KeyCode::PageUp => {
-                let step = 10;
-                let new_index = match self.state.selected() {
-                    Some(i) => i.saturating_sub(step),
-                    None => 0,
-                };
-                if !self.filtered_indices.is_empty() {
-                    self.state.select(Some(new_index));
-                }
-                self.get_change_event(before)
+            return Ok(self.get_change_event(before));
+        }
+        if self.resolver.matches_nav(&key, NavAction::PageUp) {
+            let step = 10;
+            let new_index = match self.state.selected() {
+                Some(i) => i.saturating_sub(step),
+                None => 0,
+            };
+            if !self.filtered_indices.is_empty() {
+                self.state.select(Some(new_index));
             }
-            KeyCode::Enter => {
-                if let Some(selected) = self.state.selected() {
-                    self.filtered_indices
-                        .get(selected)
-                        .map(|&idx| TableEvent::Activated(self.items[idx].clone()).into())
-                        .unwrap_or(Handled::Ignored)
-                } else {
-                    Handled::Ignored
-                }
+            return Ok(self.get_change_event(before));
+        }
+        if self.resolver.matches_nav(&key, NavAction::Select) {
+            if let Some(selected) = self.state.selected() {
+                return Ok(self.filtered_indices
+                    .get(selected)
+                    .map(|&idx| TableEvent::Activated(self.items[idx].clone()).into())
+                    .unwrap_or(Handled::Ignored));
+            } else {
+                return Ok(Handled::Ignored);
             }
-            KeyCode::Char('/') => {
-                self.searching = true;
-                Handled::Consumed
-            }
-            KeyCode::Esc if !self.query.is_empty() => {
-                // Clear filter when not searching
-                self.query.clear();
-                self.update_filter();
-                Handled::Consumed
-            }
-            _ => Handled::Ignored,
-        })
+        }
+        if self.resolver.matches_search(&key, SearchAction::Toggle) {
+            self.searching = true;
+            return Ok(Handled::Consumed);
+        }
+        if self.resolver.matches_search(&key, SearchAction::Exit) && !self.query.is_empty() {
+            // Clear filter when not searching
+            self.query.clear();
+            self.update_filter();
+            return Ok(Handled::Consumed);
+        }
+
+        Ok(Handled::Ignored)
     }
 }
 

@@ -2,6 +2,7 @@ use crate::component::{
     CommandStatusView, ContextSelectorView, ErrorDialog, ErrorDialogEvent, HelpEvent, HelpView,
     KeybindingSection, ServiceSelectorView, StatusBarView, ThemeEvent, ThemeSelectorView,
 };
+use crate::config::{save_theme, AppConfig, GlobalAction, KeyResolver};
 use crate::core::command::Command;
 use crate::core::event::Event;
 use crate::core::message::AppMessage;
@@ -11,7 +12,6 @@ use crate::model::CloudContext;
 use crate::registry::ServiceRegistry;
 use crate::ui::{Component, Handled};
 use crate::Theme;
-use crossterm::event::KeyCode;
 use log::debug;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
@@ -48,17 +48,25 @@ pub struct App {
     registry: Arc<ServiceRegistry>,
     msg_tx: UnboundedSender<AppMessage>,
     msg_rx: UnboundedReceiver<AppMessage>,
+    #[allow(dead_code)]
+    config: Arc<AppConfig>,
+    resolver: Arc<KeyResolver>,
 }
 
 impl App {
-    pub fn new(registry: ServiceRegistry) -> Self {
+    pub fn new(
+        registry: ServiceRegistry,
+        config: Arc<AppConfig>,
+        resolver: Arc<KeyResolver>,
+        theme: Theme,
+    ) -> Self {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
 
         Self {
-            state: AppState::SelectingContext(ContextSelectorView::new()),
-            theme: Theme::default(),
+            state: AppState::SelectingContext(ContextSelectorView::new(resolver.clone())),
+            theme,
             popup: None,
-            status_bar: StatusBarView::new(),
+            status_bar: StatusBarView::new(resolver.clone()),
             command_tracker: CommandStatusView::new(),
             should_quit: false,
             should_suspend: false,
@@ -66,6 +74,8 @@ impl App {
             registry: Arc::new(registry),
             msg_tx,
             msg_rx,
+            config,
+            resolver,
         }
     }
 
@@ -138,15 +148,18 @@ impl App {
     fn go_to_context_selection(&mut self) {
         self.active_context = None;
         self.status_bar.clear_context();
-        self.state = AppState::SelectingContext(ContextSelectorView::new());
+        self.state = AppState::SelectingContext(ContextSelectorView::new(self.resolver.clone()));
     }
 
     /// Transition to service selection.
     fn go_to_service_selection(&mut self, context: CloudContext) {
         self.active_context = Some(context.clone());
         self.status_bar.set_active_context(context.clone());
-        self.state =
-            AppState::SelectingService(ServiceSelectorView::new(self.registry.clone(), context));
+        self.state = AppState::SelectingService(ServiceSelectorView::new(
+            self.registry.clone(),
+            context,
+            self.resolver.clone(),
+        ));
     }
 
     /// Transition to active service.
@@ -192,8 +205,8 @@ impl App {
                     }
                     ActivePopup::ThemeSelector(selector) => {
                         match selector.handle_key(*key) {
-                            Ok(Handled::Event(ThemeEvent::Selected(theme))) => {
-                                self.msg_tx.send(AppMessage::SelectTheme(theme))?;
+                            Ok(Handled::Event(ThemeEvent::Selected(theme_info))) => {
+                                self.msg_tx.send(AppMessage::SelectTheme(theme_info))?;
                             }
                             Ok(Handled::Event(ThemeEvent::Cancelled)) => {
                                 self.msg_tx.send(AppMessage::ClosePopup)?;
@@ -272,13 +285,16 @@ impl App {
                     self.msg_tx.send(AppMessage::Resize(*width, *height))?;
                 }
                 Event::Key(key) => {
-                    match key.code {
-                        KeyCode::Char('q') => self.msg_tx.send(AppMessage::Quit)?,
-                        KeyCode::Char('?') => self.msg_tx.send(AppMessage::DisplayHelp)?,
-                        KeyCode::Char('t') => self.msg_tx.send(AppMessage::DisplayThemeSelector)?,
-                        KeyCode::Char('c') => self.msg_tx.send(AppMessage::ToggleCommandStatus)?,
-                        KeyCode::Esc => self.msg_tx.send(AppMessage::GoBack)?,
-                        _ => {}
+                    if self.resolver.matches_global(key, GlobalAction::Quit) {
+                        self.msg_tx.send(AppMessage::Quit)?;
+                    } else if self.resolver.matches_global(key, GlobalAction::Help) {
+                        self.msg_tx.send(AppMessage::DisplayHelp)?;
+                    } else if self.resolver.matches_global(key, GlobalAction::Theme) {
+                        self.msg_tx.send(AppMessage::DisplayThemeSelector)?;
+                    } else if self.resolver.matches_global(key, GlobalAction::CommandsToggle) {
+                        self.msg_tx.send(AppMessage::ToggleCommandStatus)?;
+                    } else if self.resolver.matches_global(key, GlobalAction::Back) {
+                        self.msg_tx.send(AppMessage::GoBack)?;
                     }
                 }
                 _ => {}
@@ -308,12 +324,12 @@ impl App {
             AppMessage::Render => self.render(tui)?,
             AppMessage::DisplayError(err) => {
                 log::error!("Error: {}", err);
-                self.popup = Some(ActivePopup::Error(ErrorDialog::new(err)));
+                self.popup = Some(ActivePopup::Error(ErrorDialog::new(err, self.resolver.clone())));
             }
             AppMessage::DisplayHelp => {
                 let local = match &self.state {
                     AppState::ActiveService(service) => service.keybindings(),
-                    _ => &[],
+                    _ => vec![],
                 };
                 let local_title = match &self.state {
                     AppState::ActiveService(service) => service
@@ -325,17 +341,23 @@ impl App {
                 };
                 self.popup = Some(ActivePopup::Help(HelpView::with_sections(vec![
                     KeybindingSection::new(&local_title, local),
-                    KeybindingSection::new("Global", StatusBarView::global_keybindings()),
+                    KeybindingSection::new("Global", self.status_bar.global_keybindings()),
                 ])));
             }
             AppMessage::DisplayThemeSelector => {
-                self.popup = Some(ActivePopup::ThemeSelector(ThemeSelectorView::new()));
+                self.popup = Some(ActivePopup::ThemeSelector(ThemeSelectorView::new(
+                    self.resolver.clone(),
+                )));
             }
             AppMessage::ClosePopup => {
                 self.popup = None;
             }
-            AppMessage::SelectTheme(theme) => {
-                self.theme = theme;
+            AppMessage::SelectTheme(theme_info) => {
+                // Persist theme to config file
+                if let Err(e) = save_theme(theme_info.name) {
+                    log::warn!("Failed to persist theme: {}", e);
+                }
+                self.theme = theme_info.theme;
                 self.popup = None;
             }
             AppMessage::CommandCompleted { id, success } => {
@@ -358,7 +380,7 @@ impl App {
             AppMessage::SelectService(service_id) => {
                 if let Some(ctx) = &self.active_context {
                     if let Some(provider) = self.registry.get(&service_id) {
-                        let service = provider.create_service(ctx);
+                        let service = provider.create_service(ctx, self.resolver.clone());
                         self.go_to_active_service(service);
                     }
                 }
@@ -382,7 +404,7 @@ impl App {
             // Get keybindings for status bar
             let local_keybindings = match &self.state {
                 AppState::ActiveService(service) => service.keybindings(),
-                _ => &[],
+                _ => vec![],
             };
 
             let chunks = Layout::default()
@@ -396,7 +418,7 @@ impl App {
 
             // Render status bar with keybinding hints
             self.status_bar
-                .render_with_keybindings(frame, chunks[0], &self.theme, local_keybindings);
+                .render_with_keybindings(frame, chunks[0], &self.theme, &local_keybindings);
 
             // Render current state
             match &mut self.state {

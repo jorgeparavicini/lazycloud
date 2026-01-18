@@ -1,15 +1,11 @@
+use crate::component::{ListComponent, ListEvent, ListRow};
+use crate::config::KeyResolver;
 use crate::model::CloudContext;
 use crate::registry::{ServiceId, ServiceProvider, ServiceRegistry};
-use crate::component::{ListComponent, ListEvent, ListRow};
 use crate::ui::{Component, Handled, Result};
 use crate::Theme;
 use crossterm::event::KeyEvent;
-use ratatui::{
-    layout::Rect,
-    style::Style,
-    widgets::ListItem,
-    Frame,
-};
+use ratatui::{layout::Rect, style::Style, widgets::ListItem, Frame};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -33,7 +29,11 @@ pub struct ServiceSelectorView {
 }
 
 impl ServiceSelectorView {
-    pub fn new(registry: Arc<ServiceRegistry>, context: CloudContext) -> Self {
+    pub fn new(
+        registry: Arc<ServiceRegistry>,
+        context: CloudContext,
+        resolver: Arc<KeyResolver>,
+    ) -> Self {
         let services: Vec<ServiceItem> = registry
             .available_services(&context)
             .into_iter()
@@ -41,7 +41,7 @@ impl ServiceSelectorView {
             .collect();
 
         Self {
-            service_list: ListComponent::new(services),
+            service_list: ListComponent::new(services, resolver),
         }
     }
 }

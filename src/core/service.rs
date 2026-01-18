@@ -89,7 +89,7 @@ pub trait Service {
     fn breadcrumbs(&self) -> Vec<String>;
 
     /// Returns the keybindings for the current view in this service.
-    fn keybindings(&self) -> &'static [Keybinding] {
-        &[]
+    fn keybindings(&self) -> Vec<Keybinding> {
+        vec![]
     }
 }

@@ -1,5 +1,6 @@
 use crate::Theme;
 use crate::component::{Keybinding, SpinnerWidget};
+use crate::config::{GlobalAction, KeyResolver};
 use crate::core::command::Command;
 use crate::core::event::Event;
 use crate::core::service::{Service, UpdateResult};
@@ -12,10 +13,10 @@ use crate::provider::gcp::secret_manager::{payload, secrets, versions};
 use crate::registry::ServiceProvider;
 use crate::ui::{Component, HandledResultExt, Modal, Screen};
 use async_trait::async_trait;
-use crossterm::event::KeyCode;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 // === Messages ===
@@ -59,11 +60,11 @@ impl ServiceProvider for SecretManagerProvider {
         Some("🔐")
     }
 
-    fn create_service(&self, ctx: &CloudContext) -> Box<dyn Service> {
+    fn create_service(&self, ctx: &CloudContext, resolver: Arc<KeyResolver>) -> Box<dyn Service> {
         let CloudContext::Gcp(gcp_ctx) = ctx else {
             panic!("SecretManagerProvider requires GcpContext");
         };
-        Box::new(SecretManager::new(gcp_ctx.clone()))
+        Box::new(SecretManager::new(gcp_ctx.clone(), resolver))
     }
 }
 
@@ -83,10 +84,11 @@ pub struct SecretManager {
     cached_versions: HashMap<String, Vec<SecretVersion>>,
     /// Key: "secret_name/version_id"
     cached_payloads: HashMap<String, SecretPayload>,
+    resolver: Arc<KeyResolver>,
 }
 
 impl SecretManager {
-    pub fn new(ctx: GcpContext) -> Self {
+    pub fn new(ctx: GcpContext, resolver: Arc<KeyResolver>) -> Self {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
         Self {
             context: ctx,
@@ -100,7 +102,12 @@ impl SecretManager {
             cached_secrets: None,
             cached_versions: HashMap::new(),
             cached_payloads: HashMap::new(),
+            resolver,
         }
+    }
+
+    pub(super) fn get_resolver(&self) -> Arc<KeyResolver> {
+        self.resolver.clone()
     }
 
     // === Public helpers for feature slices ===
@@ -316,7 +323,7 @@ impl Service for SecretManager {
         }
 
         // Global navigation
-        if key.code == KeyCode::Esc {
+        if self.resolver.matches_global(key, GlobalAction::Back) {
             self.queue(SecretManagerMsg::NavigateBack);
             return true;
         }
@@ -366,10 +373,10 @@ impl Service for SecretManager {
         bc
     }
 
-    fn keybindings(&self) -> &'static [Keybinding] {
+    fn keybindings(&self) -> Vec<Keybinding> {
         self.current_screen()
             .map(|s| s.keybindings())
-            .unwrap_or(&[])
+            .unwrap_or_default()
     }
 }
 
