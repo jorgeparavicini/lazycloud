@@ -407,8 +407,8 @@ impl InitClientCmd {
 
 #[async_trait]
 impl Command for InitClientCmd {
-    fn name(&self) -> &'static str {
-        "Initializing Secret Manager"
+    fn name(&self) -> String {
+        format!("Connecting to {}", self.project_id)
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {

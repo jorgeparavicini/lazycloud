@@ -491,8 +491,8 @@ struct FetchVersionsCmd {
 
 #[async_trait]
 impl Command for FetchVersionsCmd {
-    fn name(&self) -> &'static str {
-        "Loading versions"
+    fn name(&self) -> String {
+        format!("Loading '{}' versions", self.secret.name)
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
@@ -517,8 +517,8 @@ struct AddVersionCmd {
 
 #[async_trait]
 impl Command for AddVersionCmd {
-    fn name(&self) -> &'static str {
-        "Adding secret version"
+    fn name(&self) -> String {
+        format!("Adding version to '{}'", self.secret.name)
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
@@ -544,8 +544,8 @@ struct DisableVersionCmd {
 
 #[async_trait]
 impl Command for DisableVersionCmd {
-    fn name(&self) -> &'static str {
-        "Disabling version"
+    fn name(&self) -> String {
+        format!("Disabling '{}' v{}", self.secret.name, self.version.version_id)
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
@@ -571,8 +571,8 @@ struct EnableVersionCmd {
 
 #[async_trait]
 impl Command for EnableVersionCmd {
-    fn name(&self) -> &'static str {
-        "Enabling version"
+    fn name(&self) -> String {
+        format!("Enabling '{}' v{}", self.secret.name, self.version.version_id)
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
@@ -598,8 +598,8 @@ struct DestroyVersionCmd {
 
 #[async_trait]
 impl Command for DestroyVersionCmd {
-    fn name(&self) -> &'static str {
-        "Destroying version"
+    fn name(&self) -> String {
+        format!("Destroying '{}' v{}", self.secret.name, self.version.version_id)
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {

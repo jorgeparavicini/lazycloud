@@ -26,8 +26,8 @@ impl CopyToClipboardCmd {
 
 #[async_trait]
 impl Command for CopyToClipboardCmd {
-    fn name(&self) -> &'static str {
-        "Copying to clipboard"
+    fn name(&self) -> String {
+        format!("Copying {}", self.toast_message)
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {

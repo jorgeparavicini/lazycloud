@@ -912,8 +912,8 @@ struct FetchSecretsCmd {
 
 #[async_trait]
 impl Command for FetchSecretsCmd {
-    fn name(&self) -> &'static str {
-        "Loading secrets"
+    fn name(&self) -> String {
+        "Loading secrets".to_string()
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
@@ -932,8 +932,8 @@ struct CreateSecretCmd {
 
 #[async_trait]
 impl Command for CreateSecretCmd {
-    fn name(&self) -> &'static str {
-        "Creating secret"
+    fn name(&self) -> String {
+        format!("Creating '{}'", self.name)
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
@@ -957,8 +957,8 @@ struct DeleteSecretCmd {
 
 #[async_trait]
 impl Command for DeleteSecretCmd {
-    fn name(&self) -> &'static str {
-        "Deleting secret"
+    fn name(&self) -> String {
+        format!("Deleting '{}'", self.secret.name)
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
@@ -977,8 +977,8 @@ struct UpdateLabelsCmd {
 
 #[async_trait]
 impl Command for UpdateLabelsCmd {
-    fn name(&self) -> &'static str {
-        "Updating labels"
+    fn name(&self) -> String {
+        format!("Updating labels on '{}'", self.secret.name)
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
@@ -999,8 +999,8 @@ struct FetchIamPolicyCmd {
 
 #[async_trait]
 impl Command for FetchIamPolicyCmd {
-    fn name(&self) -> &'static str {
-        "Loading IAM policy"
+    fn name(&self) -> String {
+        format!("Loading IAM for '{}'", self.secret.name)
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
@@ -1024,8 +1024,8 @@ struct FetchSecretMetadataCmd {
 
 #[async_trait]
 impl Command for FetchSecretMetadataCmd {
-    fn name(&self) -> &'static str {
-        "Loading secret metadata"
+    fn name(&self) -> String {
+        format!("Loading metadata for '{}'", self.secret.name)
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
@@ -1050,8 +1050,8 @@ struct LoadPayloadCmd {
 
 #[async_trait]
 impl Command for LoadPayloadCmd {
-    fn name(&self) -> &'static str {
-        "Loading payload"
+    fn name(&self) -> String {
+        format!("Loading payload for '{}'", self.secret.name)
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {

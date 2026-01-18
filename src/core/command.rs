@@ -18,8 +18,9 @@ use async_trait::async_trait;
 /// They typically send results back to the service via a channel.
 #[async_trait]
 pub trait Command: Send + 'static {
-    /// Human-readable name for status display (e.g., "Loading secrets").
-    fn name(&self) -> &'static str;
+    /// Human-readable name for status display.
+    /// Include context like secret names, version IDs, etc.
+    fn name(&self) -> String;
 
     /// Execute the command.
     async fn execute(self: Box<Self>) -> color_eyre::Result<()>;

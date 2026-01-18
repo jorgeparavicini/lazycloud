@@ -467,20 +467,33 @@ impl App {
                 }
             }
 
-            // Render breadcrumbs
+            // Render breadcrumbs (left) and inline command status (right)
             let breadcrumbs = self.build_breadcrumbs();
             let bc_text = breadcrumbs.join(" > ");
+
+            // First render inline command status to get its width
+            let cmd_width = self
+                .command_tracker
+                .render_inline(frame, chunks[2], &self.theme);
+
+            // Render breadcrumbs in remaining space
+            let bc_area = Rect::new(
+                chunks[2].x,
+                chunks[2].y,
+                chunks[2].width.saturating_sub(cmd_width + 2),
+                chunks[2].height,
+            );
             let bc_widget = Paragraph::new(bc_text).style(
                 Style::default()
                     .fg(self.theme.overlay1())
                     .add_modifier(Modifier::ITALIC),
             );
-            frame.render_widget(bc_widget, chunks[2]);
+            frame.render_widget(bc_widget, bc_area);
 
-            // Render command status (bottom right of main content)
+            // Render expanded command panel (overlay on main content)
             self.command_tracker.render(frame, chunks[1], &self.theme);
 
-            // Render toasts (bottom right, above command status)
+            // Render toasts (bottom right of main content)
             self.toast_manager.render(frame, chunks[1], &self.theme);
 
             // Render popup overlay on top

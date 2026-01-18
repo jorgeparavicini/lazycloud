@@ -214,8 +214,8 @@ struct FetchPayloadCmd {
 
 #[async_trait]
 impl Command for FetchPayloadCmd {
-    fn name(&self) -> &'static str {
-        "Loading secret payload"
+    fn name(&self) -> String {
+        format!("Loading '{}' v{}", self.secret.name, self.version.version_id)
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
@@ -243,8 +243,8 @@ struct FetchLatestPayloadCmd {
 
 #[async_trait]
 impl Command for FetchLatestPayloadCmd {
-    fn name(&self) -> &'static str {
-        "Loading latest secret payload"
+    fn name(&self) -> String {
+        format!("Loading '{}' (latest)", self.secret.name)
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
