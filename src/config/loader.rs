@@ -58,3 +58,9 @@ pub fn save_theme(theme_name: &str) -> color_eyre::Result<()> {
     config.theme.name = theme_name.to_string();
     save(&config)
 }
+
+pub fn save_last_context(context_name: &str) -> color_eyre::Result<()> {
+    let mut config = load().unwrap_or_default();
+    config.last_context = Some(context_name.to_string());
+    save(&config)
+}

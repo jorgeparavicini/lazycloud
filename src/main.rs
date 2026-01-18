@@ -1,9 +1,11 @@
 use crate::app::App;
 use crate::config::KeyResolver;
 use crate::registry::ServiceRegistry;
+use clap::Parser;
 use std::sync::Arc;
 
 mod app;
+mod cli;
 mod component;
 mod config;
 mod core;
@@ -20,6 +22,8 @@ pub use theme::Theme;
 async fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
 
+    let args = cli::Args::parse();
+
     // Load config (creates default if doesn't exist)
     let config = Arc::new(config::load()?);
 
@@ -33,6 +37,7 @@ async fn main() -> color_eyre::Result<()> {
     provider::register_all(&mut registry);
 
     let mut app = App::new(registry, config, resolver, theme);
+    app.apply_cli_args(args)?;
     app.run().await?;
 
     Ok(())

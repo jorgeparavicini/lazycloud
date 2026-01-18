@@ -1,19 +1,22 @@
 use crate::Theme;
+use crate::cli::Args;
 use crate::component::{
     CommandStatusView, ContextSelectorView, ErrorDialog, ErrorDialogEvent, HelpEvent, HelpView,
     KeybindingSection, ServiceSelectorView, StatusBarView, ThemeEvent, ThemeSelectorView, Toast,
     ToastManager, ToastType,
 };
-use crate::config::{AppConfig, GlobalAction, KeyResolver, save_theme};
+use crate::config::{AppConfig, GlobalAction, KeyResolver, save_last_context, save_theme};
 use crate::core::command::Command;
 use crate::core::command::CommandEnv;
 use crate::core::event::Event;
 use crate::core::message::AppMessage;
 use crate::core::service::{Service, UpdateResult};
 use crate::core::tui::Tui;
-use crate::model::CloudContext;
-use crate::registry::ServiceRegistry;
+use crate::model::context::get_available_contexts;
+use crate::model::{CloudContext, Provider};
+use crate::registry::{ServiceId, ServiceRegistry};
 use crate::ui::{Component, Handled};
+use color_eyre::eyre::eyre;
 use log::debug;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
@@ -52,9 +55,9 @@ pub struct App {
     registry: Arc<ServiceRegistry>,
     msg_tx: UnboundedSender<AppMessage>,
     msg_rx: UnboundedReceiver<AppMessage>,
-    #[allow(dead_code)]
     config: Arc<AppConfig>,
     resolver: Arc<KeyResolver>,
+    pending_service: Option<String>,
 }
 
 impl App {
@@ -84,7 +87,127 @@ impl App {
             msg_rx,
             config,
             resolver,
+            pending_service: None,
         }
+    }
+
+    pub fn apply_cli_args(&mut self, args: Args) -> color_eyre::Result<()> {
+        let contexts = get_available_contexts();
+
+        match (&args.context, &args.service) {
+            // Both provided: go directly to service
+            (Some(ctx_name), Some(svc_name)) => {
+                let context = self.find_context(&contexts, ctx_name)?;
+                let service_id = self.find_service(&context, svc_name)?;
+                self.start_service(context, service_id);
+            }
+
+            // Only context: go to service selection
+            (Some(ctx_name), None) => {
+                let context = self.find_context(&contexts, ctx_name)?;
+                self.go_to_service_selection(context);
+            }
+
+            // Only service: use last context or show filtered context selector
+            (None, Some(svc_name)) => {
+                // Find which provider this service belongs to
+                let provider = self.find_service_provider(svc_name)?;
+
+                // Try last context if compatible
+                if let Some(ctx_name) = &self.config.last_context {
+                    if let Ok(context) = self.find_context(&contexts, ctx_name) {
+                        if context.provider() == provider {
+                            let service_id = self.find_service(&context, svc_name)?;
+                            self.start_service(context, service_id);
+                            return Ok(());
+                        }
+                    }
+                }
+
+                // Last context incompatible or missing: show filtered context selector
+                let filtered: Vec<_> = contexts
+                    .into_iter()
+                    .filter(|c| c.provider() == provider)
+                    .collect();
+
+                if filtered.is_empty() {
+                    return Err(eyre!("No {} contexts found", provider.display_name()));
+                }
+
+                self.pending_service = Some(svc_name.clone());
+                self.go_to_filtered_context_selection(filtered);
+            }
+
+            // Neither: normal flow
+            (None, None) => {}
+        }
+        Ok(())
+    }
+
+    fn find_context(
+        &self,
+        contexts: &[CloudContext],
+        name: &str,
+    ) -> color_eyre::Result<CloudContext> {
+        contexts
+            .iter()
+            .find(|c| c.name().eq_ignore_ascii_case(name))
+            .cloned()
+            .ok_or_else(|| {
+                let available: Vec<_> = contexts.iter().map(|c| c.name()).collect();
+                eyre!(
+                    "Context '{}' not found. Available: {}",
+                    name,
+                    available.join(", ")
+                )
+            })
+    }
+
+    fn find_service(
+        &self,
+        context: &CloudContext,
+        name: &str,
+    ) -> color_eyre::Result<ServiceId> {
+        let services = self.registry.available_services(context);
+        services
+            .iter()
+            .find(|s| s.service_key().eq_ignore_ascii_case(name))
+            .map(|s| s.service_id())
+            .ok_or_else(|| {
+                let available: Vec<_> = services.iter().map(|s| s.service_key()).collect();
+                eyre!(
+                    "Service '{}' not available for {}. Available: {}",
+                    name,
+                    context.provider().display_name(),
+                    available.join(", ")
+                )
+            })
+    }
+
+    fn find_service_provider(&self, name: &str) -> color_eyre::Result<Provider> {
+        self.registry
+            .all_providers()
+            .iter()
+            .find(|p| p.service_key().eq_ignore_ascii_case(name))
+            .map(|p| p.provider())
+            .ok_or_else(|| eyre!("Unknown service: {}", name))
+    }
+
+    fn start_service(&mut self, context: CloudContext, service_id: ServiceId) {
+        self.active_context = Some(context.clone());
+        self.status_bar.set_active_context(context.clone());
+        if let Some(provider) = self.registry.get(&service_id) {
+            let service =
+                provider.create_service(&context, self.resolver.clone(), self.cmd_env.clone());
+            self.go_to_active_service(service);
+        }
+    }
+
+    fn go_to_filtered_context_selection(&mut self, contexts: Vec<CloudContext>) {
+        self.state = AppState::SelectingContext(ContextSelectorView::with_contexts(
+            contexts,
+            self.resolver.clone(),
+        ));
     }
 
     pub async fn run(&mut self) -> color_eyre::Result<()> {
@@ -172,6 +295,11 @@ impl App {
 
     /// Transition to active service.
     fn go_to_active_service(&mut self, mut service: Box<dyn Service>) {
+        // Save last context for -s flag
+        if let Some(ctx) = &self.active_context {
+            let _ = save_last_context(ctx.name());
+        }
+
         // Initialize the service (queues startup message)
         service.init();
         self.state = AppState::ActiveService(service);
@@ -401,6 +529,13 @@ impl App {
                 self.toast_manager.show(toast);
             }
             AppMessage::SelectContext(context) => {
+                // Check for pending service from CLI args
+                if let Some(svc_name) = self.pending_service.take() {
+                    if let Ok(service_id) = self.find_service(&context, &svc_name) {
+                        self.start_service(context, service_id);
+                        return Ok(());
+                    }
+                }
                 self.go_to_service_selection(context);
             }
             AppMessage::SelectService(service_id) => {

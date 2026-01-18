@@ -74,6 +74,11 @@ impl ServiceRegistry {
         self.providers.keys().cloned().collect()
     }
 
+    /// Get all registered service providers.
+    pub fn all_providers(&self) -> Vec<Arc<dyn ServiceProvider>> {
+        self.providers.values().cloned().collect()
+    }
+
     /// Get the number of registered services.
     pub fn len(&self) -> usize {
         self.providers.len()

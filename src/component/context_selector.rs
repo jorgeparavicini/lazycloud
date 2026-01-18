@@ -19,7 +19,10 @@ pub struct ContextSelectorView {
 
 impl ContextSelectorView {
     pub fn new(resolver: Arc<KeyResolver>) -> Self {
-        let contexts = get_available_contexts();
+        Self::with_contexts(get_available_contexts(), resolver)
+    }
+
+    pub fn with_contexts(contexts: Vec<CloudContext>, resolver: Arc<KeyResolver>) -> Self {
         Self {
             context_list: ListComponent::new(contexts, resolver),
         }

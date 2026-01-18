@@ -9,7 +9,7 @@ use keybindings::KeybindingsConfig;
 use serde::{Deserialize, Serialize};
 
 pub use actions::*;
-pub use loader::{load, save_theme};
+pub use loader::{load, save_last_context, save_theme};
 pub use resolver::KeyResolver;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,4 +31,6 @@ pub struct AppConfig {
     pub theme: ThemeConfig,
     #[serde(default)]
     pub keybindings: KeybindingsConfig,
+    #[serde(default)]
+    pub last_context: Option<String>,
 }
