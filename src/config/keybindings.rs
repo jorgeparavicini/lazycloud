@@ -1,5 +1,6 @@
-use crate::config::key::KeyBinding;
 use serde::{Deserialize, Serialize};
+
+use crate::config::key::KeyBinding;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalKeybindings {

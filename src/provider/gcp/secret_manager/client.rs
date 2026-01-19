@@ -1,16 +1,21 @@
-use crate::provider::gcp::context::load_credentials_json;
-use crate::provider::gcp::secret_manager::payload::SecretPayload;
-use crate::provider::gcp::secret_manager::secrets::{
-    IamBinding, IamPolicy, ReplicationConfig, Secret,
-};
-use crate::provider::gcp::secret_manager::versions::SecretVersion;
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use google_cloud_auth::credentials::user_account;
 use google_cloud_secretmanager_v1::client::SecretManagerService as GcpSecretManagerClient;
 use google_cloud_secretmanager_v1::model;
 use google_cloud_wkt::FieldMask;
-use std::collections::HashMap;
 use tokio_util::bytes::Bytes;
+
+use crate::provider::gcp::context::load_credentials_json;
+use crate::provider::gcp::secret_manager::payload::SecretPayload;
+use crate::provider::gcp::secret_manager::secrets::{
+    IamBinding,
+    IamPolicy,
+    ReplicationConfig,
+    Secret,
+};
+use crate::provider::gcp::secret_manager::versions::SecretVersion;
 
 fn format_timestamp(seconds: i64) -> String {
     DateTime::<Utc>::from_timestamp(seconds, 0)

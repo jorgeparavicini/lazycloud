@@ -1,15 +1,15 @@
-use crate::Theme;
-use crate::ui::Component;
-use ratatui::{
-    Frame,
-    layout::Rect,
-    style::{Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Clear, Paragraph},
-};
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
+
+use ratatui::Frame;
+use ratatui::layout::Rect;
+use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use throbber_widgets_tui::{BRAILLE_SIX, Throbber, ThrobberState, WhichUse};
+
+use crate::Theme;
+use crate::ui::Component;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CommandId(u64);

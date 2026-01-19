@@ -1,7 +1,8 @@
+use async_trait::async_trait;
+
 use crate::component::ToastType;
 use crate::core::Command;
 use crate::core::command::CommandEnv;
-use async_trait::async_trait;
 
 /// Command to copy text to the system clipboard.
 ///

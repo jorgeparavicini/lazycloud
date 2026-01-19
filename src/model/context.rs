@@ -1,6 +1,8 @@
-use crate::model::provider::Provider;
-use serde::{Deserialize, Serialize};
 use std::fmt;
+
+use serde::{Deserialize, Serialize};
+
+use crate::model::provider::Provider;
 
 /// Cloud context containing connection and authentication details.
 ///

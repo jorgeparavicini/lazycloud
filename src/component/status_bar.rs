@@ -1,15 +1,15 @@
+use std::sync::Arc;
+
+use ratatui::Frame;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
+
 use crate::Theme;
 use crate::component::Keybinding;
 use crate::config::{GlobalAction, KeyResolver, NavAction};
 use crate::model::CloudContext;
-use ratatui::{
-    Frame,
-    layout::{Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Paragraph},
-};
-use std::sync::Arc;
 
 /// ASCII art logo for the status bar.
 const LOGO: &[&str] = &[

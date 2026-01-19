@@ -7,10 +7,9 @@
 mod clipboard;
 mod env;
 
+use async_trait::async_trait;
 pub use clipboard::CopyToClipboardCmd;
 pub use env::CommandEnv;
-
-use async_trait::async_trait;
 
 /// Async command that performs side effects.
 ///

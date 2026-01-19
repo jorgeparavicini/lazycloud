@@ -1,11 +1,13 @@
-use crate::Theme;
-use crate::ui::Component;
+use std::collections::VecDeque;
+use std::time::{Duration, Instant};
+
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
-use std::collections::VecDeque;
-use std::time::{Duration, Instant};
+
+use crate::Theme;
+use crate::ui::Component;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToastType {

@@ -1,12 +1,14 @@
-use crate::Theme;
-use crate::config::{KeyResolver, NavAction, SearchAction};
-use crate::ui::{Component, Handled, Result};
+use std::sync::Arc;
+
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::prelude::{Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Borders, Cell, Paragraph, Row, Table, TableState};
-use std::sync::Arc;
+
+use crate::Theme;
+use crate::config::{KeyResolver, NavAction, SearchAction};
+use crate::ui::{Component, Handled, Result};
 
 pub enum TableEvent<T> {
     Changed(T),

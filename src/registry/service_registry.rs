@@ -1,7 +1,8 @@
-use crate::model::{CloudContext, Provider};
-use crate::registry::{ServiceId, ServiceProvider};
 use std::collections::HashMap;
 use std::sync::Arc;
+
+use crate::model::{CloudContext, Provider};
+use crate::registry::{ServiceId, ServiceProvider};
 
 /// Registry of available cloud services.
 ///
@@ -98,6 +99,11 @@ impl Default for ServiceRegistry {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use ratatui::Frame;
+    use ratatui::layout::Rect;
+
     use super::*;
     use crate::Theme;
     use crate::config::KeyResolver;
@@ -105,9 +111,6 @@ mod tests {
     use crate::core::event::Event;
     use crate::core::service::{Service, UpdateResult};
     use crate::model::GcpContext;
-    use ratatui::Frame;
-    use ratatui::layout::Rect;
-    use std::sync::Arc;
 
     struct MockProvider;
 

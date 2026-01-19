@@ -1,3 +1,11 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use ratatui::Frame;
+use ratatui::layout::Rect;
+use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+
 use crate::Theme;
 use crate::component::{Keybinding, SpinnerWidget};
 use crate::config::{GlobalAction, KeyResolver};
@@ -12,12 +20,6 @@ use crate::provider::gcp::secret_manager::versions::{SecretVersion, VersionsMsg}
 use crate::provider::gcp::secret_manager::{payload, secrets, versions};
 use crate::registry::ServiceProvider;
 use crate::ui::{Component, HandledResultExt, Modal, Screen};
-use async_trait::async_trait;
-use ratatui::Frame;
-use ratatui::layout::Rect;
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 // === Messages ===
 

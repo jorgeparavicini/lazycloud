@@ -1,3 +1,13 @@
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use crossterm::event::KeyEvent;
+use ratatui::Frame;
+use ratatui::layout::Rect;
+use ratatui::style::{Modifier, Style};
+use ratatui::widgets::{Block, Borders, Paragraph};
+use tokio::sync::mpsc::UnboundedSender;
+
 use crate::Theme;
 use crate::component::Keybinding;
 use crate::config::{KeyResolver, PayloadAction};
@@ -9,14 +19,6 @@ use crate::provider::gcp::secret_manager::secrets::Secret;
 use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::versions::SecretVersion;
 use crate::ui::{Handled, Result, Screen};
-use async_trait::async_trait;
-use crossterm::event::KeyEvent;
-use ratatui::Frame;
-use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
-use ratatui::widgets::{Block, Borders, Paragraph};
-use std::sync::Arc;
-use tokio::sync::mpsc::UnboundedSender;
 
 // === Models ===
 
@@ -215,7 +217,10 @@ struct FetchPayloadCmd {
 #[async_trait]
 impl Command for FetchPayloadCmd {
     fn name(&self) -> String {
-        format!("Loading '{}' v{}", self.secret.name, self.version.version_id)
+        format!(
+            "Loading '{}' v{}",
+            self.secret.name, self.version.version_id
+        )
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {

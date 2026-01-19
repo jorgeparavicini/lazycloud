@@ -1,10 +1,11 @@
 //! Component trait for reusable UI building blocks.
 
-use crate::Theme;
-use crate::ui::{Handled, Result};
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use ratatui::layout::Rect;
+
+use crate::Theme;
+use crate::ui::{Handled, Result};
 
 /// Interactive UI building block.
 ///

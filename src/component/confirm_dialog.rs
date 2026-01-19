@@ -1,15 +1,15 @@
+use std::sync::Arc;
+
+use crossterm::event::KeyEvent;
+use ratatui::Frame;
+use ratatui::layout::{Alignment, Constraint, Rect};
+use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
+
 use crate::Theme;
 use crate::config::{DialogAction, KeyResolver};
 use crate::ui::{Component, Handled, Result};
-use crossterm::event::KeyEvent;
-use ratatui::{
-    Frame,
-    layout::{Alignment, Constraint, Rect},
-    style::{Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Clear, Paragraph},
-};
-use std::sync::Arc;
 
 pub enum ConfirmEvent {
     Confirmed,

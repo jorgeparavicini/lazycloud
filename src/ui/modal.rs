@@ -1,10 +1,11 @@
 //! Modal trait for ephemeral overlay dialogs.
 
-use crate::Theme;
-use crate::ui::{Handled, Result};
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use ratatui::layout::Rect;
+
+use crate::Theme;
+use crate::ui::{Handled, Result};
 
 /// Ephemeral overlay that blocks the screen below.
 ///

@@ -1,5 +1,6 @@
-use crate::model::Provider;
 use std::fmt;
+
+use crate::model::Provider;
 
 /// Unique identifier for a cloud service.
 ///

@@ -1,11 +1,16 @@
+use std::sync::Arc;
+
+use crossterm::event::KeyEvent;
+use ratatui::Frame;
+use ratatui::layout::Rect;
+use ratatui::style::Style;
+use ratatui::widgets::ListItem;
+
 use crate::Theme;
 use crate::component::{ListComponent, ListEvent, ListRow};
 use crate::config::KeyResolver;
 use crate::model::context::{CloudContext, get_available_contexts};
 use crate::ui::{Component, Handled, Result};
-use crossterm::event::KeyEvent;
-use ratatui::{Frame, layout::Rect, style::Style, widgets::ListItem};
-use std::sync::Arc;
 
 impl ListRow for CloudContext {
     fn render_row(&self, theme: &Theme) -> ListItem<'static> {

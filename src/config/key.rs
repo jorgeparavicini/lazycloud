@@ -1,7 +1,8 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::str::FromStr;
+
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Key {

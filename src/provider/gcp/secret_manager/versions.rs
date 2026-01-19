@@ -1,7 +1,24 @@
+use std::fmt::Display;
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use crossterm::event::KeyEvent;
+use ratatui::Frame;
+use ratatui::layout::{Constraint, Rect};
+use ratatui::widgets::Cell;
+use tokio::sync::mpsc::UnboundedSender;
+
 use crate::Theme;
 use crate::component::{
-    ColumnDef, ConfirmDialogComponent, ConfirmEvent, Keybinding, TableComponent, TableEvent,
-    TableRow, TextInputComponent, TextInputEvent,
+    ColumnDef,
+    ConfirmDialogComponent,
+    ConfirmEvent,
+    Keybinding,
+    TableComponent,
+    TableEvent,
+    TableRow,
+    TextInputComponent,
+    TextInputEvent,
 };
 use crate::config::{KeyResolver, SearchAction, VersionsAction};
 use crate::core::{Command, UpdateResult};
@@ -12,14 +29,6 @@ use crate::provider::gcp::secret_manager::secrets::Secret;
 use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::search::Matcher;
 use crate::ui::{Component, Handled, Modal, Result, Screen};
-use async_trait::async_trait;
-use crossterm::event::KeyEvent;
-use ratatui::Frame;
-use ratatui::layout::{Constraint, Rect};
-use ratatui::widgets::Cell;
-use std::fmt::Display;
-use std::sync::Arc;
-use tokio::sync::mpsc::UnboundedSender;
 
 // === Models ===
 
@@ -545,7 +554,10 @@ struct DisableVersionCmd {
 #[async_trait]
 impl Command for DisableVersionCmd {
     fn name(&self) -> String {
-        format!("Disabling '{}' v{}", self.secret.name, self.version.version_id)
+        format!(
+            "Disabling '{}' v{}",
+            self.secret.name, self.version.version_id
+        )
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
@@ -572,7 +584,10 @@ struct EnableVersionCmd {
 #[async_trait]
 impl Command for EnableVersionCmd {
     fn name(&self) -> String {
-        format!("Enabling '{}' v{}", self.secret.name, self.version.version_id)
+        format!(
+            "Enabling '{}' v{}",
+            self.secret.name, self.version.version_id
+        )
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
@@ -599,7 +614,10 @@ struct DestroyVersionCmd {
 #[async_trait]
 impl Command for DestroyVersionCmd {
     fn name(&self) -> String {
-        format!("Destroying '{}' v{}", self.secret.name, self.version.version_id)
+        format!(
+            "Destroying '{}' v{}",
+            self.secret.name, self.version.version_id
+        )
     }
 
     async fn execute(self: Box<Self>) -> color_eyre::Result<()> {

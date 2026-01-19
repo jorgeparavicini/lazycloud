@@ -1,8 +1,10 @@
+use std::sync::Arc;
+
+use clap::Parser;
+
 use crate::app::App;
 use crate::config::KeyResolver;
 use crate::registry::ServiceRegistry;
-use clap::Parser;
-use std::sync::Arc;
 
 mod app;
 mod cli;

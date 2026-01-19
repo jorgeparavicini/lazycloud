@@ -1,7 +1,9 @@
+use std::sync::Arc;
+
+use crossterm::event::KeyEvent;
+
 use crate::config::actions::*;
 use crate::config::keybindings::KeybindingsConfig;
-use crossterm::event::KeyEvent;
-use std::sync::Arc;
 
 pub struct KeyResolver {
     pub keybindings: Arc<KeybindingsConfig>,

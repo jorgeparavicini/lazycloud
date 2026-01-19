@@ -1,12 +1,14 @@
-use crate::Theme;
-use crate::config::{KeyResolver, NavAction};
-use crate::ui::{Component, Handled, Result};
+use std::sync::Arc;
+
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::prelude::{Modifier, Style};
 use ratatui::widgets::{List, ListItem, ListState};
-use std::sync::Arc;
+
+use crate::Theme;
+use crate::config::{KeyResolver, NavAction};
+use crate::ui::{Component, Handled, Result};
 
 pub enum ListEvent<T> {
     Changed(T),

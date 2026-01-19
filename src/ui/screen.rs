@@ -1,11 +1,12 @@
 //! Screen trait for full-page views.
 
-use crate::Theme;
-use crate::component::Keybinding;
-use crate::ui::{Handled, Result};
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use ratatui::layout::Rect;
+
+use crate::Theme;
+use crate::component::Keybinding;
+use crate::ui::{Handled, Result};
 
 /// Full-page view that orchestrates components.
 ///

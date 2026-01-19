@@ -1,6 +1,7 @@
-use crate::config::AppConfig;
 use std::fs;
 use std::path::PathBuf;
+
+use crate::config::AppConfig;
 
 const CONFIG_DIR: &str = "lazycloud";
 const CONFIG_FILE: &str = "config.toml";

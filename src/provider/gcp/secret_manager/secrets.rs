@@ -1,7 +1,27 @@
+use std::collections::HashMap;
+use std::fmt::Display;
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use crossterm::event::KeyEvent;
+use ratatui::Frame;
+use ratatui::layout::{Constraint, Rect};
+use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, BorderType, Borders, Cell, Paragraph};
+use tokio::sync::mpsc::UnboundedSender;
+
 use crate::Theme;
 use crate::component::{
-    ColumnDef, ConfirmDialogComponent, ConfirmEvent, Keybinding, TableComponent, TableEvent,
-    TableRow, TextInputComponent, TextInputEvent,
+    ColumnDef,
+    ConfirmDialogComponent,
+    ConfirmEvent,
+    Keybinding,
+    TableComponent,
+    TableEvent,
+    TableRow,
+    TextInputComponent,
+    TextInputEvent,
 };
 use crate::config::{KeyResolver, SearchAction, SecretsAction};
 use crate::core::command::CopyToClipboardCmd;
@@ -13,17 +33,6 @@ use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::versions::VersionsMsg;
 use crate::search::Matcher;
 use crate::ui::{Component, Handled, Modal, Result, Screen};
-use async_trait::async_trait;
-use crossterm::event::KeyEvent;
-use ratatui::Frame;
-use ratatui::layout::{Constraint, Rect};
-use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Cell, Paragraph};
-use std::collections::HashMap;
-use std::fmt::Display;
-use std::sync::Arc;
-use tokio::sync::mpsc::UnboundedSender;
 
 // === Models ===
 

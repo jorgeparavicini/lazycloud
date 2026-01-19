@@ -1,16 +1,16 @@
+use std::sync::Arc;
+
+use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::Frame;
+use ratatui::layout::{Constraint, Rect};
+use ratatui::style::{Modifier, Style};
+use ratatui::widgets::{Block, BorderType, Borders, Clear, ListItem};
+
 use crate::Theme;
 use crate::component::{ListComponent, ListEvent, ListRow};
 use crate::config::KeyResolver;
 use crate::theme::{ThemeInfo, available_themes};
 use crate::ui::{Component, Handled, Result};
-use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::{
-    Frame,
-    layout::{Constraint, Rect},
-    style::{Modifier, Style},
-    widgets::{Block, BorderType, Borders, Clear, ListItem},
-};
-use std::sync::Arc;
 
 impl ListRow for ThemeInfo {
     fn render_row(&self, theme: &Theme) -> ListItem<'static> {

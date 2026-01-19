@@ -5,12 +5,11 @@ pub mod keybindings;
 pub mod loader;
 pub mod resolver;
 
-use keybindings::KeybindingsConfig;
-use serde::{Deserialize, Serialize};
-
 pub use actions::*;
+use keybindings::KeybindingsConfig;
 pub use loader::{load, save_last_context, save_theme};
 pub use resolver::KeyResolver;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThemeConfig {

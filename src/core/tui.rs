@@ -3,24 +3,33 @@
 //! This module provides [`Tui`], a wrapper around ratatui's Terminal that
 //! handles the event loop, raw mode, and alternate command management.
 
-use crate::core::event::Event;
+use std::io::Stdout;
+use std::ops::{Deref, DerefMut};
+use std::time::Duration;
+
 use crossterm::cursor;
 use crossterm::event::{
-    DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-    Event as CrosstermEvent, EventStream, KeyCode, KeyEventKind, KeyModifiers,
+    DisableBracketedPaste,
+    DisableMouseCapture,
+    EnableBracketedPaste,
+    EnableMouseCapture,
+    Event as CrosstermEvent,
+    EventStream,
+    KeyCode,
+    KeyEventKind,
+    KeyModifiers,
 };
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use futures::{FutureExt, StreamExt};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
-use std::io::Stdout;
-use std::ops::{Deref, DerefMut};
-use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tokio::time::interval;
 use tokio_util::sync::CancellationToken;
+
+use crate::core::event::Event;
 
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS: u64 = 500;
 const FORCEFUL_SHUTDOWN_TIMEOUT_MS: u64 = 2000;

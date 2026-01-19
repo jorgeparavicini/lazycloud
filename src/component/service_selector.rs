@@ -1,12 +1,17 @@
+use std::sync::Arc;
+
+use crossterm::event::KeyEvent;
+use ratatui::Frame;
+use ratatui::layout::Rect;
+use ratatui::style::Style;
+use ratatui::widgets::ListItem;
+
 use crate::Theme;
 use crate::component::{ListComponent, ListEvent, ListRow};
 use crate::config::KeyResolver;
 use crate::model::CloudContext;
 use crate::registry::{ServiceId, ServiceProvider, ServiceRegistry};
 use crate::ui::{Component, Handled, Result};
-use crossterm::event::KeyEvent;
-use ratatui::{Frame, layout::Rect, style::Style, widgets::ListItem};
-use std::sync::Arc;
 
 #[derive(Clone)]
 struct ServiceItem {

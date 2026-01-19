@@ -1,13 +1,33 @@
+use std::sync::Arc;
+
+use color_eyre::eyre::eyre;
+use log::debug;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::style::{Modifier, Style};
+use ratatui::widgets::{Block, Paragraph};
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+
 use crate::Theme;
 use crate::cli::Args;
 use crate::component::{
-    CommandStatusView, ContextSelectorView, ErrorDialog, ErrorDialogEvent, HelpEvent, HelpView,
-    KeybindingSection, ServiceSelectorView, StatusBarView, ThemeEvent, ThemeSelectorView, Toast,
-    ToastManager, ToastType,
+    CommandStatusView,
+    ContextSelectorView,
+    ErrorDialog,
+    ErrorDialogEvent,
+    HelpEvent,
+    HelpView,
+    KeybindingSection,
+    ServiceSelectorView,
+    StatusBarView,
+    ThemeEvent,
+    ThemeSelectorView,
+    Toast,
+    ToastManager,
+    ToastType,
 };
 use crate::config::{AppConfig, GlobalAction, KeyResolver, save_last_context, save_theme};
-use crate::core::command::Command;
-use crate::core::command::CommandEnv;
+use crate::core::command::{Command, CommandEnv};
 use crate::core::event::Event;
 use crate::core::message::AppMessage;
 use crate::core::service::{Service, UpdateResult};
@@ -16,14 +36,6 @@ use crate::model::context::get_available_contexts;
 use crate::model::{CloudContext, Provider};
 use crate::registry::{ServiceId, ServiceRegistry};
 use crate::ui::{Component, Handled};
-use color_eyre::eyre::eyre;
-use log::debug;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Modifier, Style};
-use ratatui::widgets::{Block, Paragraph};
-use std::sync::Arc;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 /// Application state - what the user is currently doing.
 enum AppState {
@@ -163,11 +175,7 @@ impl App {
             })
     }
 
-    fn find_service(
-        &self,
-        context: &CloudContext,
-        name: &str,
-    ) -> color_eyre::Result<ServiceId> {
+    fn find_service(&self, context: &CloudContext, name: &str) -> color_eyre::Result<ServiceId> {
         let services = self.registry.available_services(context);
         services
             .iter()

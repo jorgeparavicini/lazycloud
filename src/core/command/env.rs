@@ -1,8 +1,10 @@
+use std::sync::{Arc, Mutex};
+
+use arboard::Clipboard;
+use tokio::sync::mpsc::UnboundedSender;
+
 use crate::component::ToastType;
 use crate::core::message::AppMessage;
-use arboard::Clipboard;
-use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc::UnboundedSender;
 
 /// Shared environment for commands.
 ///

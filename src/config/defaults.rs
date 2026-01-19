@@ -1,6 +1,7 @@
+use crossterm::event::KeyCode;
+
 use crate::config::key::{Key, KeyBinding};
 use crate::config::keybindings::*;
-use crossterm::event::KeyCode;
 
 impl Default for GlobalKeybindings {
     fn default() -> Self {
