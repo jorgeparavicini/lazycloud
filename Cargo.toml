@@ -1,5 +1,8 @@
 [package]
 name = "lazycloud"
+version = "0.1.0"
+description = "A terminal UI for various cloud provider CLIs"
+authors = ["Jorge Paravicini"]
 edition = "2024"
 resolver = "3"
 
@@ -24,5 +27,13 @@ chrono = "0.4"
 catppuccin = "2.4"
 dirs = "6.0"
 fuzzy-matcher = "0.3"
-toml = "0.8"
+toml = "0.9.8"
 clap = { version = "4", features = ["derive"] }
+
+[lint.rust]
+warnings = { level = "warn", priority = -1 }
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -2 }
+nursery = { level = "warn", priority = -3 }
