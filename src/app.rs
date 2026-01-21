@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use color_eyre::eyre::eyre;
+use crossterm::event::{KeyEvent, MouseEvent};
 use log::debug;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
@@ -10,32 +11,65 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::Theme;
 use crate::cli::Args;
-use crate::component::{
-    CommandStatusView,
-    ContextSelectorView,
-    ErrorDialog,
-    ErrorDialogEvent,
-    HelpEvent,
-    HelpView,
-    KeybindingSection,
-    ServiceSelectorView,
-    StatusBarView,
-    ThemeEvent,
-    ThemeSelectorView,
-    Toast,
-    ToastManager,
-    ToastType,
-};
+use crate::components::{CommandId, CommandStatusView, ContextSelectorView, ErrorDialog, ErrorDialogEvent, HelpEvent, HelpView, KeybindingSection, ServiceSelectorView, StatusBarView, ThemeEvent, ThemeSelectorView, Toast, ToastManager, ToastType};
 use crate::config::{AppConfig, GlobalAction, KeyResolver, save_last_context, save_theme};
-use crate::core::command::{Command, CommandEnv};
+use crate::commands::{Command, CommandEnv};
 use crate::core::event::Event;
 use crate::core::message::AppMessage;
-use crate::core::service::{Service, UpdateResult};
-use crate::core::tui::Tui;
+use crate::service::{Service, ServiceMsg};
+use crate::tui::Tui;
 use crate::model::context::get_available_contexts;
 use crate::model::{CloudContext, Provider};
 use crate::registry::{ServiceId, ServiceRegistry};
-use crate::ui::{Component, Handled};
+use crate::theme::ThemeInfo;
+use crate::components::{Component, Handled};
+
+#[derive(Debug, Clone)]
+pub enum AppMessage {
+    Tick,
+    Render,
+    Resize(u16, u16),
+    Suspend,
+    Resume,
+    Quit,
+    ClearScreen,
+
+    DisplayError(String),
+    DisplayHelp,
+    DisplayThemeSelector,
+    ClosePopup,
+
+    CommandCompleted {
+        id: CommandId,
+        success: bool,
+    },
+    ToggleCommandStatus,
+    ShowToast {
+        message: String,
+        toast_type: ToastType,
+    },
+
+    SelectContext(CloudContext),
+    SelectService(ServiceId),
+    SelectTheme(ThemeInfo),
+    GoBack,
+}
+
+#[derive(Clone, Debug)]
+pub enum Event {
+    Init,
+    Quit,
+    Error(String),
+    Closed,
+    Tick,
+    Render,
+    FocusGained,
+    FocusLost,
+    Paste(String),
+    Key(KeyEvent),
+    Mouse(MouseEvent),
+    Resize(u16, u16),
+}
 
 /// Application state - what the user is currently doing.
 enum AppState {
@@ -103,37 +137,39 @@ impl App {
         }
     }
 
-    pub fn apply_cli_args(&mut self, args: Args) -> color_eyre::Result<()> {
+    /// Initialize app state based on CLI args.
+    /// Handles the following cases:
+    /// - Both context and service provided: go directly to service
+    /// - Only context provided: go to service selection
+    /// - Only service provided: use last context if compatible, else show filtered context selector
+    /// - Neither provided: normal flow (context selection)
+    ///
+    pub fn apply_cli_args(&mut self, args: &Args) -> color_eyre::Result<()> {
         let contexts = get_available_contexts();
 
         match (&args.context, &args.service) {
-            // Both provided: go directly to service
             (Some(ctx_name), Some(svc_name)) => {
                 let context = self.find_context(&contexts, ctx_name)?;
                 let service_id = self.find_service(&context, svc_name)?;
                 self.start_service(context, service_id);
             }
 
-            // Only context: go to service selection
             (Some(ctx_name), None) => {
                 let context = self.find_context(&contexts, ctx_name)?;
                 self.go_to_service_selection(context);
             }
 
-            // Only service: use last context or show filtered context selector
             (None, Some(svc_name)) => {
-                // Find which provider this service belongs to
                 let provider = self.find_service_provider(svc_name)?;
 
                 // Try last context if compatible
-                if let Some(ctx_name) = &self.config.last_context {
-                    if let Ok(context) = self.find_context(&contexts, ctx_name) {
-                        if context.provider() == provider {
-                            let service_id = self.find_service(&context, svc_name)?;
-                            self.start_service(context, service_id);
-                            return Ok(());
-                        }
-                    }
+                if let Some(ctx_name) = &self.config.last_context
+                    && let Ok(context) = self.find_context(&contexts, ctx_name)
+                    && context.provider() == provider
+                {
+                    let service_id = self.find_service(&context, svc_name)?;
+                    self.start_service(context, service_id);
+                    return Ok(());
                 }
 
                 // Last context incompatible or missing: show filtered context selector
@@ -150,7 +186,6 @@ impl App {
                 self.go_to_filtered_context_selection(filtered);
             }
 
-            // Neither: normal flow
             (None, None) => {}
         }
         Ok(())
@@ -166,7 +201,7 @@ impl App {
             .find(|c| c.name().eq_ignore_ascii_case(name))
             .cloned()
             .ok_or_else(|| {
-                let available: Vec<_> = contexts.iter().map(|c| c.name()).collect();
+                let available: Vec<_> = contexts.iter().map( CloudContext::name).collect();
                 eyre!(
                     "Context '{}' not found. Available: {}",
                     name,
@@ -261,23 +296,23 @@ impl App {
                         false
                     }
                 };
-                // Signal that a command completed - service should process messages
+                // Signal that a commands completed - service should process messages
                 let _ = msg_tx.send(AppMessage::CommandCompleted { id, success });
             });
         }
     }
 
     /// Process the result from service.update().
-    fn process_update_result(&mut self, result: UpdateResult) {
+    fn process_update_result(&mut self, result: ServiceMsg) {
         match result {
-            UpdateResult::Idle => {}
-            UpdateResult::Commands(commands) => {
+            ServiceMsg::Idle => {}
+            ServiceMsg::Run(commands) => {
                 self.spawn_commands(commands);
             }
-            UpdateResult::Close => {
+            ServiceMsg::Close => {
                 let _ = self.msg_tx.send(AppMessage::GoBack);
             }
-            UpdateResult::Error(err) => {
+            ServiceMsg::Error(err) => {
                 let _ = self.msg_tx.send(AppMessage::DisplayError(err));
             }
         }
@@ -368,10 +403,10 @@ impl App {
             }
         }
 
-        // Handle tick separately - always goes to service, command tracker, and toast manager
+        // Handle tick separately - always goes to service, commands tracker, and toast manager
         if matches!(event, Event::Tick) {
-            self.command_tracker.on_tick();
-            self.toast_manager.on_tick();
+            self.command_tracker.handle_tick();
+            self.toast_manager.handle_tick();
             if let AppState::ActiveService(service) = &mut self.state {
                 service.handle_tick();
             }
@@ -513,14 +548,14 @@ impl App {
                 self.popup = None;
             }
             AppMessage::CommandCompleted { id, success } => {
-                // Mark command as complete in tracker
+                // Mark commands as complete in tracker
                 self.command_tracker.complete(id, success);
-                // A command finished, tell service to process its messages
+                // A commands finished, tell service to process its messages
                 if let AppState::ActiveService(service) = &mut self.state {
                     let result = service.update();
                     self.process_update_result(result);
                 }
-                // Render after command completion
+                // Render after commands completion
                 self.render(tui)?;
             }
             AppMessage::ToggleCommandStatus => {
@@ -606,15 +641,15 @@ impl App {
                     selector.render(frame, chunks[1], &self.theme);
                 }
                 AppState::ActiveService(service) => {
-                    service.view(frame, chunks[1], &self.theme);
+                    service.render(frame, chunks[1], &self.theme);
                 }
             }
 
-            // Render breadcrumbs (left) and inline command status (right)
+            // Render breadcrumbs (left) and inline commands status (right)
             let breadcrumbs = self.build_breadcrumbs();
             let bc_text = breadcrumbs.join(" > ");
 
-            // First render inline command status to get its width
+            // First render inline commands status to get its width
             let cmd_width = self
                 .command_tracker
                 .render_inline(frame, chunks[2], &self.theme);
@@ -633,7 +668,7 @@ impl App {
             );
             frame.render_widget(bc_widget, bc_area);
 
-            // Render expanded command panel (overlay on main content)
+            // Render expanded commands panel (overlay on main content)
             self.command_tracker.render(frame, chunks[1], &self.theme);
 
             // Render toasts (bottom right of main content)

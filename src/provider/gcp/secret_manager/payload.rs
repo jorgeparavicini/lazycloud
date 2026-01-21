@@ -9,16 +9,16 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::Theme;
-use crate::component::Keybinding;
+use crate::components::Keybinding;
 use crate::config::{KeyResolver, PayloadAction};
-use crate::core::command::CopyToClipboardCmd;
-use crate::core::{Command, UpdateResult};
+use crate::commands::CopyToClipboardCmd;
+use crate::core::{Command, ServiceMsg};
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::secrets::Secret;
 use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::versions::SecretVersion;
-use crate::ui::{Handled, Result, Screen};
+use crate::components::{Handled, Result, Screen};
 
 // === Models ===
 
@@ -150,7 +150,7 @@ impl Screen for PayloadScreen {
 pub(super) fn update(
     state: &mut SecretManager,
     msg: PayloadMsg,
-) -> color_eyre::Result<UpdateResult> {
+) -> color_eyre::Result<ServiceMsg> {
     match msg {
         PayloadMsg::Load { secret, version } => {
             // Use cached payload if available
@@ -161,7 +161,7 @@ pub(super) fn update(
                     payload,
                     state.get_resolver(),
                 ));
-                return Ok(UpdateResult::Idle);
+                return Ok(ServiceMsg::Idle);
             }
 
             state.display_loading_spinner("Loading payload...");
@@ -196,7 +196,7 @@ pub(super) fn update(
                 payload,
                 state.get_resolver(),
             ));
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         PayloadMsg::Copy { data, description } => {

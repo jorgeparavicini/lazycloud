@@ -9,7 +9,7 @@ use ratatui::widgets::Cell;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::Theme;
-use crate::component::{
+use crate::components::{
     ColumnDef,
     ConfirmDialogComponent,
     ConfirmEvent,
@@ -21,14 +21,14 @@ use crate::component::{
     TextInputEvent,
 };
 use crate::config::{KeyResolver, SearchAction, VersionsAction};
-use crate::core::{Command, UpdateResult};
+use crate::core::{Command, ServiceMsg};
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::payload::PayloadMsg;
 use crate::provider::gcp::secret_manager::secrets::Secret;
 use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::search::Matcher;
-use crate::ui::{Component, Handled, Modal, Result, Screen};
+use crate::components::{Component, Handled, Modal, Result, Screen};
 
 // === Models ===
 
@@ -351,7 +351,7 @@ impl Modal for DestroyVersionDialog {
 pub(super) fn update(
     state: &mut SecretManager,
     msg: VersionsMsg,
-) -> color_eyre::Result<UpdateResult> {
+) -> color_eyre::Result<ServiceMsg> {
     match msg {
         VersionsMsg::Load(secret) => {
             // Use cached versions if available
@@ -361,7 +361,7 @@ pub(super) fn update(
                     versions,
                     state.get_resolver(),
                 ));
-                return Ok(UpdateResult::Idle);
+                return Ok(ServiceMsg::Idle);
             }
 
             state.display_loading_spinner("Loading versions...");
@@ -382,12 +382,12 @@ pub(super) fn update(
                 versions,
                 state.get_resolver(),
             ));
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         VersionsMsg::StartCreation(secret) => {
             state.display_overlay(CreateVersionDialog::new(secret, state.get_resolver()));
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         VersionsMsg::Create { secret, payload } => {
@@ -407,7 +407,7 @@ pub(super) fn update(
         VersionsMsg::Created { secret } => {
             state.pop_view();
             state.queue(VersionsMsg::Load(secret).into());
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         VersionsMsg::Disable { secret, version } => {
@@ -426,7 +426,7 @@ pub(super) fn update(
         VersionsMsg::Disabled { secret } => {
             state.pop_view();
             state.queue(VersionsMsg::Load(secret).into());
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         VersionsMsg::Enable { secret, version } => {
@@ -445,7 +445,7 @@ pub(super) fn update(
         VersionsMsg::Enabled { secret } => {
             state.pop_view();
             state.queue(VersionsMsg::Load(secret).into());
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         VersionsMsg::ConfirmDestroy { secret, version } => {
@@ -454,7 +454,7 @@ pub(super) fn update(
                 version,
                 state.get_resolver(),
             ));
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         VersionsMsg::Destroy { secret, version } => {
@@ -474,7 +474,7 @@ pub(super) fn update(
         VersionsMsg::Destroyed { secret } => {
             state.pop_view();
             state.queue(VersionsMsg::Load(secret).into());
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         VersionsMsg::ViewPayload { secret, version } => {
@@ -485,7 +485,7 @@ pub(super) fn update(
                 }
                 .into(),
             );
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
     }
 }

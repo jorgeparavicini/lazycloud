@@ -107,9 +107,9 @@ mod tests {
     use super::*;
     use crate::Theme;
     use crate::config::KeyResolver;
-    use crate::core::command::CommandEnv;
+    use crate::commands::CommandEnv;
     use crate::core::event::Event;
-    use crate::core::service::{Service, UpdateResult};
+    use crate::service::{Service, ServiceMsg};
     use crate::model::GcpContext;
 
     struct MockProvider;
@@ -144,11 +144,11 @@ mod tests {
             false
         }
 
-        fn update(&mut self) -> UpdateResult {
-            UpdateResult::Idle
+        fn update(&mut self) -> ServiceMsg {
+            ServiceMsg::Idle
         }
 
-        fn view(&mut self, _frame: &mut Frame, _area: Rect, _theme: &Theme) {}
+        fn render(&mut self, _frame: &mut Frame, _area: Rect, _theme: &Theme) {}
 
         fn breadcrumbs(&self) -> Vec<String> {
             vec!["Mock".to_string()]

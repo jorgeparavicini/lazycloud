@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::config::KeyResolver;
 use crate::core::Service;
-use crate::core::command::CommandEnv;
+use crate::commands::CommandEnv;
 use crate::model::{CloudContext, Provider};
 use crate::registry::ServiceId;
 

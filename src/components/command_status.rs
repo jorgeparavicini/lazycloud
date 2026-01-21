@@ -9,7 +9,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use throbber_widgets_tui::{BRAILLE_SIX, Throbber, ThrobberState, WhichUse};
 
 use crate::Theme;
-use crate::ui::Component;
+use crate::components::Component;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CommandId(u64);
@@ -372,15 +372,15 @@ impl Default for CommandStatusView {
 impl Component for CommandStatusView {
     type Output = ();
 
-    fn on_tick(&mut self) {
+    fn handle_tick(&mut self) {
         self.throbber_state.calc_next();
     }
 
     fn handle_key(
         &mut self,
         _key: crossterm::event::KeyEvent,
-    ) -> crate::ui::Result<crate::ui::Handled<Self::Output>> {
-        Ok(crate::ui::Handled::Ignored)
+    ) -> crate::components::Result<crate::components::Handled<Self::Output>> {
+        Ok(crate::components::Handled::Ignored)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {

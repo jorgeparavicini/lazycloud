@@ -11,6 +11,8 @@ pub use loader::{load, save_last_context, save_theme};
 pub use resolver::KeyResolver;
 use serde::{Deserialize, Serialize};
 
+pub const CONFIG_FOLDER: &str = ".lazycloud";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThemeConfig {
     pub name: String,

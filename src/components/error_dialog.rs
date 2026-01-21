@@ -9,7 +9,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 
 use crate::Theme;
 use crate::config::{DialogAction, KeyResolver};
-use crate::ui::{Component, Handled, Result};
+use crate::components::{Component, Handled, Result};
 
 pub enum ErrorDialogEvent {
     Dismissed,

@@ -1,4 +1,4 @@
-pub mod context;
+pub mod config;
 pub mod secret_manager;
 
 use crate::provider::gcp::secret_manager::SecretManagerProvider;

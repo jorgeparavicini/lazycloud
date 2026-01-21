@@ -7,7 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 
 use crate::Theme;
-use crate::component::Keybinding;
+use crate::components::Keybinding;
 use crate::config::{GlobalAction, KeyResolver, NavAction};
 use crate::model::CloudContext;
 

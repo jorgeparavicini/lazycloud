@@ -7,7 +7,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::Theme;
-use crate::ui::Component;
+use crate::components::Component;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToastType {
@@ -79,8 +79,8 @@ impl Component for ToastManager {
     fn handle_key(
         &mut self,
         _key: crossterm::event::KeyEvent,
-    ) -> crate::ui::Result<crate::ui::Handled<Self::Output>> {
-        Ok(crate::ui::Handled::Ignored)
+    ) -> crate::components::Result<crate::components::Handled<Self::Output>> {
+        Ok(crate::components::Handled::Ignored)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -139,7 +139,7 @@ impl Component for ToastManager {
         }
     }
 
-    fn on_tick(&mut self) {
+    fn handle_tick(&mut self) {
         self.toasts.retain(|t| !t.is_expired());
     }
 }

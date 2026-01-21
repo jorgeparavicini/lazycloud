@@ -5,7 +5,7 @@ use throbber_widgets_tui::WhichUse::Spin;
 use throbber_widgets_tui::{BRAILLE_SIX, Throbber, ThrobberState};
 
 use crate::Theme;
-use crate::ui::Component;
+use crate::components::Component;
 
 pub struct SpinnerWidget {
     throbber_state: ThrobberState,
@@ -34,7 +34,7 @@ impl Default for SpinnerWidget {
 impl Component for SpinnerWidget {
     type Output = ();
 
-    fn on_tick(&mut self) {
+    fn handle_tick(&mut self) {
         self.throbber_state.calc_next();
     }
 

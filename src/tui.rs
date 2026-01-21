@@ -1,7 +1,7 @@
 //! Terminal UI wrapper.
 //!
 //! This module provides [`Tui`], a wrapper around ratatui's Terminal that
-//! handles the event loop, raw mode, and alternate command management.
+//! handles the event loop, raw mode, and alternate commands management.
 
 use std::io::Stdout;
 use std::ops::{Deref, DerefMut};
@@ -38,7 +38,7 @@ pub type Backend = CrosstermBackend<Stdout>;
 
 /// Terminal UI wrapper.
 ///
-/// Manages the terminal state (raw mode, alternate command) and provides
+/// Manages the terminal state (raw mode, alternate commands) and provides
 /// an async event stream.
 pub struct Tui {
     terminal: Terminal<Backend>,
@@ -69,7 +69,7 @@ impl Tui {
         })
     }
 
-    /// Enter the TUI (raw mode, alternate command, mouse capture).
+    /// Enter the TUI (raw mode, alternate commands, mouse capture).
     pub fn enter(&mut self) -> color_eyre::Result<()> {
         crossterm::terminal::enable_raw_mode()?;
         crossterm::execute!(std::io::stdout(), EnterAlternateScreen, cursor::Hide)?;

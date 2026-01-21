@@ -6,8 +6,8 @@ use google_cloud_secretmanager_v1::client::SecretManagerService as GcpSecretMana
 use google_cloud_secretmanager_v1::model;
 use google_cloud_wkt::FieldMask;
 use tokio_util::bytes::Bytes;
-
-use crate::provider::gcp::context::load_credentials_json;
+use crate::context::GcpContext;
+use crate::provider::gcp::config::load_credentials_json;
 use crate::provider::gcp::secret_manager::payload::SecretPayload;
 use crate::provider::gcp::secret_manager::secrets::{
     IamBinding,
@@ -16,34 +16,6 @@ use crate::provider::gcp::secret_manager::secrets::{
     Secret,
 };
 use crate::provider::gcp::secret_manager::versions::SecretVersion;
-
-fn format_timestamp(seconds: i64) -> String {
-    DateTime::<Utc>::from_timestamp(seconds, 0)
-        .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
-        .unwrap_or_else(|| "Unknown".to_string())
-}
-
-fn parse_replication(replication: &Option<model::Replication>) -> ReplicationConfig {
-    let Some(replication) = replication else {
-        return ReplicationConfig::Automatic;
-    };
-    let Some(ref rep) = replication.replication else {
-        return ReplicationConfig::Automatic;
-    };
-
-    match rep {
-        model::replication::Replication::Automatic(_) => ReplicationConfig::Automatic,
-        model::replication::Replication::UserManaged(user_managed) => {
-            let locations = user_managed
-                .replicas
-                .iter()
-                .filter_map(|r| Some(r.location.clone()))
-                .collect();
-            ReplicationConfig::UserManaged { locations }
-        }
-        _ => ReplicationConfig::Automatic,
-    }
-}
 
 #[derive(Clone, Debug)]
 pub struct SecretManagerClient {
@@ -55,7 +27,7 @@ impl SecretManagerClient {
     /// Create a new SecretManagerClient with account-specific credentials.
     ///
     /// Uses the gcloud CLI credentials for the specified account.
-    pub async fn new(project_id: String, account: &str) -> color_eyre::Result<Self> {
+    pub async fn new(context: &GcpContext) -> color_eyre::Result<Self> {
         let creds_json = load_credentials_json(account)?;
         let credentials = user_account::Builder::new(creds_json)
             .build()
@@ -433,5 +405,35 @@ impl SecretManagerClient {
                 .map(|t| format_timestamp(t.seconds())),
             labels: response.labels.clone(),
         })
+    }
+}
+
+// === Utilities ===
+
+fn format_timestamp(seconds: i64) -> String {
+    DateTime::<Utc>::from_timestamp(seconds, 0)
+        .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_else(|| "Unknown".to_string())
+}
+
+fn parse_replication(replication: &Option<model::Replication>) -> ReplicationConfig {
+    let Some(replication) = replication else {
+        return ReplicationConfig::Automatic;
+    };
+    let Some(ref rep) = replication.replication else {
+        return ReplicationConfig::Automatic;
+    };
+
+    match rep {
+        model::replication::Replication::Automatic(_) => ReplicationConfig::Automatic,
+        model::replication::Replication::UserManaged(user_managed) => {
+            let locations = user_managed
+                .replicas
+                .iter()
+                .filter_map(|r| Some(r.location.clone()))
+                .collect();
+            ReplicationConfig::UserManaged { locations }
+        }
+        _ => ReplicationConfig::Automatic,
     }
 }

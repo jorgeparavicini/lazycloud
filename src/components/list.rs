@@ -8,7 +8,7 @@ use ratatui::widgets::{List, ListItem, ListState};
 
 use crate::Theme;
 use crate::config::{KeyResolver, NavAction};
-use crate::ui::{Component, Handled, Result};
+use crate::components::{Component, Handled, Result};
 
 pub enum ListEvent<T> {
     Changed(T),

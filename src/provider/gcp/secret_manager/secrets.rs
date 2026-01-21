@@ -12,7 +12,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Cell, Paragraph};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::Theme;
-use crate::component::{
+use crate::components::{
     ColumnDef,
     ConfirmDialogComponent,
     ConfirmEvent,
@@ -24,15 +24,15 @@ use crate::component::{
     TextInputEvent,
 };
 use crate::config::{KeyResolver, SearchAction, SecretsAction};
-use crate::core::command::CopyToClipboardCmd;
-use crate::core::{Command, UpdateResult};
+use crate::commands::CopyToClipboardCmd;
+use crate::core::{Command, ServiceMsg};
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::payload::PayloadMsg;
 use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::versions::VersionsMsg;
 use crate::search::Matcher;
-use crate::ui::{Component, Handled, Modal, Result, Screen};
+use crate::components::{Component, Handled, Modal, Result, Screen};
 
 // === Models ===
 
@@ -703,14 +703,14 @@ impl Modal for DeleteSecretDialog {
 pub(super) fn update(
     state: &mut SecretManager,
     msg: SecretsMsg,
-) -> color_eyre::Result<UpdateResult> {
+) -> color_eyre::Result<ServiceMsg> {
     let resolver = state.get_resolver();
 
     match msg {
         SecretsMsg::Load => {
             if let Some(secrets) = state.get_cached_secrets() {
                 state.push_view(SecretListScreen::new(secrets, resolver));
-                return Ok(UpdateResult::Idle);
+                return Ok(ServiceMsg::Idle);
             }
 
             state.display_loading_spinner("Loading secrets...");
@@ -726,12 +726,12 @@ pub(super) fn update(
             state.hide_loading_spinner();
             state.cache_secrets(&secrets);
             state.push_view(SecretListScreen::new(secrets, resolver));
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::StartCreation => {
             state.display_overlay(CreateSecretWizard::new());
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::Create { name, payload } => {
@@ -750,12 +750,12 @@ pub(super) fn update(
         SecretsMsg::Created(_secret) => {
             state.invalidate_secrets_cache();
             state.queue(SecretsMsg::Load.into());
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::ConfirmDelete(secret) => {
             state.display_overlay(DeleteSecretDialog::new(secret, resolver));
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::Delete(secret) => {
@@ -774,12 +774,12 @@ pub(super) fn update(
             state.invalidate_secrets_cache();
             state.pop_to_root();
             state.queue(SecretsMsg::Load.into());
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::ViewVersions(secret) => {
             state.queue(VersionsMsg::Load(secret).into());
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::ViewPayload(secret) => {
@@ -790,12 +790,12 @@ pub(super) fn update(
                 }
                 .into(),
             );
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::ViewLabels(secret) => {
             state.push_view(LabelsScreen::new(secret, resolver));
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::UpdateLabels { secret, labels } => {
@@ -815,7 +815,7 @@ pub(super) fn update(
             state.invalidate_secrets_cache();
             state.pop_view();
             state.push_view(LabelsScreen::new(secret, resolver));
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::ViewIamPolicy(secret) => {
@@ -832,7 +832,7 @@ pub(super) fn update(
         SecretsMsg::IamPolicyLoaded { secret, policy } => {
             state.hide_loading_spinner();
             state.push_view(IamPolicyScreen::new(secret, policy, resolver));
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::ViewReplicationInfo(secret) => {
@@ -852,7 +852,7 @@ pub(super) fn update(
         } => {
             state.hide_loading_spinner();
             state.push_view(ReplicationScreen::new(secret, replication, resolver));
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::CopyPayload(secret) => Ok(LoadPayloadCmd {

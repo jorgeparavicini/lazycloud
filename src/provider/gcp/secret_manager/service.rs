@@ -7,11 +7,11 @@ use ratatui::layout::Rect;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::Theme;
-use crate::component::{Keybinding, SpinnerWidget};
+use crate::components::{Keybinding, SpinnerWidget};
 use crate::config::{GlobalAction, KeyResolver};
-use crate::core::command::{Command, CommandEnv};
+use crate::commands::{Command, CommandEnv};
 use crate::core::event::Event;
-use crate::core::service::{Service, UpdateResult};
+use crate::service::{Service, ServiceMsg};
 use crate::model::{CloudContext, GcpContext, Provider};
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::payload::{PayloadMsg, SecretPayload};
@@ -19,7 +19,7 @@ use crate::provider::gcp::secret_manager::secrets::{Secret, SecretsMsg};
 use crate::provider::gcp::secret_manager::versions::{SecretVersion, VersionsMsg};
 use crate::provider::gcp::secret_manager::{payload, secrets, versions};
 use crate::registry::ServiceProvider;
-use crate::ui::{Component, HandledResultExt, Modal, Screen};
+use crate::components::{Component, HandledResultExt, Modal, Screen};
 
 // === Messages ===
 
@@ -248,7 +248,7 @@ impl SecretManager {
         self.screen_stack.last_mut()
     }
 
-    fn process_message(&mut self, msg: SecretManagerMsg) -> color_eyre::Result<UpdateResult> {
+    fn process_message(&mut self, msg: SecretManagerMsg) -> color_eyre::Result<ServiceMsg> {
         match msg {
             // === Lifecycle ===
             SecretManagerMsg::Initialize => {
@@ -264,21 +264,21 @@ impl SecretManager {
             SecretManagerMsg::ClientInitialized(client) => {
                 self.client = Some(client);
                 self.queue(SecretsMsg::Load.into());
-                Ok(UpdateResult::Idle)
+                Ok(ServiceMsg::Idle)
             }
 
             // === Navigation ===
             SecretManagerMsg::NavigateBack => {
                 if self.pop_view() {
-                    Ok(UpdateResult::Idle)
+                    Ok(ServiceMsg::Idle)
                 } else {
-                    Ok(UpdateResult::Close)
+                    Ok(ServiceMsg::Close)
                 }
             }
 
             SecretManagerMsg::DialogCancelled => {
                 self.close_overlay();
-                Ok(UpdateResult::Idle)
+                Ok(ServiceMsg::Idle)
             }
 
             // === Feature Dispatching ===
@@ -296,7 +296,7 @@ impl Service for SecretManager {
 
     fn handle_tick(&mut self) {
         if self.loading.is_some() {
-            self.spinner.on_tick();
+            self.spinner.handle_tick();
         }
     }
 
@@ -340,27 +340,27 @@ impl Service for SecretManager {
         false
     }
 
-    fn update(&mut self) -> UpdateResult {
+    fn update(&mut self) -> ServiceMsg {
         let mut commands: Vec<Box<dyn Command>> = Vec::new();
 
         while let Ok(msg) = self.msg_rx.try_recv() {
             match self.process_message(msg) {
-                Ok(UpdateResult::Idle) => {}
-                Ok(UpdateResult::Commands(cmds)) => commands.extend(cmds),
-                Ok(UpdateResult::Close) => return UpdateResult::Close,
-                Ok(UpdateResult::Error(e)) => return UpdateResult::Error(e),
-                Err(e) => return UpdateResult::Error(e.to_string()),
+                Ok(ServiceMsg::Idle) => {}
+                Ok(ServiceMsg::Run(cmds)) => commands.extend(cmds),
+                Ok(ServiceMsg::Close) => return ServiceMsg::Close,
+                Ok(ServiceMsg::Error(e)) => return ServiceMsg::Error(e),
+                Err(e) => return ServiceMsg::Error(e.to_string()),
             }
         }
 
         if commands.is_empty() {
-            UpdateResult::Idle
+            ServiceMsg::Idle
         } else {
-            UpdateResult::Commands(commands)
+            ServiceMsg::Run(commands)
         }
     }
 
-    fn view(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+    fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         if let Some(label) = self.loading {
             self.spinner.set_label(label);
             self.spinner.render(frame, area, theme);

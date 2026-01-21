@@ -6,7 +6,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 
 use crate::Theme;
-use crate::ui::{Component, Handled, Result};
+use crate::components::{Component, Handled, Result};
 
 pub struct Keybinding {
     pub key: String,

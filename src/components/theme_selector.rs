@@ -7,10 +7,10 @@ use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, ListItem};
 
 use crate::Theme;
-use crate::component::{ListComponent, ListEvent, ListRow};
+use crate::components::{ListComponent, ListEvent, ListRow};
 use crate::config::KeyResolver;
 use crate::theme::{ThemeInfo, available_themes};
-use crate::ui::{Component, Handled, Result};
+use crate::components::{Component, Handled, Result};
 
 impl ListRow for ThemeInfo {
     fn render_row(&self, theme: &Theme) -> ListItem<'static> {
