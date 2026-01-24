@@ -203,7 +203,7 @@ mod tests {
 
     use super::*;
     use crate::config::KeyResolver;
-    use crate::model::GcpContext;
+    use crate::context::{AuthMethod, GcpContext};
     use crate::service::{Service, ServiceMsg};
     use crate::ui::EventResult;
     use crate::Theme;
@@ -279,11 +279,12 @@ mod tests {
         registry.register(MockProvider);
 
         let gcp_ctx = CloudContext::Gcp(GcpContext {
-            config_name: "test-config".to_string(),
+            display_name: "test-config".to_string(),
             project_id: "test".to_string(),
             account: "user@example.com".to_string(),
             region: Some("europe-west4".to_string()),
-            credentials_path: None,
+            zone: Some("europe-west4-a".to_string()),
+            auth: AuthMethod::ApplicationDefault,
         });
 
         let services = registry.available_services(&gcp_ctx);

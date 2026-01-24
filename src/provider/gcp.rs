@@ -1,5 +1,7 @@
-pub mod config;
+mod config;
 pub mod secret_manager;
+
+pub use crate::provider::gcp::config::discover_gcloud_configs;
 
 use crate::provider::gcp::secret_manager::SecretManagerProvider;
 use crate::registry::ServiceRegistry;

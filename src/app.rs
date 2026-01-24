@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use color_eyre::eyre::eyre;
-use crossterm::event::KeyEvent;
 use log::debug;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
@@ -11,19 +10,23 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::Theme;
 use crate::cli::Args;
-use crate::ui::{CommandId, CommandPanel, ErrorDialog, ErrorDialogEvent, HelpEvent, HelpOverlay, KeybindingSection, StatusBar, Toast, ToastManager, ToastType};
-use crate::context::ContextSelectorView;
-use crate::service::ServiceSelectorView;
-use crate::theme::{ThemeEvent, ThemeSelectorView};
-use crate::config::{AppConfig, GlobalAction, KeyResolver, save_last_context, save_theme};
 use crate::commands::{Command, CommandEnv};
-use crate::service::{Service, ServiceMsg};
-use crate::tui::{Event, Tui};
+use crate::config::{AppConfig, GlobalAction, KeyResolver, save_last_context, save_theme};
+use crate::context::ContextSelectorView;
 use crate::context::{CloudContext, load_contexts};
 use crate::provider::Provider;
 use crate::registry::{ServiceId, ServiceRegistry};
+use crate::service::ServiceSelectorView;
+use crate::service::{Service, ServiceMsg};
 use crate::theme::ThemeInfo;
+use crate::theme::{ThemeEvent, ThemeSelectorView};
+use crate::tui::{Event, Tui};
+use crate::ui::{
+    CommandId, CommandPanel, ErrorDialog, ErrorDialogEvent, HelpEvent, HelpOverlay,
+    KeybindingSection, Screen, StatusBar, Toast, ToastManager, ToastType,
+};
 use crate::ui::{Component, EventResult};
+use color_eyre::Result;
 
 #[derive(Debug, Clone)]
 pub enum AppMessage {
@@ -97,13 +100,13 @@ impl App {
         config: Arc<AppConfig>,
         resolver: Arc<KeyResolver>,
         theme: Theme,
-    ) -> Self {
+    ) -> Result<Self> {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
 
         let cmd_env = CommandEnv::new(msg_tx.clone());
 
-        Self {
-            state: AppState::SelectingContext(ContextSelectorView::new(resolver.clone())),
+        Ok(Self {
+            state: AppState::SelectingContext(ContextSelectorView::new(resolver.clone())?),
             theme,
             popup: None,
             status_bar: StatusBar::new(resolver.clone()),
@@ -119,7 +122,7 @@ impl App {
             config,
             resolver,
             pending_service: None,
-        }
+        })
     }
 
     /// Initialize app state based on CLI args.
@@ -129,7 +132,7 @@ impl App {
     /// - Only service provided: use last context if compatible, else show filtered context selector
     /// - Neither provided: normal flow (context selection)
     ///
-    pub fn apply_cli_args(&mut self, args: &Args) -> color_eyre::Result<()> {
+    pub fn apply_cli_args(&mut self, args: &Args) -> Result<()> {
         let contexts = load_contexts();
 
         match (&args.context, &args.service) {
@@ -176,17 +179,13 @@ impl App {
         Ok(())
     }
 
-    fn find_context(
-        &self,
-        contexts: &[CloudContext],
-        name: &str,
-    ) -> color_eyre::Result<CloudContext> {
+    fn find_context(&self, contexts: &[CloudContext], name: &str) -> Result<CloudContext> {
         contexts
             .iter()
             .find(|c| c.name().eq_ignore_ascii_case(name))
             .cloned()
             .ok_or_else(|| {
-                let available: Vec<_> = contexts.iter().map( CloudContext::name).collect();
+                let available: Vec<_> = contexts.iter().map(CloudContext::name).collect();
                 eyre!(
                     "Context '{}' not found. Available: {}",
                     name,
@@ -195,7 +194,7 @@ impl App {
             })
     }
 
-    fn find_service(&self, context: &CloudContext, name: &str) -> color_eyre::Result<ServiceId> {
+    fn find_service(&self, context: &CloudContext, name: &str) -> Result<ServiceId> {
         let services = self.registry.available_services(context);
         services
             .iter()
@@ -212,7 +211,7 @@ impl App {
             })
     }
 
-    fn find_service_provider(&self, name: &str) -> color_eyre::Result<Provider> {
+    fn find_service_provider(&self, name: &str) -> Result<Provider> {
         self.registry
             .all_providers()
             .iter()
@@ -225,8 +224,7 @@ impl App {
         self.active_context = Some(context.clone());
         self.status_bar.set_active_context(context.clone());
         if let Some(provider) = self.registry.get(&service_id) {
-            let service =
-                provider.create_service(&context, self.resolver.clone(), self.cmd_env.clone());
+            let service = provider.create_service(&context, self.resolver.clone());
             self.go_to_active_service(service);
         }
     }
@@ -238,7 +236,7 @@ impl App {
         ));
     }
 
-    pub async fn run(&mut self) -> color_eyre::Result<()> {
+    pub async fn run(&mut self) -> Result<()> {
         let mut tui = Tui::new(60.0, 4.0)?;
         tui.enter()?;
 
@@ -273,22 +271,22 @@ impl App {
         for cmd in commands {
             let id = self.command_tracker.start(cmd.name());
             let msg_tx = self.msg_tx.clone();
+            let cmd_env = self.cmd_env.clone();
             tokio::spawn(async move {
-                let success = match cmd.execute().await {
+                let success = match cmd.execute(cmd_env).await {
                     Ok(()) => true,
                     Err(e) => {
                         let _ = msg_tx.send(AppMessage::DisplayError(e.to_string()));
                         false
                     }
                 };
-                // Signal that a commands completed - service should process messages
+                // Signal that a command completed - service should process messages
                 let _ = msg_tx.send(AppMessage::CommandCompleted { id, success });
             });
         }
     }
 
-    /// Process the result from service.update().
-    fn process_update_result(&mut self, result: color_eyre::Result<ServiceMsg>) {
+    fn process_update_result(&mut self, result: Result<ServiceMsg>) {
         match result {
             Ok(ServiceMsg::Idle) => {}
             Ok(ServiceMsg::Run(commands)) => {
@@ -307,7 +305,7 @@ impl App {
     fn go_to_context_selection(&mut self) {
         self.active_context = None;
         self.status_bar.clear_context();
-        self.state = AppState::SelectingContext(ContextSelectorView::new(self.resolver.clone()));
+        self.state = AppState::SelectingContext(ContextSelectorView::new(self.resolver.clone()).unwrap());
     }
 
     /// Transition to service selection.
@@ -357,35 +355,39 @@ impl App {
         }
     }
 
-    fn handle_event(&mut self, event: &Event) -> color_eyre::Result<()> {
+    fn handle_event(&mut self, event: &Event) -> Result<()> {
         // Popup intercepts all key events when visible
-        if let Some(ref mut popup) = self.popup {
-            if let Event::Key(key) = event {
-                match popup {
-                    ActivePopup::Help(help) => {
-                        if let Ok(EventResult::Event(HelpEvent::Close)) = help.handle_key(*key) {
-                            self.msg_tx.send(AppMessage::ClosePopup)?;
-                        }
-                    }
-                    ActivePopup::ThemeSelector(selector) => match selector.handle_key(*key) {
-                        Ok(EventResult::Event(ThemeEvent::Selected(theme_info))) => {
-                            self.msg_tx.send(AppMessage::SelectTheme(theme_info))?;
-                        }
-                        Ok(EventResult::Event(ThemeEvent::Cancelled)) => {
-                            self.msg_tx.send(AppMessage::ClosePopup)?;
-                        }
-                        _ => {}
-                    },
-                    ActivePopup::Error(dialog) => {
-                        if let Ok(EventResult::Event(ErrorDialogEvent::Dismissed)) =
-                            dialog.handle_key(*key)
-                        {
-                            self.msg_tx.send(AppMessage::ClosePopup)?;
-                        }
+        if let Some(ref mut popup) = self.popup
+            && let Event::Key(key) = event
+        {
+            match popup {
+                ActivePopup::Help(help) => {
+                    if matches!(
+                        help.handle_key(*key),
+                        Ok(EventResult::Event(HelpEvent::Close))
+                    ) {
+                        self.msg_tx.send(AppMessage::ClosePopup)?;
                     }
                 }
-                return Ok(());
+                ActivePopup::ThemeSelector(selector) => match selector.handle_key(*key) {
+                    Ok(EventResult::Event(ThemeEvent::Selected(theme_info))) => {
+                        self.msg_tx.send(AppMessage::SelectTheme(theme_info))?;
+                    }
+                    Ok(EventResult::Event(ThemeEvent::Cancelled)) => {
+                        self.msg_tx.send(AppMessage::ClosePopup)?;
+                    }
+                    _ => {}
+                },
+                ActivePopup::Error(dialog) => {
+                    if matches!(
+                        dialog.handle_key(*key),
+                        Ok(EventResult::Event(ErrorDialogEvent::Dismissed))
+                    ) {
+                        self.msg_tx.send(AppMessage::ClosePopup)?;
+                    }
+                }
             }
+            return Ok(());
         }
 
         // Handle tick separately - always goes to service, commands tracker, and toast manager
@@ -474,12 +476,12 @@ impl App {
         Ok(())
     }
 
-    fn handle_message(&mut self, tui: &mut Tui, msg: AppMessage) -> color_eyre::Result<()> {
+    fn handle_message(&mut self, tui: &mut Tui, msg: AppMessage) -> Result<()> {
         if !matches!(
             msg,
             AppMessage::Tick | AppMessage::Render | AppMessage::CommandCompleted { .. }
         ) {
-            debug!("Handling message: {:?}", msg);
+            debug!("Handling message: {msg:?}");
         }
 
         match msg {
@@ -496,7 +498,7 @@ impl App {
             }
             AppMessage::Render => self.render(tui)?,
             AppMessage::DisplayError(err) => {
-                log::error!("Error: {}", err);
+                log::error!("Error: {err}");
                 self.popup = Some(ActivePopup::Error(ErrorDialog::new(
                     err,
                     self.resolver.clone(),
@@ -531,7 +533,7 @@ impl App {
             AppMessage::SelectTheme(theme_info) => {
                 // Persist theme to config file
                 if let Err(e) = save_theme(theme_info.name) {
-                    log::warn!("Failed to persist theme: {}", e);
+                    log::warn!("Failed to persist theme: {e}");
                 }
                 self.theme = theme_info.theme;
                 self.popup = None;
@@ -539,7 +541,7 @@ impl App {
             AppMessage::CommandCompleted { id, success } => {
                 // Mark commands as complete in tracker
                 self.command_tracker.complete(id, success);
-                // A commands finished, tell service to process its messages
+                // A command finished, tell service to process its messages
                 if let AppState::ActiveService(service) = &mut self.state {
                     let result = service.update();
                     self.process_update_result(result);
@@ -562,24 +564,21 @@ impl App {
             }
             AppMessage::SelectContext(context) => {
                 // Check for pending service from CLI args
-                if let Some(svc_name) = self.pending_service.take() {
-                    if let Ok(service_id) = self.find_service(&context, &svc_name) {
-                        self.start_service(context, service_id);
-                        return Ok(());
-                    }
+                if let Some(svc_name) = self.pending_service.take()
+                    && let Ok(service_id) = self.find_service(&context, &svc_name)
+                {
+                    self.start_service(context, service_id);
+                    return Ok(());
                 }
+
                 self.go_to_service_selection(context);
             }
             AppMessage::SelectService(service_id) => {
-                if let Some(ctx) = &self.active_context {
-                    if let Some(provider) = self.registry.get(&service_id) {
-                        let service = provider.create_service(
-                            ctx,
-                            self.resolver.clone(),
-                            self.cmd_env.clone(),
-                        );
-                        self.go_to_active_service(service);
-                    }
+                if let Some(ctx) = &self.active_context
+                    && let Some(provider) = self.registry.get(&service_id)
+                {
+                    let service = provider.create_service(ctx, self.resolver.clone());
+                    self.go_to_active_service(service);
                 }
             }
             AppMessage::GoBack => {
@@ -590,7 +589,7 @@ impl App {
         Ok(())
     }
 
-    fn render(&mut self, tui: &mut Tui) -> color_eyre::Result<()> {
+    fn render(&mut self, tui: &mut Tui) -> Result<()> {
         tui.draw(|frame| {
             // Fill background with theme base color
             frame.render_widget(

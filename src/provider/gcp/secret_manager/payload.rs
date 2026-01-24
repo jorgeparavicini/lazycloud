@@ -11,7 +11,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::Theme;
 use crate::ui::{EventResult, Keybinding, Result, Screen};
 use crate::config::{KeyResolver, PayloadAction};
-use crate::commands::{Command, CopyToClipboardCmd};
+use crate::commands::{Command, CommandEnv, CopyToClipboardCmd};
 use crate::service::ServiceMsg;
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
@@ -199,7 +199,7 @@ pub(super) fn update(
         }
 
         PayloadMsg::Copy { data, description } => {
-            Ok(CopyToClipboardCmd::new(data, description, state.get_cmd_env()).into())
+            Ok(CopyToClipboardCmd::new(data, description).into())
         }
     }
 }
@@ -222,7 +222,7 @@ impl Command for FetchPayloadCmd {
         )
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
         let payload = self
             .client
             .access_version(&self.secret.name, &self.version.version_id)
@@ -251,7 +251,7 @@ impl Command for FetchLatestPayloadCmd {
         format!("Loading '{}' (latest)", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
         let payload = self.client.access_latest_version(&self.secret.name).await?;
         self.tx.send(
             PayloadMsg::Loaded {

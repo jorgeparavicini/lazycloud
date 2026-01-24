@@ -1,21 +1,17 @@
 use std::collections::HashMap;
 
+use crate::context::GcpContext;
+use crate::provider::gcp::secret_manager::payload::SecretPayload;
+use crate::provider::gcp::secret_manager::secrets::{
+    IamBinding, IamPolicy, ReplicationConfig, Secret,
+};
+use crate::provider::gcp::secret_manager::versions::SecretVersion;
 use chrono::{DateTime, Utc};
-use google_cloud_auth::credentials::user_account;
+use color_eyre::Result;
 use google_cloud_secretmanager_v1::client::SecretManagerService as GcpSecretManagerClient;
 use google_cloud_secretmanager_v1::model;
 use google_cloud_wkt::FieldMask;
 use tokio_util::bytes::Bytes;
-use crate::context::GcpContext;
-use crate::provider::gcp::config::load_credentials_json;
-use crate::provider::gcp::secret_manager::payload::SecretPayload;
-use crate::provider::gcp::secret_manager::secrets::{
-    IamBinding,
-    IamPolicy,
-    ReplicationConfig,
-    Secret,
-};
-use crate::provider::gcp::secret_manager::versions::SecretVersion;
 
 #[derive(Clone, Debug)]
 pub struct SecretManagerClient {
@@ -24,31 +20,31 @@ pub struct SecretManagerClient {
 }
 
 impl SecretManagerClient {
-    /// Create a new SecretManagerClient with account-specific credentials.
+    /// Create a new `SecretManagerClient` with account-specific credentials.
     ///
     /// Uses the gcloud CLI credentials for the specified account.
-    pub async fn new(context: &GcpContext) -> color_eyre::Result<Self> {
-        let creds_json = load_credentials_json(account)?;
-        let credentials = user_account::Builder::new(creds_json)
-            .build()
-            .map_err(|e| color_eyre::eyre::eyre!("Failed to build credentials: {}", e))?;
+    pub async fn new(context: &GcpContext) -> Result<Self> {
+        let credentials = context.create_credentials()?;
 
         let client = GcpSecretManagerClient::builder()
             .with_credentials(credentials)
             .build()
             .await?;
 
-        Ok(Self { client, project_id })
+        Ok(Self {
+            client,
+            project_id: context.project_id.clone(),
+        })
     }
 
-    pub async fn list_secrets(&self) -> color_eyre::Result<Vec<Secret>> {
+    pub async fn list_secrets(&self) -> Result<Vec<Secret>> {
         let parent = format!("projects/{}", self.project_id);
 
         let response = self.client.list_secrets().set_parent(parent).send().await?;
 
         let mut secrets = Vec::new();
         for secret in response.secrets {
-            if let Some(name) = secret.name.split('/').last() {
+            if let Some(name) = secret.name.split('/').next_back() {
                 let replication = parse_replication(&secret.replication);
                 let expire_time = secret
                     .expire_time()
@@ -61,7 +57,7 @@ impl SecretManagerClient {
                     created_at: secret
                         .create_time
                         .as_ref()
-                        .map_or("Unknown".to_string(), |t| format_timestamp(t.seconds())),
+                        .map_or_else(|| "Unknown".to_string(), |t| format_timestamp(t.seconds())),
                     expire_time,
                     labels: secret.labels.clone(),
                 });
@@ -70,7 +66,7 @@ impl SecretManagerClient {
         Ok(secrets)
     }
 
-    pub async fn list_versions(&self, secret_id: &str) -> color_eyre::Result<Vec<SecretVersion>> {
+    pub async fn list_versions(&self, secret_id: &str) -> Result<Vec<SecretVersion>> {
         let parent = format!("projects/{}/secrets/{}", self.project_id, secret_id);
 
         let response = self
@@ -82,25 +78,21 @@ impl SecretManagerClient {
 
         let mut versions = Vec::new();
         for version in response.versions {
-            if let Some(name) = version.name.split('/').last() {
+            if let Some(name) = version.name.split('/').next_back() {
                 versions.push(SecretVersion {
                     version_id: name.to_string(),
                     state: format!("{:?}", version.state),
                     created_at: version
                         .create_time
                         .as_ref()
-                        .map_or("Unknown".to_string(), |t| format_timestamp(t.seconds())),
+                        .map_or_else(|| "Unknown".to_string(), |t| format_timestamp(t.seconds())),
                 });
             }
         }
         Ok(versions)
     }
 
-    pub async fn access_version(
-        &self,
-        secret_id: &str,
-        version_id: &str,
-    ) -> color_eyre::Result<SecretPayload> {
+    pub async fn access_version(&self, secret_id: &str, version_id: &str) -> Result<SecretPayload> {
         let name = format!(
             "projects/{}/secrets/{}/versions/{}",
             self.project_id, secret_id, version_id
@@ -126,10 +118,7 @@ impl SecretManagerClient {
         }
     }
 
-    pub async fn access_latest_version(
-        &self,
-        secret_id: &str,
-    ) -> color_eyre::Result<SecretPayload> {
+    pub async fn access_latest_version(&self, secret_id: &str) -> Result<SecretPayload> {
         let name = format!(
             "projects/{}/secrets/{}/versions/latest",
             self.project_id, secret_id
@@ -156,7 +145,7 @@ impl SecretManagerClient {
     }
 
     /// Create a new secret without an initial version.
-    pub async fn create_secret(&self, secret_id: &str) -> color_eyre::Result<Secret> {
+    pub async fn create_secret(&self, secret_id: &str) -> Result<Secret> {
         let parent = format!("projects/{}", self.project_id);
 
         let secret = model::Secret::default().set_replication(
@@ -191,7 +180,7 @@ impl SecretManagerClient {
         &self,
         secret_id: &str,
         payload: &[u8],
-    ) -> color_eyre::Result<Secret> {
+    ) -> Result<Secret> {
         // First create the secret
         let secret = self.create_secret(secret_id).await?;
 
@@ -202,7 +191,7 @@ impl SecretManagerClient {
     }
 
     /// Delete a secret and all its versions.
-    pub async fn delete_secret(&self, secret_id: &str) -> color_eyre::Result<()> {
+    pub async fn delete_secret(&self, secret_id: &str) -> Result<()> {
         let name = format!("projects/{}/secrets/{}", self.project_id, secret_id);
 
         self.client.delete_secret().set_name(name).send().await?;
@@ -215,7 +204,7 @@ impl SecretManagerClient {
         &self,
         secret_id: &str,
         payload: &[u8],
-    ) -> color_eyre::Result<SecretVersion> {
+    ) -> Result<SecretVersion> {
         let parent = format!("projects/{}/secrets/{}", self.project_id, secret_id);
 
         let payload_model = model::SecretPayload::default().set_data(Bytes::from(payload.to_vec()));
@@ -250,7 +239,7 @@ impl SecretManagerClient {
         &self,
         secret_id: &str,
         version_id: &str,
-    ) -> color_eyre::Result<SecretVersion> {
+    ) -> Result<SecretVersion> {
         let name = format!(
             "projects/{}/secrets/{}/versions/{}",
             self.project_id, secret_id, version_id
@@ -274,11 +263,7 @@ impl SecretManagerClient {
     }
 
     /// Enable a previously disabled secret version.
-    pub async fn enable_version(
-        &self,
-        secret_id: &str,
-        version_id: &str,
-    ) -> color_eyre::Result<SecretVersion> {
+    pub async fn enable_version(&self, secret_id: &str, version_id: &str) -> Result<SecretVersion> {
         let name = format!(
             "projects/{}/secrets/{}/versions/{}",
             self.project_id, secret_id, version_id
@@ -306,7 +291,7 @@ impl SecretManagerClient {
         &self,
         secret_id: &str,
         version_id: &str,
-    ) -> color_eyre::Result<SecretVersion> {
+    ) -> Result<SecretVersion> {
         let name = format!(
             "projects/{}/secrets/{}/versions/{}",
             self.project_id, secret_id, version_id
@@ -334,7 +319,7 @@ impl SecretManagerClient {
         &self,
         secret_id: &str,
         labels: HashMap<String, String>,
-    ) -> color_eyre::Result<Secret> {
+    ) -> Result<Secret> {
         let name = format!("projects/{}/secrets/{}", self.project_id, secret_id);
 
         let mut secret = model::Secret::default();
@@ -366,7 +351,7 @@ impl SecretManagerClient {
     }
 
     /// Get the IAM policy for a secret.
-    pub async fn get_iam_policy(&self, secret_id: &str) -> color_eyre::Result<IamPolicy> {
+    pub async fn get_iam_policy(&self, secret_id: &str) -> Result<IamPolicy> {
         let resource = format!("projects/{}/secrets/{}", self.project_id, secret_id);
 
         let response = self
@@ -389,7 +374,7 @@ impl SecretManagerClient {
     }
 
     /// Get secret metadata including replication configuration.
-    pub async fn get_secret(&self, secret_id: &str) -> color_eyre::Result<Secret> {
+    pub async fn get_secret(&self, secret_id: &str) -> Result<Secret> {
         let name = format!("projects/{}/secrets/{}", self.project_id, secret_id);
         let response = self.client.get_secret().set_name(name).send().await?;
 

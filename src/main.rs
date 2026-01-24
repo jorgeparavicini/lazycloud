@@ -5,6 +5,7 @@ use clap::Parser;
 use crate::app::App;
 use crate::config::KeyResolver;
 use crate::registry::ServiceRegistry;
+use color_eyre::Result;
 
 mod app;
 mod cli;
@@ -22,7 +23,7 @@ pub mod commands;
 pub use theme::Theme;
 
 #[tokio::main]
-async fn main() -> color_eyre::Result<()> {
+async fn main() -> Result<()> {
     color_eyre::install()?;
     let args = cli::Args::parse();
 
@@ -33,7 +34,7 @@ async fn main() -> color_eyre::Result<()> {
     let mut registry = ServiceRegistry::new();
     provider::register_all(&mut registry);
 
-    let mut app = App::new(registry, config, resolver, theme);
+    let mut app = App::new(registry, config, resolver, theme)?;
     app.apply_cli_args(&args)?;
     app.run().await?;
 

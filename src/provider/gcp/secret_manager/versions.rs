@@ -26,7 +26,7 @@ use crate::ui::{
     TextInputEvent,
 };
 use crate::config::{KeyResolver, SearchAction, VersionsAction};
-use crate::commands::Command;
+use crate::commands::{Command, CommandEnv};
 use crate::service::ServiceMsg;
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
@@ -356,7 +356,7 @@ impl Modal for DestroyVersionDialog {
 pub(super) fn update(
     state: &mut SecretManager,
     msg: VersionsMsg,
-) -> color_eyre::Result<ServiceMsg> {
+) -> Result<ServiceMsg> {
     match msg {
         VersionsMsg::Load(secret) => {
             // Use cached versions if available
@@ -509,7 +509,7 @@ impl Command for FetchVersionsCmd {
         format!("Loading '{}' versions", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
         let versions = self.client.list_versions(&self.secret.name).await?;
         self.tx.send(
             VersionsMsg::Loaded {
@@ -535,7 +535,7 @@ impl Command for AddVersionCmd {
         format!("Adding version to '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
         self.client
             .add_secret_version(&self.secret.name, self.payload.as_bytes())
             .await?;
@@ -565,7 +565,7 @@ impl Command for DisableVersionCmd {
         )
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
         self.client
             .disable_version(&self.secret.name, &self.version.version_id)
             .await?;
@@ -595,7 +595,7 @@ impl Command for EnableVersionCmd {
         )
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
         self.client
             .enable_version(&self.secret.name, &self.version.version_id)
             .await?;
@@ -625,7 +625,7 @@ impl Command for DestroyVersionCmd {
         )
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
         self.client
             .destroy_version(&self.secret.name, &self.version.version_id)
             .await?;

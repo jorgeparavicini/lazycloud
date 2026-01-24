@@ -7,11 +7,8 @@ use ratatui::layout::Rect;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::Theme;
-use crate::ui::{Component, EventResult, EventResultExt, Keybinding, Modal, Screen, Spinner};
-use crate::config::{GlobalAction, KeyResolver};
 use crate::commands::{Command, CommandEnv};
-use crate::service::{Service, ServiceMsg};
-use crossterm::event::KeyEvent;
+use crate::config::{GlobalAction, KeyResolver};
 use crate::context::{CloudContext, GcpContext};
 use crate::provider::Provider;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
@@ -20,6 +17,9 @@ use crate::provider::gcp::secret_manager::secrets::{Secret, SecretsMsg};
 use crate::provider::gcp::secret_manager::versions::{SecretVersion, VersionsMsg};
 use crate::provider::gcp::secret_manager::{payload, secrets, versions};
 use crate::registry::ServiceProvider;
+use crate::service::{Service, ServiceMsg};
+use crate::ui::{Component, EventResult, EventResultExt, Keybinding, Modal, Screen, Spinner};
+use crossterm::event::KeyEvent;
 
 // === Messages ===
 
@@ -61,16 +61,9 @@ impl ServiceProvider for SecretManagerProvider {
         Some("🔐")
     }
 
-    fn create_service(
-        &self,
-        ctx: &CloudContext,
-        resolver: Arc<KeyResolver>,
-        cmd_env: CommandEnv,
-    ) -> Box<dyn Service> {
-        let CloudContext::Gcp(gcp_ctx) = ctx else {
-            panic!("SecretManagerProvider requires GcpContext");
-        };
-        Box::new(SecretManager::new(gcp_ctx.clone(), resolver, cmd_env))
+    fn create_service(&self, ctx: &CloudContext, resolver: Arc<KeyResolver>) -> Box<dyn Service> {
+        let CloudContext::Gcp(gcp_ctx) = ctx;
+        Box::new(SecretManager::new(gcp_ctx.clone(), resolver))
     }
 }
 
@@ -85,7 +78,6 @@ pub struct SecretManager {
     modal: Option<Box<dyn Modal<Output = SecretManagerMsg>>>,
     msg_tx: UnboundedSender<SecretManagerMsg>,
     msg_rx: UnboundedReceiver<SecretManagerMsg>,
-    cmd_env: CommandEnv,
     cached_secrets: Option<Vec<Secret>>,
     /// Key: secret name
     cached_versions: HashMap<String, Vec<SecretVersion>>,
@@ -95,7 +87,7 @@ pub struct SecretManager {
 }
 
 impl SecretManager {
-    pub fn new(ctx: GcpContext, resolver: Arc<KeyResolver>, cmd_env: CommandEnv) -> Self {
+    pub fn new(ctx: GcpContext, resolver: Arc<KeyResolver>) -> Self {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
         Self {
             context: ctx,
@@ -106,7 +98,6 @@ impl SecretManager {
             modal: None,
             msg_tx,
             msg_rx,
-            cmd_env,
             cached_secrets: None,
             cached_versions: HashMap::new(),
             cached_payloads: HashMap::new(),
@@ -116,10 +107,6 @@ impl SecretManager {
 
     pub(super) fn get_resolver(&self) -> Arc<KeyResolver> {
         self.resolver.clone()
-    }
-
-    pub(super) fn get_cmd_env(&self) -> CommandEnv {
-        self.cmd_env.clone()
     }
 
     // === Public helpers for feature slices ===
@@ -163,7 +150,10 @@ impl SecretManager {
 
     // === Modal management ===
 
-    pub(super) fn display_overlay<T: Modal<Output = SecretManagerMsg> + 'static>(&mut self, modal: T) {
+    pub(super) fn display_overlay<T: Modal<Output = SecretManagerMsg> + 'static>(
+        &mut self,
+        modal: T,
+    ) {
         self.modal = Some(Box::new(modal));
     }
 
@@ -253,11 +243,10 @@ impl SecretManager {
             // === Lifecycle ===
             SecretManagerMsg::Initialize => {
                 self.loading = Some("Initializing Secret Manager...");
-                Ok(InitClientCmd::new(
-                    self.context.project_id.clone(),
-                    self.context.account.clone(),
-                    self.msg_tx.clone(),
-                )
+                Ok(InitClientCmd {
+                    context: self.context.clone(),
+                    tx: self.msg_tx.clone(),
+                }
                 .into())
             }
 
@@ -386,29 +375,18 @@ impl Service for SecretManager {
 // === Commands ===
 
 struct InitClientCmd {
-    project_id: String,
-    account: String,
+    context: GcpContext,
     tx: UnboundedSender<SecretManagerMsg>,
-}
-
-impl InitClientCmd {
-    pub fn new(project_id: String, account: String, tx: UnboundedSender<SecretManagerMsg>) -> Self {
-        Self {
-            project_id,
-            account,
-            tx,
-        }
-    }
 }
 
 #[async_trait]
 impl Command for InitClientCmd {
     fn name(&self) -> String {
-        format!("Connecting to {}", self.project_id)
+        format!("Connecting to {}", self.context.display_name)
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
-        let client = SecretManagerClient::new(self.project_id.clone(), &self.account).await?;
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> color_eyre::Result<()> {
+        let client = SecretManagerClient::new(&self.context).await?;
         self.tx.send(SecretManagerMsg::ClientInitialized(client))?;
         Ok(())
     }
