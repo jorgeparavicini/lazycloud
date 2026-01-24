@@ -61,8 +61,6 @@ impl fmt::Display for ServiceId {
 /// Implement this trait to register a new cloud service with the registry.
 /// The registry will use this to display available services and create
 /// service instances when the user selects a service.
-/// 
-/// TODO: Can we make this generic over CloudContext?
 pub trait ServiceProvider: Send + Sync {
     /// The cloud provider this service belongs to.
     fn provider(&self) -> Provider;
@@ -197,7 +195,18 @@ impl Default for ServiceRegistry {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use crossterm::event::KeyEvent;
+    use ratatui::layout::Rect;
+    use ratatui::Frame;
+
     use super::*;
+    use crate::config::KeyResolver;
+    use crate::model::GcpContext;
+    use crate::service::{Service, ServiceMsg};
+    use crate::ui::EventResult;
+    use crate::Theme;
 
     #[test]
     fn test_service_id_display() {
@@ -211,19 +220,6 @@ mod tests {
         let id2 = ServiceId::new(Provider::Gcp, "secret-manager");
         assert_eq!(id1, id2);
     }
-
-    use std::sync::Arc;
-
-    use ratatui::Frame;
-    use ratatui::layout::Rect;
-
-    use super::*;
-    use crate::Theme;
-    use crate::config::KeyResolver;
-    use crate::commands::CommandEnv;
-    use crate::core::event::Event;
-    use crate::service::{Service, ServiceMsg};
-    use crate::model::GcpContext;
 
     struct MockProvider;
 
@@ -252,12 +248,12 @@ mod tests {
     struct MockService;
 
     impl Service for MockService {
-        fn handle_input(&mut self, _event: &Event) -> bool {
-            false
+        fn handle_key(&mut self, _key: KeyEvent) -> EventResult<()> {
+            EventResult::Ignored
         }
 
-        fn update(&mut self) -> ServiceMsg {
-            ServiceMsg::Idle
+        fn update(&mut self) -> color_eyre::Result<ServiceMsg> {
+            Ok(ServiceMsg::Idle)
         }
 
         fn render(&mut self, _frame: &mut Frame, _area: Rect, _theme: &Theme) {}

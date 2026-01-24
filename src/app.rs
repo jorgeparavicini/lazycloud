@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use color_eyre::eyre::eyre;
-use crossterm::event::{KeyEvent, MouseEvent};
+use crossterm::event::KeyEvent;
 use log::debug;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
@@ -11,18 +11,19 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::Theme;
 use crate::cli::Args;
-use crate::components::{CommandId, CommandStatusView, ContextSelectorView, ErrorDialog, ErrorDialogEvent, HelpEvent, HelpView, KeybindingSection, ServiceSelectorView, StatusBarView, ThemeEvent, ThemeSelectorView, Toast, ToastManager, ToastType};
+use crate::ui::{CommandId, CommandPanel, ErrorDialog, ErrorDialogEvent, HelpEvent, HelpOverlay, KeybindingSection, StatusBar, Toast, ToastManager, ToastType};
+use crate::context::ContextSelectorView;
+use crate::service::ServiceSelectorView;
+use crate::theme::{ThemeEvent, ThemeSelectorView};
 use crate::config::{AppConfig, GlobalAction, KeyResolver, save_last_context, save_theme};
 use crate::commands::{Command, CommandEnv};
-use crate::core::event::Event;
-use crate::core::message::AppMessage;
 use crate::service::{Service, ServiceMsg};
-use crate::tui::Tui;
-use crate::model::context::get_available_contexts;
-use crate::model::{CloudContext, Provider};
+use crate::tui::{Event, Tui};
+use crate::context::{CloudContext, load_contexts};
+use crate::provider::Provider;
 use crate::registry::{ServiceId, ServiceRegistry};
 use crate::theme::ThemeInfo;
-use crate::components::{Component, Handled};
+use crate::ui::{Component, EventResult};
 
 #[derive(Debug, Clone)]
 pub enum AppMessage {
@@ -66,7 +67,7 @@ enum AppState {
 }
 
 enum ActivePopup {
-    Help(HelpView),
+    Help(HelpOverlay),
     ThemeSelector(ThemeSelectorView),
     Error(ErrorDialog),
 }
@@ -75,8 +76,8 @@ pub struct App {
     state: AppState,
     theme: Theme,
     popup: Option<ActivePopup>,
-    status_bar: StatusBarView,
-    command_tracker: CommandStatusView,
+    status_bar: StatusBar,
+    command_tracker: CommandPanel,
     toast_manager: ToastManager,
     cmd_env: CommandEnv,
     should_quit: bool,
@@ -105,8 +106,8 @@ impl App {
             state: AppState::SelectingContext(ContextSelectorView::new(resolver.clone())),
             theme,
             popup: None,
-            status_bar: StatusBarView::new(resolver.clone()),
-            command_tracker: CommandStatusView::new(),
+            status_bar: StatusBar::new(resolver.clone()),
+            command_tracker: CommandPanel::new(),
             toast_manager: ToastManager::new(),
             cmd_env,
             should_quit: false,
@@ -129,7 +130,7 @@ impl App {
     /// - Neither provided: normal flow (context selection)
     ///
     pub fn apply_cli_args(&mut self, args: &Args) -> color_eyre::Result<()> {
-        let contexts = get_available_contexts();
+        let contexts = load_contexts();
 
         match (&args.context, &args.service) {
             (Some(ctx_name), Some(svc_name)) => {
@@ -287,17 +288,17 @@ impl App {
     }
 
     /// Process the result from service.update().
-    fn process_update_result(&mut self, result: ServiceMsg) {
+    fn process_update_result(&mut self, result: color_eyre::Result<ServiceMsg>) {
         match result {
-            ServiceMsg::Idle => {}
-            ServiceMsg::Run(commands) => {
+            Ok(ServiceMsg::Idle) => {}
+            Ok(ServiceMsg::Run(commands)) => {
                 self.spawn_commands(commands);
             }
-            ServiceMsg::Close => {
+            Ok(ServiceMsg::Close) => {
                 let _ = self.msg_tx.send(AppMessage::GoBack);
             }
-            ServiceMsg::Error(err) => {
-                let _ = self.msg_tx.send(AppMessage::DisplayError(err));
+            Err(err) => {
+                let _ = self.msg_tx.send(AppMessage::DisplayError(err.to_string()));
             }
         }
     }
@@ -362,21 +363,21 @@ impl App {
             if let Event::Key(key) = event {
                 match popup {
                     ActivePopup::Help(help) => {
-                        if let Ok(Handled::Event(HelpEvent::Close)) = help.handle_key(*key) {
+                        if let Ok(EventResult::Event(HelpEvent::Close)) = help.handle_key(*key) {
                             self.msg_tx.send(AppMessage::ClosePopup)?;
                         }
                     }
                     ActivePopup::ThemeSelector(selector) => match selector.handle_key(*key) {
-                        Ok(Handled::Event(ThemeEvent::Selected(theme_info))) => {
+                        Ok(EventResult::Event(ThemeEvent::Selected(theme_info))) => {
                             self.msg_tx.send(AppMessage::SelectTheme(theme_info))?;
                         }
-                        Ok(Handled::Event(ThemeEvent::Cancelled)) => {
+                        Ok(EventResult::Event(ThemeEvent::Cancelled)) => {
                             self.msg_tx.send(AppMessage::ClosePopup)?;
                         }
                         _ => {}
                     },
                     ActivePopup::Error(dialog) => {
-                        if let Ok(Handled::Event(ErrorDialogEvent::Dismissed)) =
+                        if let Ok(EventResult::Event(ErrorDialogEvent::Dismissed)) =
                             dialog.handle_key(*key)
                         {
                             self.msg_tx.send(AppMessage::ClosePopup)?;
@@ -402,12 +403,12 @@ impl App {
             AppState::SelectingContext(selector) => {
                 if let Event::Key(key) = event {
                     match selector.handle_key(*key) {
-                        Ok(Handled::Event(context)) => {
+                        Ok(EventResult::Event(context)) => {
                             self.msg_tx.send(AppMessage::SelectContext(context))?;
                             return Ok(());
                         }
-                        Ok(Handled::Consumed) => true,
-                        Ok(Handled::Ignored) | Err(_) => false,
+                        Ok(EventResult::Consumed) => true,
+                        Ok(EventResult::Ignored) | Err(_) => false,
                     }
                 } else {
                     false
@@ -416,25 +417,29 @@ impl App {
             AppState::SelectingService(selector) => {
                 if let Event::Key(key) = event {
                     match selector.handle_key(*key) {
-                        Ok(Handled::Event(service_id)) => {
+                        Ok(EventResult::Event(service_id)) => {
                             self.msg_tx.send(AppMessage::SelectService(service_id))?;
                             return Ok(());
                         }
-                        Ok(Handled::Consumed) => true,
-                        Ok(Handled::Ignored) | Err(_) => false,
+                        Ok(EventResult::Consumed) => true,
+                        Ok(EventResult::Ignored) | Err(_) => false,
                     }
                 } else {
                     false
                 }
             }
             AppState::ActiveService(service) => {
-                let consumed = service.handle_input(event);
-                if consumed {
-                    // Input was consumed, process any queued messages
-                    let result = service.update();
-                    self.process_update_result(result);
+                if let Event::Key(key) = event {
+                    let result = service.handle_key(*key);
+                    if result.is_consumed() {
+                        // Input was consumed, process any queued messages
+                        let msg = service.update();
+                        self.process_update_result(msg);
+                    }
+                    result.is_consumed()
+                } else {
+                    false
                 }
-                consumed
             }
         };
 
@@ -510,7 +515,7 @@ impl App {
                         .unwrap_or_else(|| "Current View".to_string()),
                     _ => "Navigation".to_string(),
                 };
-                self.popup = Some(ActivePopup::Help(HelpView::with_sections(vec![
+                self.popup = Some(ActivePopup::Help(HelpOverlay::with_sections(vec![
                     KeybindingSection::new(&local_title, local),
                     KeybindingSection::new("Global", self.status_bar.global_keybindings()),
                 ])));

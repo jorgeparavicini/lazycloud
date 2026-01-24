@@ -1,6 +1,6 @@
 use crate::app::AppMessage;
 use crate::commands::{Command, CommandEnv};
-use crate::components::ToastType;
+use crate::ui::ToastType;
 use async_trait::async_trait;
 
 /// Copies a string to the system clipboard and shows a success toast notification.

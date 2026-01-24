@@ -14,7 +14,7 @@ mod provider;
 mod registry;
 mod search;
 mod theme;
-mod components;
+mod ui;
 pub mod tui;
 pub mod service;
 pub mod commands;

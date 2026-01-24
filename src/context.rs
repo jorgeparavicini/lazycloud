@@ -6,7 +6,7 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::widgets::ListItem;
-use crate::components::{Component, EventResult, ListComponent, ListEvent, ListRow, Screen};
+use crate::ui::{EventResult, List, ListEvent, ListRow, Screen};
 use crate::config::KeyResolver;
 use crate::provider::Provider;
 use crate::Theme;
@@ -52,6 +52,12 @@ impl CloudContext {
         match self {
             CloudContext::Gcp(ctx) => &ctx.display_name,
         }
+    }
+}
+
+impl std::fmt::Display for CloudContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())
     }
 }
 
@@ -115,7 +121,7 @@ impl ListRow for CloudContext {
 }
 
 pub struct ContextSelectorView {
-    context_list: ListComponent<CloudContext>,
+    context_list: List<CloudContext>,
 }
 
 impl ContextSelectorView {
@@ -125,12 +131,12 @@ impl ContextSelectorView {
 
     pub fn with_contexts(contexts: Vec<CloudContext>, resolver: Arc<KeyResolver>) -> Self {
         Self {
-            context_list: ListComponent::new(contexts, resolver),
+            context_list: List::new(contexts, resolver),
         }
     }
 }
 
-impl Component for ContextSelectorView {
+impl Screen for ContextSelectorView {
     type Output = CloudContext;
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
@@ -145,8 +151,4 @@ impl Component for ContextSelectorView {
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         self.context_list.render(frame, area, theme);
     }
-}
-
-impl Screen for ContextSelectorView {
-
 }

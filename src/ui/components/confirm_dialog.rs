@@ -9,7 +9,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 
 use crate::Theme;
 use crate::config::{DialogAction, KeyResolver};
-use crate::components::{Component, Result};
+use crate::ui::{Component, EventResult, Result};
 
 pub enum ConfirmEvent {
     Confirmed,
@@ -24,7 +24,7 @@ pub enum ConfirmStyle {
     Danger,
 }
 
-pub struct ConfirmDialogComponent {
+pub struct ConfirmDialog {
     title: String,
     message: String,
     confirm_text: String,
@@ -33,7 +33,7 @@ pub struct ConfirmDialogComponent {
     resolver: Arc<KeyResolver>,
 }
 
-impl ConfirmDialogComponent {
+impl ConfirmDialog {
     pub fn new(message: impl Into<String>, resolver: Arc<KeyResolver>) -> Self {
         Self {
             title: "Confirm".to_string(),
@@ -66,10 +66,10 @@ impl ConfirmDialogComponent {
     }
 }
 
-impl Component for ConfirmDialogComponent {
+impl Component for ConfirmDialog {
     type Output = ConfirmEvent;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Output>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         if self.resolver.matches_dialog(&key, DialogAction::Confirm) {
             return Ok(ConfirmEvent::Confirmed.into());
         }
@@ -77,7 +77,7 @@ impl Component for ConfirmDialogComponent {
             return Ok(ConfirmEvent::Cancelled.into());
         }
         // Consume all other keys to prevent propagation
-        Ok(Handled::Consumed)
+        Ok(EventResult::Consumed)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {

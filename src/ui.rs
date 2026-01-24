@@ -1,23 +1,32 @@
-mod command_status;
-mod confirm_dialog;
+pub mod components;
+pub mod widgets;
+
+mod command_panel;
 mod error_dialog;
 mod help;
-mod list;
-mod spinner;
 mod status_bar;
-mod table;
-mod text_input;
-mod theme_selector;
 mod toast;
 
 use crossterm::event::KeyEvent;
-use ratatui::Frame;
 use ratatui::layout::Rect;
-use color_eyre::Result;
-use crate::components::help::Keybinding;
+use ratatui::Frame;
+
+pub use color_eyre::Result;
+
 use crate::Theme;
-pub use crate::components::list::{ListRow, ListEvent, ListComponent};
-pub use crate::components::toast::ToastType;
+
+// Re-export components
+pub use components::{ConfirmDialog, ConfirmEvent, ConfirmStyle, List, ListEvent, ListRow, Table, TableEvent, TableRow, ColumnDef, TextInput, TextInputEvent};
+
+// Re-export widgets
+pub use widgets::Spinner;
+
+// Re-export app-level UI
+pub use command_panel::{CommandId, CommandPanel};
+pub use error_dialog::{ErrorDialog, ErrorDialogEvent};
+pub use help::{HelpEvent, HelpOverlay, Keybinding, KeybindingSection};
+pub use status_bar::StatusBar;
+pub use toast::{Toast, ToastManager, ToastType};
 
 /// Result of handling an input event.
 ///
@@ -35,6 +44,36 @@ pub enum EventResult<E> {
     Event(E),
 }
 
+impl<E> EventResult<E> {
+    /// Returns true if the input was consumed (either with or without an event).
+    pub fn is_consumed(&self) -> bool {
+        !matches!(self, EventResult::Ignored)
+    }
+}
+
+impl<E> From<E> for EventResult<E> {
+    fn from(event: E) -> Self {
+        EventResult::Event(event)
+    }
+}
+
+/// Extension trait for processing `Result<EventResult<T>>` from component handlers.
+pub trait EventResultExt<T> {
+    /// Process the result into a tuple of (was_consumed, optional_message).
+    fn process(self) -> (bool, Option<T>);
+}
+
+impl<T> EventResultExt<T> for Result<EventResult<T>> {
+    fn process(self) -> (bool, Option<T>) {
+        match self {
+            Ok(EventResult::Event(msg)) => (true, Some(msg)),
+            Ok(EventResult::Consumed) => (true, None),
+            Ok(EventResult::Ignored) => (false, None),
+            Err(_) => (false, None),
+        }
+    }
+}
+
 /// Interactive UI building block.
 ///
 /// Components are reusable widgets that handle input events and emit
@@ -42,14 +81,14 @@ pub enum EventResult<E> {
 ///
 /// # Examples
 ///
-/// - `TableComponent` - Selectable table with search/filter
-/// - `TextInputComponent` - Single-line text input
-/// - `ListComponent` - Selectable list with navigation
+/// - `Table` - Selectable table with search/filter
+/// - `TextInput` - Single-line text input
+/// - `List` - Selectable list with navigation
 pub trait Component {
-    /// The output type produced by this components.
+    /// The output type produced by this component.
     ///
     /// # Examples
-    /// - `TableComponent` produces `TableEvent` to notify parent of row selection
+    /// - `Table` produces `TableEvent` to notify parent of row selection
     type Output;
 
     /// Handle a key event.
@@ -68,7 +107,7 @@ pub trait Component {
     /// Called on each tick for animations and time-based updates.
     fn handle_tick(&mut self) {}
 
-    /// Render the components to the frame.
+    /// Render the component to the frame.
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme);
 }
 
@@ -83,7 +122,16 @@ pub trait Component {
 /// - `DeleteSecretDialog` - confirmation dialog for deletion
 /// - `CreateSecretWizard` - multistep wizard for creation
 /// - `CreateVersionDialog` - input dialog for creating a new version
-pub trait Modal: Component {
+pub trait Modal {
+    /// The message type produced by this modal.
+    type Output;
+
+    /// Handle a key event.
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>>;
+
+    /// Render the modal to the frame.
+    fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme);
+
     /// Title shown in the modal header (optional).
     fn title(&self) -> Option<&str> {
         None
@@ -93,18 +141,27 @@ pub trait Modal: Component {
 /// Full-page view that orchestrates components.
 ///
 /// Screens connect UI interactions to business logic by translating
-/// components events into domain messages. They know about the domain.
+/// component events into domain messages. They know about the domain.
 ///
 /// # Examples
 ///
 /// - `SecretListScreen` - displays secrets table, emits `SecretManagerMsg`
 /// - `VersionListScreen` - displays versions table, emits `SecretManagerMsg`
 /// - `PayloadScreen` - displays secret payload with syntax highlighting
-pub trait Screen: Component {
+pub trait Screen {
+    /// The message type produced by this screen.
+    type Output;
+
+    /// Handle a key event.
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>>;
+
+    /// Render the screen to the frame.
+    fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme);
+
+    /// Called on each tick for animations and time-based updates.
+    fn handle_tick(&mut self) {}
+
     /// Breadcrumb segments for navigation context.
-    ///
-    /// Returns a list of strings representing the navigation path.
-    /// For example: `["Secrets", "my-secret", "Versions"]`
     fn breadcrumbs(&self) -> Vec<String> {
         vec![]
     }

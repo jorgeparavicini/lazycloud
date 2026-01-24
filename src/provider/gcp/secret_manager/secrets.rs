@@ -12,27 +12,31 @@ use ratatui::widgets::{Block, BorderType, Borders, Cell, Paragraph};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::Theme;
-use crate::components::{
+use crate::ui::{
     ColumnDef,
-    ConfirmDialogComponent,
+    Component,
+    ConfirmDialog,
     ConfirmEvent,
+    EventResult,
     Keybinding,
-    TableComponent,
+    Modal,
+    Result,
+    Screen,
+    Table,
     TableEvent,
     TableRow,
-    TextInputComponent,
+    TextInput,
     TextInputEvent,
 };
 use crate::config::{KeyResolver, SearchAction, SecretsAction};
-use crate::commands::CopyToClipboardCmd;
-use crate::core::{Command, ServiceMsg};
+use crate::commands::{Command, CopyToClipboardCmd};
+use crate::service::ServiceMsg;
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::payload::PayloadMsg;
 use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::versions::VersionsMsg;
 use crate::search::Matcher;
-use crate::components::{Component, Handled, Modal, Result, Screen};
 
 // === Models ===
 
@@ -265,39 +269,39 @@ impl From<SecretsMsg> for SecretManagerMsg {
     }
 }
 
-impl From<SecretsMsg> for Handled<SecretManagerMsg> {
+impl From<SecretsMsg> for EventResult<SecretManagerMsg> {
     fn from(msg: SecretsMsg) -> Self {
-        Handled::Event(SecretManagerMsg::Secret(msg))
+        EventResult::Event(SecretManagerMsg::Secret(msg))
     }
 }
 
 // === Screens ===
 
 pub struct SecretListScreen {
-    table: TableComponent<Secret>,
+    table: Table<Secret>,
     resolver: Arc<KeyResolver>,
 }
 
 impl SecretListScreen {
     pub fn new(secrets: Vec<Secret>, resolver: Arc<KeyResolver>) -> Self {
         Self {
-            table: TableComponent::new(secrets, resolver.clone()).with_title(" Secrets "),
+            table: Table::new(secrets, resolver.clone()).with_title(" Secrets "),
             resolver,
         }
     }
 }
 
 impl Screen for SecretListScreen {
-    type Msg = SecretManagerMsg;
+    type Output = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         let result = self.table.handle_key(key)?;
 
-        if let Handled::Event(TableEvent::Activated(secret)) = result {
+        if let EventResult::Event(TableEvent::Activated(secret)) = result {
             return Ok(SecretsMsg::ViewPayload(secret).into());
         }
         if result.is_consumed() {
-            return Ok(Handled::Consumed);
+            return Ok(EventResult::Consumed);
         }
 
         if self.resolver.matches_secrets(&key, SecretsAction::Reload) {
@@ -340,7 +344,7 @@ impl Screen for SecretListScreen {
             }
         }
 
-        Ok(Handled::Ignored)
+        Ok(EventResult::Ignored)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -383,7 +387,7 @@ impl Screen for SecretListScreen {
 
 pub struct LabelsScreen {
     secret: Secret,
-    table: TableComponent<LabelEntry>,
+    table: Table<LabelEntry>,
     resolver: Arc<KeyResolver>,
 }
 
@@ -401,29 +405,29 @@ impl LabelsScreen {
         let title = format!(" {} - Labels ", secret.name);
         Self {
             secret,
-            table: TableComponent::new(labels, resolver.clone()).with_title(title),
+            table: Table::new(labels, resolver.clone()).with_title(title),
             resolver,
         }
     }
 }
 
 impl Screen for LabelsScreen {
-    type Msg = SecretManagerMsg;
+    type Output = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         let result = self.table.handle_key(key)?;
-        if let Handled::Event(TableEvent::Activated(_)) = result {
-            return Ok(Handled::Consumed);
+        if let EventResult::Event(TableEvent::Activated(_)) = result {
+            return Ok(EventResult::Consumed);
         }
         if result.is_consumed() {
-            return Ok(Handled::Consumed);
+            return Ok(EventResult::Consumed);
         }
 
         if self.resolver.matches_secrets(&key, SecretsAction::Reload) {
             return Ok(SecretsMsg::ViewLabels(self.secret.clone()).into());
         }
 
-        Ok(Handled::Ignored)
+        Ok(EventResult::Ignored)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -443,7 +447,7 @@ impl Screen for LabelsScreen {
 
 pub struct IamPolicyScreen {
     secret: Secret,
-    table: TableComponent<IamBinding>,
+    table: Table<IamBinding>,
     resolver: Arc<KeyResolver>,
 }
 
@@ -452,26 +456,26 @@ impl IamPolicyScreen {
         let title = format!(" {} - IAM Policy ", secret.name);
         Self {
             secret,
-            table: TableComponent::new(policy.bindings, resolver.clone()).with_title(title),
+            table: Table::new(policy.bindings, resolver.clone()).with_title(title),
             resolver,
         }
     }
 }
 
 impl Screen for IamPolicyScreen {
-    type Msg = SecretManagerMsg;
+    type Output = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         let result = self.table.handle_key(key)?;
         if result.is_consumed() {
-            return Ok(Handled::Consumed);
+            return Ok(EventResult::Consumed);
         }
 
         if self.resolver.matches_secrets(&key, SecretsAction::Reload) {
             return Ok(SecretsMsg::ViewIamPolicy(self.secret.clone()).into());
         }
 
-        Ok(Handled::Ignored)
+        Ok(EventResult::Ignored)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -506,13 +510,13 @@ impl ReplicationScreen {
 }
 
 impl Screen for ReplicationScreen {
-    type Msg = SecretManagerMsg;
+    type Output = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         if self.resolver.matches_secrets(&key, SecretsAction::Reload) {
             return Ok(SecretsMsg::ViewReplicationInfo(self.secret.clone()).into());
         }
-        Ok(Handled::Ignored)
+        Ok(EventResult::Ignored)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -602,37 +606,37 @@ enum CreateSecretWizardStep {
 
 pub struct CreateSecretWizard {
     step: CreateSecretWizardStep,
-    name_input: TextInputComponent,
-    payload_input: TextInputComponent,
+    name_input: TextInput,
+    payload_input: TextInput,
 }
 
 impl CreateSecretWizard {
     pub fn new() -> Self {
         Self {
             step: CreateSecretWizardStep::Name,
-            name_input: TextInputComponent::new("Secret Name").with_placeholder("my-secret"),
-            payload_input: TextInputComponent::new("Initial Payload (optional)"),
+            name_input: TextInput::new("Secret Name").with_placeholder("my-secret"),
+            payload_input: TextInput::new("Initial Payload (optional)"),
         }
     }
 }
 
 impl Modal for CreateSecretWizard {
-    type Msg = SecretManagerMsg;
+    type Output = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         Ok(match self.step {
             CreateSecretWizardStep::Name => match self.name_input.handle_key(key)? {
-                Handled::Event(TextInputEvent::Submitted(name)) if !name.is_empty() => {
+                EventResult::Event(TextInputEvent::Submitted(name)) if !name.is_empty() => {
                     self.step = CreateSecretWizardStep::Payload;
-                    Handled::Consumed
+                    EventResult::Consumed
                 }
-                Handled::Event(TextInputEvent::Cancelled) => {
+                EventResult::Event(TextInputEvent::Cancelled) => {
                     SecretManagerMsg::DialogCancelled.into()
                 }
-                _ => Handled::Consumed,
+                _ => EventResult::Consumed,
             },
             CreateSecretWizardStep::Payload => match self.payload_input.handle_key(key)? {
-                Handled::Event(TextInputEvent::Submitted(payload)) => {
+                EventResult::Event(TextInputEvent::Submitted(payload)) => {
                     let name = self.name_input.value().to_string();
                     let payload = if payload.is_empty() {
                         None
@@ -641,10 +645,10 @@ impl Modal for CreateSecretWizard {
                     };
                     SecretsMsg::Create { name, payload }.into()
                 }
-                Handled::Event(TextInputEvent::Cancelled) => {
+                EventResult::Event(TextInputEvent::Cancelled) => {
                     SecretManagerMsg::DialogCancelled.into()
                 }
-                _ => Handled::Consumed,
+                _ => EventResult::Consumed,
             },
         })
     }
@@ -659,12 +663,12 @@ impl Modal for CreateSecretWizard {
 
 pub struct DeleteSecretDialog {
     secret: Secret,
-    dialog: ConfirmDialogComponent,
+    dialog: ConfirmDialog,
 }
 
 impl DeleteSecretDialog {
     pub fn new(secret: Secret, resolver: Arc<KeyResolver>) -> Self {
-        let dialog = ConfirmDialogComponent::new(
+        let dialog = ConfirmDialog::new(
             format!(
                 "Are you sure you want to delete the secret \"{}\"?",
                 secret.name
@@ -681,15 +685,15 @@ impl DeleteSecretDialog {
 }
 
 impl Modal for DeleteSecretDialog {
-    type Msg = SecretManagerMsg;
+    type Output = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         Ok(match self.dialog.handle_key(key)? {
-            Handled::Event(ConfirmEvent::Confirmed) => {
+            EventResult::Event(ConfirmEvent::Confirmed) => {
                 SecretsMsg::Delete(self.secret.clone()).into()
             }
-            Handled::Event(ConfirmEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
-            _ => Handled::Consumed,
+            EventResult::Event(ConfirmEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
+            _ => EventResult::Consumed,
         })
     }
 

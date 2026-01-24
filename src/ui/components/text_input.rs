@@ -6,14 +6,14 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 
 use crate::Theme;
-use crate::components::{Component, Handled, Result};
+use crate::ui::{Component, EventResult, Result};
 
 pub enum TextInputEvent {
     Submitted(String),
     Cancelled,
 }
 
-pub struct TextInputComponent {
+pub struct TextInput {
     label: String,
     value: String,
     cursor: usize,
@@ -21,7 +21,7 @@ pub struct TextInputComponent {
     masked: bool,
 }
 
-impl TextInputComponent {
+impl TextInput {
     pub fn new(label: impl Into<String>) -> Self {
         Self {
             label: label.into(),
@@ -110,10 +110,10 @@ impl TextInputComponent {
     }
 }
 
-impl Component for TextInputComponent {
+impl Component for TextInput {
     type Output = TextInputEvent;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Output>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         Ok(match (key.code, key.modifiers) {
             // Submit
             (KeyCode::Enter, _) => TextInputEvent::Submitted(self.value.clone()).into(),
@@ -124,48 +124,48 @@ impl Component for TextInputComponent {
             // Delete
             (KeyCode::Backspace, KeyModifiers::ALT) => {
                 self.delete_word_before_cursor();
-                Handled::Consumed
+                EventResult::Consumed
             }
             (KeyCode::Backspace, _) => {
                 self.delete_char_before_cursor();
-                Handled::Consumed
+                EventResult::Consumed
             }
             (KeyCode::Delete, _) => {
                 self.delete_char_at_cursor();
-                Handled::Consumed
+                EventResult::Consumed
             }
 
             // Navigation
             (KeyCode::Left, _) => {
                 self.move_cursor_left();
-                Handled::Consumed
+                EventResult::Consumed
             }
             (KeyCode::Right, _) => {
                 self.move_cursor_right();
-                Handled::Consumed
+                EventResult::Consumed
             }
             (KeyCode::Home, _) | (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
                 self.move_cursor_start();
-                Handled::Consumed
+                EventResult::Consumed
             }
             (KeyCode::End, _) | (KeyCode::Char('e'), KeyModifiers::CONTROL) => {
                 self.move_cursor_end();
-                Handled::Consumed
+                EventResult::Consumed
             }
 
             // Clear line
             (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
                 self.clear_line();
-                Handled::Consumed
+                EventResult::Consumed
             }
 
             // Character input
             (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                 self.insert_char(c);
-                Handled::Consumed
+                EventResult::Consumed
             }
 
-            _ => Handled::Consumed, // Consume all keys to prevent propagation
+            _ => EventResult::Consumed, // Consume all keys to prevent propagation
         })
     }
 

@@ -6,7 +6,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 
 use crate::Theme;
-use crate::components::{Component, Handled, Result};
+use crate::ui::{Component, EventResult, Result};
 
 pub struct Keybinding {
     pub key: String,
@@ -53,11 +53,11 @@ pub enum HelpEvent {
     Close,
 }
 
-pub struct HelpView {
+pub struct HelpOverlay {
     sections: Vec<KeybindingSection>,
 }
 
-impl HelpView {
+impl HelpOverlay {
     pub fn new(keybindings: Vec<Keybinding>) -> Self {
         Self {
             sections: vec![KeybindingSection::new("Keybindings", keybindings)],
@@ -69,13 +69,13 @@ impl HelpView {
     }
 }
 
-impl Component for HelpView {
+impl Component for HelpOverlay {
     type Output = HelpEvent;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Output>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         Ok(match key.code {
             KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => HelpEvent::Close.into(),
-            _ => Handled::Ignored,
+            _ => EventResult::Ignored,
         })
     }
 

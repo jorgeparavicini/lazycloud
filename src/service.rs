@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use crate::commands::Command;
-use crate::components::{Component, Keybinding};
-use crate::core::event::Event;
+use crate::ui::{Component, EventResult, Keybinding, List, ListEvent, ListRow};
 use color_eyre::Result;
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
@@ -9,6 +8,7 @@ use ratatui::layout::Rect;
 use ratatui::prelude::Style;
 use ratatui::widgets::ListItem;
 use crate::config::KeyResolver;
+use crate::context::CloudContext;
 use crate::registry::{ServiceId, ServiceProvider, ServiceRegistry};
 use crate::Theme;
 
@@ -27,11 +27,6 @@ impl<T: Command> From<T> for ServiceMsg {
     }
 }
 
-pub enum InputResult {
-    Ignored,
-    Consumed,
-}
-
 /// A cloud service screen.
 ///
 /// Services manage their own internal state and message queue. The App calls
@@ -44,30 +39,29 @@ pub enum InputResult {
 ///    - `handle_input()` if input event, then `update()` if consumed
 /// 4. When commands completes: `update()`
 /// 5. `destroy()` - when service is closing
-pub trait Service: Component<Output = ServiceMsg> {
+pub trait Service {
     /// Initialize the service by queuing startup message(s).
-    ///
-    /// Called once when the service becomes active. Queue your initial
-    /// message (e.g., `Initialize`) here. The App will call `update()`
-    /// immediately after to process it.
     fn init(&mut self) {}
 
     /// Clean up when the service is closing.
     fn destroy(&mut self) {}
 
+    /// Handle a tick event for animations.
+    fn handle_tick(&mut self) {}
+
+    /// Handle a key event.
+    fn handle_key(&mut self, key: KeyEvent) -> EventResult<()>;
+
     /// Process all queued messages and return the result.
-    ///
-    /// Called by the App:
-    /// - After `init()`
-    /// - After `handle_input()` returns `EventResult::Consumed`
-    /// - After any commands completed
     fn update(&mut self) -> Result<ServiceMsg>;
+
+    /// Render the service to the frame.
+    fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme);
 
     /// Breadcrumb segments for the navigation bar.
     fn breadcrumbs(&self) -> Vec<String>;
 
     /// Returns the keybindings for the current view in this service.
-    /// This is used to populate the help screen.
     fn keybindings(&self) -> Vec<Keybinding> {
         vec![]
     }
@@ -91,7 +85,7 @@ impl ListRow for ServiceItem {
 }
 
 pub struct ServiceSelectorView {
-    service_list: ListComponent<ServiceItem>,
+    service_list: List<ServiceItem>,
 }
 
 impl ServiceSelectorView {
@@ -107,7 +101,7 @@ impl ServiceSelectorView {
             .collect();
 
         Self {
-            service_list: ListComponent::new(services, resolver),
+            service_list: List::new(services, resolver),
         }
     }
 }
@@ -115,12 +109,12 @@ impl ServiceSelectorView {
 impl Component for ServiceSelectorView {
     type Output = ServiceId;
 
-    fn handle_key(&mut self, key: KeyEvent) -> std::result::Result<Handled<Self::Output>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         let result = self.service_list.handle_key(key)?;
         Ok(match result {
-            Handled::Event(ListEvent::Activated(item)) => item.provider.service_id().into(),
-            Handled::Consumed | Handled::Event(_) => Handled::Consumed,
-            Handled::Ignored => Handled::Ignored,
+            EventResult::Event(ListEvent::Activated(item)) => item.provider.service_id().into(),
+            EventResult::Consumed | EventResult::Event(_) => EventResult::Consumed,
+            EventResult::Ignored => EventResult::Ignored,
         })
     }
 

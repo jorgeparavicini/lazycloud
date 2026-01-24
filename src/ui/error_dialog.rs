@@ -9,7 +9,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 
 use crate::Theme;
 use crate::config::{DialogAction, KeyResolver};
-use crate::components::{Component, Handled, Result};
+use crate::ui::{Component, EventResult, Result};
 
 pub enum ErrorDialogEvent {
     Dismissed,
@@ -32,11 +32,11 @@ impl ErrorDialog {
 impl Component for ErrorDialog {
     type Output = ErrorDialogEvent;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Output>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         if self.resolver.matches_dialog(&key, DialogAction::Dismiss) {
             return Ok(ErrorDialogEvent::Dismissed.into());
         }
-        Ok(Handled::Consumed)
+        Ok(EventResult::Consumed)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {

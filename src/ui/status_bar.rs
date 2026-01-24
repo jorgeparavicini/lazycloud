@@ -7,9 +7,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 
 use crate::Theme;
-use crate::components::Keybinding;
+use crate::ui::Keybinding;
 use crate::config::{GlobalAction, KeyResolver, NavAction};
-use crate::model::CloudContext;
+use crate::context::CloudContext;
 
 /// ASCII art logo for the status bar.
 const LOGO: &[&str] = &[
@@ -22,12 +22,12 @@ const LOGO: &[&str] = &[
     r#"    `--'              "#,
 ];
 
-pub struct StatusBarView {
+pub struct StatusBar {
     active_context: Option<CloudContext>,
     resolver: Arc<KeyResolver>,
 }
 
-impl StatusBarView {
+impl StatusBar {
     pub fn new(resolver: Arc<KeyResolver>) -> Self {
         Self {
             active_context: None,
@@ -92,36 +92,6 @@ impl StatusBarView {
                     Line::from(Span::styled("GCP", Style::default().fg(theme.blue()))),
                     Line::from(Span::styled(
                         truncate_str(&gcp.project_id, area.width as usize - 1),
-                        Style::default().fg(theme.text()),
-                    )),
-                ]
-            }
-            Some(CloudContext::Aws(aws)) => {
-                vec![
-                    Line::from(Span::styled(
-                        "Context",
-                        Style::default()
-                            .fg(theme.subtext0())
-                            .add_modifier(Modifier::BOLD),
-                    )),
-                    Line::from(Span::styled("AWS", Style::default().fg(theme.peach()))),
-                    Line::from(Span::styled(
-                        truncate_str(&aws.profile, area.width as usize - 1),
-                        Style::default().fg(theme.text()),
-                    )),
-                ]
-            }
-            Some(CloudContext::Azure(azure)) => {
-                vec![
-                    Line::from(Span::styled(
-                        "Context",
-                        Style::default()
-                            .fg(theme.subtext0())
-                            .add_modifier(Modifier::BOLD),
-                    )),
-                    Line::from(Span::styled("Azure", Style::default().fg(theme.sky()))),
-                    Line::from(Span::styled(
-                        truncate_str(&azure.subscription_id, area.width as usize - 1),
                         Style::default().fg(theme.text()),
                     )),
                 ]

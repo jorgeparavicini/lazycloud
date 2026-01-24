@@ -9,7 +9,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use throbber_widgets_tui::{BRAILLE_SIX, Throbber, ThrobberState, WhichUse};
 
 use crate::Theme;
-use crate::components::Component;
+use crate::ui::Component;
 
 const MIN_WIDTH: u16 = 56;
 
@@ -31,7 +31,7 @@ struct CompletedCommand {
     completed_at: Instant,
 }
 
-pub struct CommandStatusView {
+pub struct CommandPanel {
     running: Vec<RunningCommand>,
     history: VecDeque<CompletedCommand>,
     next_id: u64,
@@ -40,7 +40,7 @@ pub struct CommandStatusView {
     throbber_state: ThrobberState,
 }
 
-impl CommandStatusView {
+impl CommandPanel {
     pub fn new() -> Self {
         Self {
             running: Vec::new(),
@@ -366,13 +366,13 @@ fn format_age(d: Duration) -> String {
     }
 }
 
-impl Default for CommandStatusView {
+impl Default for CommandPanel {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Component for CommandStatusView {
+impl Component for CommandPanel {
     type Output = ();
 
     fn handle_tick(&mut self) {
@@ -380,7 +380,6 @@ impl Component for CommandStatusView {
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        // TODO: Dont like this dual render approach
         // Only render expanded panel here; inline is rendered separately
         self.render_expanded_panel(frame, area, theme);
     }

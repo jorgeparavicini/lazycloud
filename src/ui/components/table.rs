@@ -4,11 +4,11 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::prelude::{Modifier, Style};
-use ratatui::widgets::{Block, BorderType, Borders, Cell, Paragraph, Row, Table, TableState};
+use ratatui::widgets::{Block, BorderType, Borders, Cell, Paragraph, Row, Table as RatatuiTable, TableState};
 
 use crate::Theme;
 use crate::config::{KeyResolver, NavAction, SearchAction};
-use crate::components::{Component, Handled, Result};
+use crate::ui::{Component, EventResult, Result};
 
 pub enum TableEvent<T> {
     Changed(T),
@@ -41,7 +41,7 @@ pub trait TableRow {
     fn matches(&self, query: &str) -> bool;
 }
 
-pub struct TableComponent<T: TableRow + Clone> {
+pub struct Table<T: TableRow + Clone> {
     items: Vec<T>,
     filtered_indices: Vec<usize>,
     state: TableState,
@@ -51,7 +51,7 @@ pub struct TableComponent<T: TableRow + Clone> {
     resolver: Arc<KeyResolver>,
 }
 
-impl<T: TableRow + Clone> TableComponent<T> {
+impl<T: TableRow + Clone> Table<T> {
     pub fn new(items: Vec<T>, resolver: Arc<KeyResolver>) -> Self {
         let filtered_indices: Vec<usize> = (0..items.len()).collect();
         let mut state = TableState::default();
@@ -144,7 +144,7 @@ impl<T: TableRow + Clone> TableComponent<T> {
         }
     }
 
-    fn get_change_event(&self, before: Option<usize>) -> Handled<TableEvent<T>> {
+    fn get_change_event(&self, before: Option<usize>) -> EventResult<TableEvent<T>> {
         if let Some(selected) = self.state.selected() {
             if Some(selected) != before {
                 if let Some(&idx) = self.filtered_indices.get(selected) {
@@ -152,10 +152,10 @@ impl<T: TableRow + Clone> TableComponent<T> {
                 }
             }
         }
-        Handled::Consumed
+        EventResult::Consumed
     }
 
-    fn handle_search_key(&mut self, key: KeyEvent) -> Result<Handled<TableEvent<T>>> {
+    fn handle_search_key(&mut self, key: KeyEvent) -> Result<EventResult<TableEvent<T>>> {
         // Check for search exit key (Esc)
         if self.resolver.matches_search(&key, SearchAction::Exit) {
             // Exit search mode and clear filter
@@ -166,14 +166,14 @@ impl<T: TableRow + Clone> TableComponent<T> {
             return Ok(if had_query {
                 TableEvent::SearchChanged(String::new()).into()
             } else {
-                Handled::Consumed
+                EventResult::Consumed
             });
         }
 
         // Check for select (Enter) to exit search but keep filter
         if self.resolver.matches_nav(&key, NavAction::Select) {
             self.searching = false;
-            return Ok(Handled::Consumed);
+            return Ok(EventResult::Consumed);
         }
 
         Ok(match key.code {
@@ -188,11 +188,11 @@ impl<T: TableRow + Clone> TableComponent<T> {
                 TableEvent::SearchChanged(self.query.clone()).into()
             }
             // Consume all other keys in search mode
-            _ => Handled::Consumed,
+            _ => EventResult::Consumed,
         })
     }
 
-    fn handle_navigation_key(&mut self, key: KeyEvent) -> Result<Handled<TableEvent<T>>> {
+    fn handle_navigation_key(&mut self, key: KeyEvent) -> Result<EventResult<TableEvent<T>>> {
         let before = self.state.selected();
 
         // Check navigation actions using resolver
@@ -242,30 +242,30 @@ impl<T: TableRow + Clone> TableComponent<T> {
                     .filtered_indices
                     .get(selected)
                     .map(|&idx| TableEvent::Activated(self.items[idx].clone()).into())
-                    .unwrap_or(Handled::Ignored));
+                    .unwrap_or(EventResult::Ignored));
             } else {
-                return Ok(Handled::Ignored);
+                return Ok(EventResult::Ignored);
             }
         }
         if self.resolver.matches_search(&key, SearchAction::Toggle) {
             self.searching = true;
-            return Ok(Handled::Consumed);
+            return Ok(EventResult::Consumed);
         }
         if self.resolver.matches_search(&key, SearchAction::Exit) && !self.query.is_empty() {
             // Clear filter when not searching
             self.query.clear();
             self.update_filter();
-            return Ok(Handled::Consumed);
+            return Ok(EventResult::Consumed);
         }
 
-        Ok(Handled::Ignored)
+        Ok(EventResult::Ignored)
     }
 }
 
-impl<T: TableRow + Clone> Component for TableComponent<T> {
+impl<T: TableRow + Clone> Component for Table<T> {
     type Output = TableEvent<T>;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Output>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         if self.searching {
             self.handle_search_key(key)
         } else {
@@ -310,7 +310,7 @@ impl<T: TableRow + Clone> Component for TableComponent<T> {
 
         let widths: Vec<Constraint> = columns.iter().map(|c| c.constraint).collect();
 
-        let mut table = Table::new(rows, widths)
+        let mut table = RatatuiTable::new(rows, widths)
             .header(header)
             .row_highlight_style(
                 Style::default()

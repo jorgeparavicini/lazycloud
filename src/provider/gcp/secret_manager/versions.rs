@@ -9,26 +9,31 @@ use ratatui::widgets::Cell;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::Theme;
-use crate::components::{
+use crate::ui::{
     ColumnDef,
-    ConfirmDialogComponent,
+    Component,
+    ConfirmDialog,
     ConfirmEvent,
+    EventResult,
     Keybinding,
-    TableComponent,
+    Modal,
+    Result,
+    Screen,
+    Table,
     TableEvent,
     TableRow,
-    TextInputComponent,
+    TextInput,
     TextInputEvent,
 };
 use crate::config::{KeyResolver, SearchAction, VersionsAction};
-use crate::core::{Command, ServiceMsg};
+use crate::commands::Command;
+use crate::service::ServiceMsg;
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::payload::PayloadMsg;
 use crate::provider::gcp::secret_manager::secrets::Secret;
 use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::search::Matcher;
-use crate::components::{Component, Handled, Modal, Result, Screen};
 
 // === Models ===
 
@@ -129,9 +134,9 @@ impl From<VersionsMsg> for SecretManagerMsg {
     }
 }
 
-impl From<VersionsMsg> for Handled<SecretManagerMsg> {
+impl From<VersionsMsg> for EventResult<SecretManagerMsg> {
     fn from(msg: VersionsMsg) -> Self {
-        Handled::Event(SecretManagerMsg::Version(msg))
+        EventResult::Event(SecretManagerMsg::Version(msg))
     }
 }
 
@@ -139,7 +144,7 @@ impl From<VersionsMsg> for Handled<SecretManagerMsg> {
 
 pub struct VersionListScreen {
     secret: Secret,
-    table: TableComponent<SecretVersion>,
+    table: Table<SecretVersion>,
     resolver: Arc<KeyResolver>,
 }
 
@@ -148,19 +153,19 @@ impl VersionListScreen {
         let title = format!(" {} - Versions ", secret.name);
         Self {
             secret,
-            table: TableComponent::new(versions, resolver.clone()).with_title(title),
+            table: Table::new(versions, resolver.clone()).with_title(title),
             resolver,
         }
     }
 }
 
 impl Screen for VersionListScreen {
-    type Msg = SecretManagerMsg;
+    type Output = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         // Delegate to table first (handles search mode, navigation, etc.)
         let result = self.table.handle_key(key)?;
-        if let Handled::Event(TableEvent::Activated(version)) = result {
+        if let EventResult::Event(TableEvent::Activated(version)) = result {
             return Ok(VersionsMsg::ViewPayload {
                 secret: self.secret.clone(),
                 version,
@@ -168,7 +173,7 @@ impl Screen for VersionListScreen {
             .into());
         }
         if result.is_consumed() {
-            return Ok(Handled::Consumed);
+            return Ok(EventResult::Consumed);
         }
 
         // Handle local shortcuts only if table didn't consume the key
@@ -218,7 +223,7 @@ impl Screen for VersionListScreen {
             }
         }
 
-        Ok(Handled::Ignored)
+        Ok(EventResult::Ignored)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -260,7 +265,7 @@ impl Screen for VersionListScreen {
 
 pub struct CreateVersionDialog {
     secret: Secret,
-    input: TextInputComponent,
+    input: TextInput,
     resolver: Arc<KeyResolver>,
 }
 
@@ -268,27 +273,27 @@ impl CreateVersionDialog {
     pub fn new(secret: Secret, resolver: Arc<KeyResolver>) -> Self {
         Self {
             secret,
-            input: TextInputComponent::new("New Version Payload"),
+            input: TextInput::new("New Version Payload"),
             resolver,
         }
     }
 }
 
 impl Modal for CreateVersionDialog {
-    type Msg = SecretManagerMsg;
+    type Output = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         Ok(match self.input.handle_key(key)? {
-            Handled::Event(TextInputEvent::Submitted(payload)) if !payload.is_empty() => {
+            EventResult::Event(TextInputEvent::Submitted(payload)) if !payload.is_empty() => {
                 VersionsMsg::Create {
                     secret: self.secret.clone(),
                     payload,
                 }
                 .into()
             }
-            Handled::Event(TextInputEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
-            Handled::Event(_) => Handled::Consumed, // Empty submission
-            _ => Handled::Consumed,
+            EventResult::Event(TextInputEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
+            EventResult::Event(_) => EventResult::Consumed, // Empty submission
+            _ => EventResult::Consumed,
         })
     }
 
@@ -300,13 +305,13 @@ impl Modal for CreateVersionDialog {
 pub struct DestroyVersionDialog {
     secret: Secret,
     version: SecretVersion,
-    dialog: ConfirmDialogComponent,
+    dialog: ConfirmDialog,
     resolver: Arc<KeyResolver>,
 }
 
 impl DestroyVersionDialog {
     pub fn new(secret: Secret, version: SecretVersion, resolver: Arc<KeyResolver>) -> Self {
-        let dialog = ConfirmDialogComponent::new(
+        let dialog = ConfirmDialog::new(
             format!(
                 "Destroy version '{}'? This is permanent and cannot be undone.",
                 version.version_id
@@ -327,17 +332,17 @@ impl DestroyVersionDialog {
 }
 
 impl Modal for DestroyVersionDialog {
-    type Msg = SecretManagerMsg;
+    type Output = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         Ok(match self.dialog.handle_key(key)? {
-            Handled::Event(ConfirmEvent::Confirmed) => VersionsMsg::Destroy {
+            EventResult::Event(ConfirmEvent::Confirmed) => VersionsMsg::Destroy {
                 secret: self.secret.clone(),
                 version: self.version.clone(),
             }
             .into(),
-            Handled::Event(ConfirmEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
-            _ => Handled::Consumed,
+            EventResult::Event(ConfirmEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
+            _ => EventResult::Consumed,
         })
     }
 

@@ -9,16 +9,15 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::Theme;
-use crate::components::Keybinding;
+use crate::ui::{EventResult, Keybinding, Result, Screen};
 use crate::config::{KeyResolver, PayloadAction};
-use crate::commands::CopyToClipboardCmd;
-use crate::core::{Command, ServiceMsg};
+use crate::commands::{Command, CopyToClipboardCmd};
+use crate::service::ServiceMsg;
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::secrets::Secret;
 use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::versions::SecretVersion;
-use crate::components::{Handled, Result, Screen};
 
 // === Models ===
 
@@ -53,9 +52,9 @@ impl From<PayloadMsg> for SecretManagerMsg {
     }
 }
 
-impl From<PayloadMsg> for Handled<SecretManagerMsg> {
+impl From<PayloadMsg> for EventResult<SecretManagerMsg> {
     fn from(msg: PayloadMsg) -> Self {
-        Handled::Event(SecretManagerMsg::Payload(msg))
+        EventResult::Event(SecretManagerMsg::Payload(msg))
     }
 }
 
@@ -85,9 +84,9 @@ impl PayloadScreen {
 }
 
 impl Screen for PayloadScreen {
-    type Msg = SecretManagerMsg;
+    type Output = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         if self.resolver.matches_payload(&key, PayloadAction::Reload) {
             return Ok(PayloadMsg::Load {
                 secret: self.secret.clone(),
@@ -106,7 +105,7 @@ impl Screen for PayloadScreen {
             }
             .into());
         }
-        Ok(Handled::Ignored)
+        Ok(EventResult::Ignored)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
