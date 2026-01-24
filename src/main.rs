@@ -8,10 +8,8 @@ use crate::registry::ServiceRegistry;
 
 mod app;
 mod cli;
-mod components;
 mod config;
 mod context;
-mod core;
 mod provider;
 mod registry;
 mod search;

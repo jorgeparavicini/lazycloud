@@ -9,7 +9,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 
 use crate::Theme;
 use crate::config::{DialogAction, KeyResolver};
-use crate::components::{Component, Handled, Result};
+use crate::components::{Component, Result};
 
 pub enum ConfirmEvent {
     Confirmed,

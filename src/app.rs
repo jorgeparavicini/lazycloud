@@ -55,22 +55,6 @@ pub enum AppMessage {
     GoBack,
 }
 
-#[derive(Clone, Debug)]
-pub enum Event {
-    Init,
-    Quit,
-    Error(String),
-    Closed,
-    Tick,
-    Render,
-    FocusGained,
-    FocusLost,
-    Paste(String),
-    Key(KeyEvent),
-    Mouse(MouseEvent),
-    Resize(u16, u16),
-}
-
 /// Application state - what the user is currently doing.
 enum AppState {
     /// Selecting a cloud context (GCP project, AWS account, etc.)

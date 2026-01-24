@@ -9,15 +9,9 @@ use std::time::Duration;
 
 use crossterm::cursor;
 use crossterm::event::{
-    DisableBracketedPaste,
-    DisableMouseCapture,
-    EnableBracketedPaste,
-    EnableMouseCapture,
-    Event as CrosstermEvent,
-    EventStream,
-    KeyCode,
-    KeyEventKind,
-    KeyModifiers,
+    DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    Event as CrosstermEvent, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
+    MouseEvent,
 };
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use futures::{FutureExt, StreamExt};
@@ -29,12 +23,26 @@ use tokio::task::JoinHandle;
 use tokio::time::interval;
 use tokio_util::sync::CancellationToken;
 
-use crate::core::event::Event;
-
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS: u64 = 500;
 const FORCEFUL_SHUTDOWN_TIMEOUT_MS: u64 = 2000;
 
 pub type Backend = CrosstermBackend<Stdout>;
+
+#[derive(Clone, Debug)]
+pub enum Event {
+    Init,
+    Quit,
+    Error(String),
+    Closed,
+    Tick,
+    Render,
+    FocusGained,
+    FocusLost,
+    Paste(String),
+    Key(KeyEvent),
+    Mouse(MouseEvent),
+    Resize(u16, u16),
+}
 
 /// Terminal UI wrapper.
 ///

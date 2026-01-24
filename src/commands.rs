@@ -15,7 +15,7 @@ use color_eyre::eyre::eyre;
 use tokio::sync::mpsc::UnboundedSender;
 use crate::app::AppMessage;
 
-/// Async commands that performs side effects.
+/// Async commands that perform side effects.
 ///
 /// Commands are spawned by the App and tracked for status display.
 /// They typically send results back to the service via a channel.

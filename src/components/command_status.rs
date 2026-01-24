@@ -11,6 +11,8 @@ use throbber_widgets_tui::{BRAILLE_SIX, Throbber, ThrobberState, WhichUse};
 use crate::Theme;
 use crate::components::Component;
 
+const MIN_WIDTH: u16 = 56;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CommandId(u64);
 
@@ -62,18 +64,20 @@ impl CommandStatusView {
     }
 
     pub fn complete(&mut self, id: CommandId, success: bool) {
-        if let Some(pos) = self.running.iter().position(|c| c.id == id) {
-            let cmd = self.running.remove(pos);
-            let duration = cmd.started_at.elapsed();
-            self.history.push_front(CompletedCommand {
-                name: cmd.name,
-                success,
-                duration,
-                completed_at: Instant::now(),
-            });
-            while self.history.len() > self.max_history {
-                self.history.pop_back();
-            }
+        let Some(pos) = self.running.iter().position(|c| c.id == id) else {
+            return;
+        };
+
+        let cmd = self.running.remove(pos);
+        let duration = cmd.started_at.elapsed();
+        self.history.push_front(CompletedCommand {
+            name: cmd.name,
+            success,
+            duration,
+            completed_at: Instant::now(),
+        });
+        while self.history.len() > self.max_history {
+            self.history.pop_back();
         }
     }
 
@@ -93,8 +97,7 @@ impl CommandStatusView {
         !self.running.is_empty()
     }
 
-    /// Render inline status on the breadcrumb line (right-aligned).
-    /// Returns the width consumed so breadcrumbs can avoid overlap.
+    /// Renders a small inline status indicator showing the first running command and count.
     pub fn render_inline(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) -> u16 {
         if self.running.is_empty() {
             return 0;
@@ -165,7 +168,7 @@ impl CommandStatusView {
             return;
         }
 
-        let width = 65u16.min(area.width.saturating_sub(4));
+        let width = MIN_WIDTH.min(area.width.saturating_sub(4));
         let height = (content_lines as u16 + 2).min(15); // +2 for borders
 
         // Position in bottom right of main area
@@ -376,14 +379,8 @@ impl Component for CommandStatusView {
         self.throbber_state.calc_next();
     }
 
-    fn handle_key(
-        &mut self,
-        _key: crossterm::event::KeyEvent,
-    ) -> crate::components::Result<crate::components::Handled<Self::Output>> {
-        Ok(crate::components::Handled::Ignored)
-    }
-
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+        // TODO: Dont like this dual render approach
         // Only render expanded panel here; inline is rendered separately
         self.render_expanded_panel(frame, area, theme);
     }

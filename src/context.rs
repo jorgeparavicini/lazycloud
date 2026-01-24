@@ -1,6 +1,5 @@
 use color_eyre::eyre::Result;
 use serde::{Deserialize, Serialize};
-use std::fmt;
 use std::sync::Arc;
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
@@ -9,40 +8,8 @@ use ratatui::style::Style;
 use ratatui::widgets::ListItem;
 use crate::components::{Component, EventResult, ListComponent, ListEvent, ListRow, Screen};
 use crate::config::KeyResolver;
+use crate::provider::Provider;
 use crate::Theme;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Provider {
-    Aws,
-    Azure,
-    Gcp,
-}
-
-impl Provider {
-    /// Human-readable display name for the provider.
-    pub fn display_name(&self) -> &'static str {
-        match self {
-            Provider::Aws => "AWS",
-            Provider::Azure => "Azure",
-            Provider::Gcp => "GCP",
-        }
-    }
-
-    /// Short lowercase identifier for the provider.
-    pub fn id(&self) -> &'static str {
-        match self {
-            Provider::Aws => "aws",
-            Provider::Azure => "azure",
-            Provider::Gcp => "gcp",
-        }
-    }
-}
-
-impl fmt::Display for Provider {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.id())
-    }
-}
 
 const CONTEXTS_FILE: &str = "contexts.toml";
 
@@ -181,5 +148,5 @@ impl Component for ContextSelectorView {
 }
 
 impl Screen for ContextSelectorView {
-    
+
 }

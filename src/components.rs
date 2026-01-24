@@ -3,7 +3,6 @@ mod confirm_dialog;
 mod error_dialog;
 mod help;
 mod list;
-mod service_selector;
 mod spinner;
 mod status_bar;
 mod table;
@@ -11,12 +10,11 @@ mod text_input;
 mod theme_selector;
 mod toast;
 
-
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use color_eyre::Result;
-
+use crate::components::help::Keybinding;
 use crate::Theme;
 pub use crate::components::list::{ListRow, ListEvent, ListComponent};
 pub use crate::components::toast::ToastType;
