@@ -4,16 +4,16 @@ use color_eyre::eyre::{Result, eyre};
 use crossterm::event::KeyEvent;
 use google_cloud_auth::credentials::Credentials;
 use ratatui::Frame;
-use ratatui::layout::Rect;
-use ratatui::style::Style;
-use ratatui::widgets::ListItem;
+use ratatui::layout::{Constraint, Rect};
+use ratatui::widgets::Cell;
 use serde::{Deserialize, Serialize};
 
 use crate::Theme;
 use crate::config::{KeyResolver, config_dir};
 use crate::provider::Provider;
 use crate::provider::gcp::discover_gcloud_configs;
-use crate::ui::{Component, EventResult, List, ListEvent, ListRow, Screen};
+use crate::search::Matcher;
+use crate::ui::{ColumnDef, Component, EventResult, Screen, Table, TableEvent, TableRow};
 
 const CONTEXTS_FILE: &str = "contexts.json";
 
@@ -137,14 +137,57 @@ pub fn reconcile_contexts() -> Result<Vec<CloudContext>> {
 
 // === UI ===
 
-impl ListRow for CloudContext {
-    fn render_row(&self, theme: &Theme) -> ListItem<'static> {
-        ListItem::new(self.to_string()).style(Style::default().fg(theme.text()))
+impl TableRow for CloudContext {
+    fn columns() -> &'static [ColumnDef] {
+        static COLUMNS: &[ColumnDef] = &[
+            ColumnDef::new("Name", Constraint::Min(20)),
+            ColumnDef::new("Provider", Constraint::Length(10)),
+            ColumnDef::new("Project", Constraint::Min(20)),
+            ColumnDef::new("Account", Constraint::Min(24)),
+            ColumnDef::new("Region", Constraint::Length(20)),
+        ];
+        COLUMNS
+    }
+
+    fn render_cells(&self, _theme: &Theme) -> Vec<Cell<'static>> {
+        match self {
+            Self::Gcp(ctx) => vec![
+                Cell::from(ctx.display_name.clone()),
+                Cell::from("GCP"),
+                Cell::from(ctx.project_id.clone()),
+                Cell::from(ctx.account.clone()),
+                Cell::from(
+                    ctx.region
+                        .clone()
+                        .or_else(|| ctx.zone.clone())
+                        .unwrap_or_else(|| "—".to_string()),
+                ),
+            ],
+        }
+    }
+
+    fn matches(&self, query: &str) -> bool {
+        let matcher = Matcher::new();
+        match self {
+            Self::Gcp(ctx) => {
+                matcher.matches(&ctx.display_name, query)
+                    || matcher.matches(&ctx.project_id, query)
+                    || matcher.matches(&ctx.account, query)
+                    || ctx
+                        .region
+                        .as_ref()
+                        .is_some_and(|r| matcher.matches(r, query))
+                    || ctx
+                        .zone
+                        .as_ref()
+                        .is_some_and(|z| matcher.matches(z, query))
+            }
+        }
     }
 }
 
 pub struct ContextSelectorView {
-    context_list: List<CloudContext>,
+    table: Table<CloudContext>,
 }
 
 impl ContextSelectorView {
@@ -154,7 +197,7 @@ impl ContextSelectorView {
 
     pub fn with_contexts(contexts: Vec<CloudContext>, resolver: Arc<KeyResolver>) -> Self {
         Self {
-            context_list: List::new(contexts, resolver),
+            table: Table::new(contexts, resolver).with_title(" Contexts "),
         }
     }
 }
@@ -163,15 +206,15 @@ impl Screen for ContextSelectorView {
     type Output = CloudContext;
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
-        let result = self.context_list.handle_key(key)?;
+        let result = self.table.handle_key(key)?;
         Ok(match result {
-            EventResult::Event(ListEvent::Activated(context)) => context.into(),
+            EventResult::Event(TableEvent::Activated(context)) => context.into(),
             EventResult::Consumed | EventResult::Event(_) => EventResult::Consumed,
             EventResult::Ignored => EventResult::Ignored,
         })
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        self.context_list.render(frame, area, theme);
+        self.table.render(frame, area, theme);
     }
 }

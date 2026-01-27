@@ -63,8 +63,8 @@ impl StatusBar {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
-                Constraint::Length(20), // Left: status info
-                Constraint::Min(30),    // Middle: keybindings (flexible)
+                Constraint::Length(42), // Left: status info
+                Constraint::Min(20),    // Middle: keybindings (flexible)
                 Constraint::Length(25), // Right: logo
             ])
             .split(inner_area);
@@ -80,36 +80,45 @@ impl StatusBar {
     }
 
     fn render_status_info(&self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        let context_line = match &self.active_context {
+        let w = area.width as usize;
+        let label_style = Style::default().fg(theme.overlay1());
+        let value_style = Style::default().fg(theme.text());
+
+        let lines = match &self.active_context {
             Some(CloudContext::Gcp(gcp)) => {
+                let region = gcp
+                    .region
+                    .as_deref()
+                    .or(gcp.zone.as_deref())
+                    .unwrap_or("—");
+
                 vec![
                     Line::from(Span::styled(
-                        "Context",
+                        truncate_str(&gcp.display_name, w),
                         Style::default()
-                            .fg(theme.subtext0())
+                            .fg(theme.lavender())
                             .add_modifier(Modifier::BOLD),
                     )),
-                    Line::from(Span::styled("GCP", Style::default().fg(theme.blue()))),
-                    Line::from(Span::styled(
-                        truncate_str(&gcp.project_id, area.width as usize - 1),
-                        Style::default().fg(theme.text()),
-                    )),
+                    Line::from(""),
+                    status_line("provider", "GCP", w, label_style, Style::default().fg(theme.blue())),
+                    status_line("project", &gcp.project_id, w, label_style, value_style),
+                    status_line("account", &gcp.account, w, label_style, value_style),
+                    status_line("region", region, w, label_style, value_style),
                 ]
             }
             None => {
                 vec![
                     Line::from(Span::styled(
-                        "Context",
+                        "No context",
                         Style::default()
-                            .fg(theme.subtext0())
+                            .fg(theme.overlay0())
                             .add_modifier(Modifier::BOLD),
                     )),
-                    Line::from(Span::styled("None", Style::default().fg(theme.overlay0()))),
                 ]
             }
         };
 
-        let paragraph = Paragraph::new(context_line);
+        let paragraph = Paragraph::new(lines);
         frame.render_widget(paragraph, area);
     }
 
@@ -134,9 +143,12 @@ impl StatusBar {
             return;
         }
 
-        // Calculate how many columns we can fit
-        // Each keybinding takes roughly: key(5) + space(1) + desc(10) + padding(2) = ~18 chars
-        let col_width = 16_u16;
+        // Compute alignment widths from actual content so the separator
+        // forms a straight vertical line regardless of key length.
+        let max_key_w = hints.iter().map(|kb| kb.key.len()).max().unwrap_or(1);
+        let max_desc_w = hints.iter().map(|kb| kb.description.len()).max().unwrap_or(1);
+        // key(right-aligned) + " │ " (3) + desc + gap(2)
+        let col_width = u16::try_from(max_key_w + 3 + max_desc_w + 2).unwrap_or(u16::MAX);
         let num_cols = (area.width / col_width).max(1) as usize;
         let num_rows = area.height as usize;
 
@@ -146,12 +158,15 @@ impl StatusBar {
         for (i, kb) in hints.iter().enumerate() {
             let col_idx = i / num_rows;
             if col_idx >= num_cols {
-                break; // No more space
+                break;
             }
 
             let line = Line::from(vec![
-                Span::styled(format!("{:>5}", kb.key), Style::default().fg(theme.peach())),
-                Span::raw(" "),
+                Span::styled(
+                    format!("{:>width$}", kb.key, width = max_key_w),
+                    Style::default().fg(theme.peach()),
+                ),
+                Span::styled(" │ ", Style::default().fg(theme.surface2())),
                 Span::styled(
                     kb.description.clone(),
                     Style::default().fg(theme.subtext0()),
@@ -215,6 +230,23 @@ impl StatusBar {
             ),
         ]
     }
+}
+
+/// Render a labelled status line: `  label  value` (right-aligned label, then value).
+fn status_line<'a>(
+    label: &'a str,
+    value: &str,
+    max_width: usize,
+    label_style: Style,
+    value_style: Style,
+) -> Line<'a> {
+    const LABEL_W: usize = 10;
+    let available = max_width.saturating_sub(LABEL_W + 1);
+    Line::from(vec![
+        Span::styled(format!("{label:>LABEL_W$}"), label_style),
+        Span::raw(" "),
+        Span::styled(truncate_str(value, available), value_style),
+    ])
 }
 
 /// Truncate a string to fit within a given width, adding "..." if truncated.

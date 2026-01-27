@@ -3,16 +3,16 @@ use std::sync::Arc;
 use color_eyre::Result;
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
-use ratatui::layout::Rect;
-use ratatui::prelude::Style;
-use ratatui::widgets::ListItem;
+use ratatui::layout::{Constraint, Rect};
+use ratatui::widgets::Cell;
 
 use crate::Theme;
 use crate::commands::Command;
 use crate::config::KeyResolver;
 use crate::context::CloudContext;
 use crate::registry::{ServiceId, ServiceProvider, ServiceRegistry};
-use crate::ui::{Component, EventResult, Keybinding, List, ListEvent, ListRow};
+use crate::search::Matcher;
+use crate::ui::{ColumnDef, Component, EventResult, Keybinding, Table, TableEvent, TableRow};
 
 pub enum ServiceMsg {
     /// No action needed
@@ -78,18 +78,38 @@ struct ServiceItem {
     provider: Arc<dyn ServiceProvider>,
 }
 
-impl ListRow for ServiceItem {
-    fn render_row(&self, theme: &Theme) -> ListItem<'static> {
-        let text = self.provider.icon().map_or_else(
+impl TableRow for ServiceItem {
+    fn columns() -> &'static [ColumnDef] {
+        static COLUMNS: &[ColumnDef] = &[
+            ColumnDef::new("Name", Constraint::Min(20)),
+            ColumnDef::new("Provider", Constraint::Length(10)),
+            ColumnDef::new("Description", Constraint::Min(30)),
+        ];
+        COLUMNS
+    }
+
+    fn render_cells(&self, _theme: &Theme) -> Vec<Cell<'static>> {
+        let name = self.provider.icon().map_or_else(
             || self.provider.display_name().to_string(),
-            |icon| format!("{} {}", icon, self.provider.display_name()),
+            |icon| format!("{icon} {}", self.provider.display_name()),
         );
-        ListItem::new(text).style(Style::default().fg(theme.text()))
+        vec![
+            Cell::from(name),
+            Cell::from(format!("{}", self.provider.provider())),
+            Cell::from(self.provider.description().to_string()),
+        ]
+    }
+
+    fn matches(&self, query: &str) -> bool {
+        let matcher = Matcher::new();
+        matcher.matches(self.provider.display_name(), query)
+            || matcher.matches(self.provider.service_key(), query)
+            || matcher.matches(self.provider.description(), query)
     }
 }
 
 pub struct ServiceSelectorView {
-    service_list: List<ServiceItem>,
+    table: Table<ServiceItem>,
 }
 
 impl ServiceSelectorView {
@@ -106,7 +126,7 @@ impl ServiceSelectorView {
             .collect();
 
         Self {
-            service_list: List::new(services, resolver),
+            table: Table::new(services, resolver).with_title(" Services "),
         }
     }
 }
@@ -115,15 +135,15 @@ impl Component for ServiceSelectorView {
     type Output = ServiceId;
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
-        let result = self.service_list.handle_key(key)?;
+        let result = self.table.handle_key(key)?;
         Ok(match result {
-            EventResult::Event(ListEvent::Activated(item)) => item.provider.service_id().into(),
+            EventResult::Event(TableEvent::Activated(item)) => item.provider.service_id().into(),
             EventResult::Consumed | EventResult::Event(_) => EventResult::Consumed,
             EventResult::Ignored => EventResult::Ignored,
         })
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        self.service_list.render(frame, area, theme);
+        self.table.render(frame, area, theme);
     }
 }
