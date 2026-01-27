@@ -1,14 +1,24 @@
-use crate::config::actions::*;
-use crate::config::keybindings::KeybindingsConfig;
-use crossterm::event::KeyEvent;
 use std::sync::Arc;
+
+use crossterm::event::KeyEvent;
+
+use crate::config::actions::{
+    DialogAction,
+    GlobalAction,
+    NavAction,
+    PayloadAction,
+    SearchAction,
+    SecretsAction,
+    VersionsAction,
+};
+use crate::config::keybindings::KeybindingsConfig;
 
 pub struct KeyResolver {
     pub keybindings: Arc<KeybindingsConfig>,
 }
 
 impl KeyResolver {
-    pub fn new(keybindings: Arc<KeybindingsConfig>) -> Self {
+    pub const fn new(keybindings: Arc<KeybindingsConfig>) -> Self {
         Self { keybindings }
     }
 

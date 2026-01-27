@@ -3,7 +3,7 @@ use ratatui::style::Color;
 use ratatui::widgets::BorderType;
 
 /// Convert a catppuccin color to a ratatui color.
-fn catppuccin_to_color(c: &catppuccin::Color) -> Color {
+const fn catppuccin_to_color(c: &catppuccin::Color) -> Color {
     Color::Rgb(c.rgb.r, c.rgb.g, c.rgb.b)
 }
 
@@ -55,7 +55,7 @@ pub struct Theme {
 
 impl Theme {
     /// Create a theme from a Catppuccin flavor.
-    fn from_catppuccin(flavor: &catppuccin::Flavor) -> Self {
+    const fn from_catppuccin(flavor: &catppuccin::Flavor) -> Self {
         let c = &flavor.colors;
         Self {
             base: catppuccin_to_color(&c.base),
@@ -89,181 +89,223 @@ impl Theme {
     }
 
     /// Catppuccin Mocha theme (dark).
-    pub fn catppuccin_mocha() -> Self {
+    #[must_use]
+    pub const fn catppuccin_mocha() -> Self {
         Self::from_catppuccin(&PALETTE.mocha)
     }
 
     /// Catppuccin Latte theme (light).
-    pub fn catppuccin_latte() -> Self {
+    #[must_use]
+    pub const fn catppuccin_latte() -> Self {
         Self::from_catppuccin(&PALETTE.latte)
     }
 
     /// Catppuccin Frappé theme (dark).
-    pub fn catppuccin_frappe() -> Self {
+    #[must_use]
+    pub const fn catppuccin_frappe() -> Self {
         Self::from_catppuccin(&PALETTE.frappe)
     }
 
     /// Catppuccin Macchiato theme (dark).
-    pub fn catppuccin_macchiato() -> Self {
+    #[must_use]
+    pub const fn catppuccin_macchiato() -> Self {
         Self::from_catppuccin(&PALETTE.macchiato)
     }
 
     // Base colors
-    pub fn base(&self) -> Color {
+    #[must_use]
+    pub const fn base(&self) -> Color {
         self.base
     }
 
-    pub fn mantle(&self) -> Color {
+    #[must_use]
+    pub const fn mantle(&self) -> Color {
         self.mantle
     }
 
-    pub fn crust(&self) -> Color {
+    #[must_use]
+    pub const fn crust(&self) -> Color {
         self.crust
     }
 
     // Surface colors
-    pub fn surface0(&self) -> Color {
+    #[must_use]
+    pub const fn surface0(&self) -> Color {
         self.surface0
     }
 
-    pub fn surface1(&self) -> Color {
+    #[must_use]
+    pub const fn surface1(&self) -> Color {
         self.surface1
     }
 
-    pub fn surface2(&self) -> Color {
+    #[must_use]
+    pub const fn surface2(&self) -> Color {
         self.surface2
     }
 
     // Overlay colors
-    pub fn overlay0(&self) -> Color {
+    #[must_use]
+    pub const fn overlay0(&self) -> Color {
         self.overlay0
     }
 
-    pub fn overlay1(&self) -> Color {
+    #[must_use]
+    pub const fn overlay1(&self) -> Color {
         self.overlay1
     }
 
-    pub fn overlay2(&self) -> Color {
+    #[must_use]
+    pub const fn overlay2(&self) -> Color {
         self.overlay2
     }
 
     // Text colors
-    pub fn text(&self) -> Color {
+    #[must_use]
+    pub const fn text(&self) -> Color {
         self.text
     }
 
-    pub fn subtext0(&self) -> Color {
+    #[must_use]
+    pub const fn subtext0(&self) -> Color {
         self.subtext0
     }
 
-    pub fn subtext1(&self) -> Color {
+    #[must_use]
+    pub const fn subtext1(&self) -> Color {
         self.subtext1
     }
 
     // Accent colors
-    pub fn rosewater(&self) -> Color {
+    #[must_use]
+    pub const fn rosewater(&self) -> Color {
         self.rosewater
     }
 
-    pub fn flamingo(&self) -> Color {
+    #[must_use]
+    pub const fn flamingo(&self) -> Color {
         self.flamingo
     }
 
-    pub fn pink(&self) -> Color {
+    #[must_use]
+    pub const fn pink(&self) -> Color {
         self.pink
     }
 
-    pub fn mauve(&self) -> Color {
+    #[must_use]
+    pub const fn mauve(&self) -> Color {
         self.mauve
     }
 
-    pub fn red(&self) -> Color {
+    #[must_use]
+    pub const fn red(&self) -> Color {
         self.red
     }
 
-    pub fn maroon(&self) -> Color {
+    #[must_use]
+    pub const fn maroon(&self) -> Color {
         self.maroon
     }
 
-    pub fn peach(&self) -> Color {
+    #[must_use]
+    pub const fn peach(&self) -> Color {
         self.peach
     }
 
-    pub fn yellow(&self) -> Color {
+    #[must_use]
+    pub const fn yellow(&self) -> Color {
         self.yellow
     }
 
-    pub fn green(&self) -> Color {
+    #[must_use]
+    pub const fn green(&self) -> Color {
         self.green
     }
 
-    pub fn teal(&self) -> Color {
+    #[must_use]
+    pub const fn teal(&self) -> Color {
         self.teal
     }
 
-    pub fn sky(&self) -> Color {
+    #[must_use]
+    pub const fn sky(&self) -> Color {
         self.sky
     }
 
-    pub fn sapphire(&self) -> Color {
+    #[must_use]
+    pub const fn sapphire(&self) -> Color {
         self.sapphire
     }
 
-    pub fn blue(&self) -> Color {
+    #[must_use]
+    pub const fn blue(&self) -> Color {
         self.blue
     }
 
-    pub fn lavender(&self) -> Color {
+    #[must_use]
+    pub const fn lavender(&self) -> Color {
         self.lavender
     }
 
     // Semantic colors
-    pub fn primary(&self) -> Color {
+    #[must_use]
+    pub const fn primary(&self) -> Color {
         self.blue
     }
 
-    pub fn secondary(&self) -> Color {
+    #[must_use]
+    pub const fn secondary(&self) -> Color {
         self.mauve
     }
 
-    pub fn success(&self) -> Color {
+    #[must_use]
+    pub const fn success(&self) -> Color {
         self.green
     }
 
-    pub fn warning(&self) -> Color {
+    #[must_use]
+    pub const fn warning(&self) -> Color {
         self.yellow
     }
 
-    pub fn error(&self) -> Color {
+    #[must_use]
+    pub const fn error(&self) -> Color {
         self.red
     }
 
-    pub fn info(&self) -> Color {
+    #[must_use]
+    pub const fn info(&self) -> Color {
         self.sky
     }
 
     // UI element colors
-    pub fn border(&self) -> Color {
+    #[must_use]
+    pub const fn border(&self) -> Color {
         self.surface1
     }
 
-    pub fn border_focused(&self) -> Color {
+    #[must_use]
+    pub const fn border_focused(&self) -> Color {
         self.lavender
     }
 
-    pub fn selection_bg(&self) -> Color {
+    #[must_use]
+    pub const fn selection_bg(&self) -> Color {
         self.surface1
     }
 
-    pub fn selection_fg(&self) -> Color {
+    #[must_use]
+    pub const fn selection_fg(&self) -> Color {
         self.text
     }
 
-    pub fn header(&self) -> Color {
+    #[must_use]
+    pub const fn header(&self) -> Color {
         self.yellow
     }
 
-    pub fn highlight(&self) -> Color {
+    #[must_use]
+    pub const fn highlight(&self) -> Color {
         self.mauve
     }
 }
@@ -315,6 +357,7 @@ pub fn theme_from_name(name: &str) -> Theme {
 }
 
 /// Get the name of a theme that matches the given theme, if any.
+#[allow(dead_code)]
 pub fn theme_name(theme: &Theme) -> Option<&'static str> {
     available_themes()
         .into_iter()
@@ -323,4 +366,87 @@ pub fn theme_name(theme: &Theme) -> Option<&'static str> {
                 == std::mem::discriminant(&theme.border_type)
         })
         .map(|t| t.name)
+}
+
+// === Theme Selector View ===
+
+use std::sync::Arc;
+
+use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::Frame;
+use ratatui::layout::{Constraint, Rect};
+use ratatui::style::{Modifier, Style};
+use ratatui::widgets::{Block, Borders, Clear, ListItem};
+
+use crate::config::KeyResolver;
+use crate::ui::{Component, EventResult, List, ListEvent, ListRow, Result};
+
+impl ListRow for ThemeInfo {
+    fn render_row(&self, theme: &Theme) -> ListItem<'static> {
+        ListItem::new(self.name.to_string()).style(Style::default().fg(theme.text()))
+    }
+}
+
+pub enum ThemeEvent {
+    Cancelled,
+    Selected(ThemeInfo),
+}
+
+pub struct ThemeSelectorView {
+    list: List<ThemeInfo>,
+}
+
+impl ThemeSelectorView {
+    pub fn new(resolver: Arc<KeyResolver>) -> Self {
+        let themes = available_themes();
+        Self {
+            list: List::new(themes, resolver),
+        }
+    }
+}
+
+impl Component for ThemeSelectorView {
+    type Output = ThemeEvent;
+
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
+        // Handle escape/toggle to close
+        if matches!(key.code, KeyCode::Esc | KeyCode::Char('t')) {
+            return Ok(ThemeEvent::Cancelled.into());
+        }
+
+        // Delegate to list
+        let result = self.list.handle_key(key)?;
+        Ok(match result {
+            EventResult::Event(ListEvent::Activated(info)) => ThemeEvent::Selected(info).into(),
+            EventResult::Consumed | EventResult::Event(_) => EventResult::Consumed,
+            EventResult::Ignored => EventResult::Ignored,
+        })
+    }
+
+    fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+        // Calculate centered popup area
+        let popup_area = area.centered(Constraint::Percentage(40), Constraint::Percentage(50));
+
+        // Clear the area behind the popup
+        frame.render_widget(Clear, popup_area);
+
+        // Render block background
+        let block = Block::default()
+            .title(" Select Theme (Enter to confirm, Esc to cancel) ")
+            .title_style(
+                Style::default()
+                    .fg(theme.mauve())
+                    .add_modifier(Modifier::BOLD),
+            )
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(theme.lavender()))
+            .style(Style::default().bg(theme.base()));
+
+        let inner = block.inner(popup_area);
+        frame.render_widget(block, popup_area);
+
+        // Render the list inside
+        self.list.render(frame, inner, theme);
+    }
 }

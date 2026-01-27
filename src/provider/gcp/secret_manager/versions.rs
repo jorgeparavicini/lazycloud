@@ -1,25 +1,39 @@
+use std::fmt::Display;
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use crossterm::event::KeyEvent;
+use ratatui::Frame;
+use ratatui::layout::{Constraint, Rect};
+use ratatui::widgets::Cell;
+use tokio::sync::mpsc::UnboundedSender;
+
 use crate::Theme;
-use crate::component::{
-    ColumnDef, ConfirmDialogComponent, ConfirmEvent, Keybinding, TableComponent, TableEvent,
-    TableRow, TextInputComponent, TextInputEvent,
-};
+use crate::commands::{Command, CommandEnv};
 use crate::config::{KeyResolver, SearchAction, VersionsAction};
-use crate::core::{Command, UpdateResult};
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::payload::PayloadMsg;
 use crate::provider::gcp::secret_manager::secrets::Secret;
 use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::search::Matcher;
-use crate::ui::{Component, Handled, Modal, Result, Screen};
-use async_trait::async_trait;
-use crossterm::event::KeyEvent;
-use ratatui::Frame;
-use ratatui::layout::{Constraint, Rect};
-use ratatui::widgets::Cell;
-use std::fmt::Display;
-use std::sync::Arc;
-use tokio::sync::mpsc::UnboundedSender;
+use crate::service::ServiceMsg;
+use crate::ui::{
+    ColumnDef,
+    Component,
+    ConfirmDialog,
+    ConfirmEvent,
+    EventResult,
+    Keybinding,
+    Modal,
+    Result,
+    Screen,
+    Table,
+    TableEvent,
+    TableRow,
+    TextInput,
+    TextInputEvent,
+};
 
 // === Models ===
 
@@ -116,13 +130,13 @@ pub enum VersionsMsg {
 
 impl From<VersionsMsg> for SecretManagerMsg {
     fn from(msg: VersionsMsg) -> Self {
-        SecretManagerMsg::Version(msg)
+        Self::Version(msg)
     }
 }
 
-impl From<VersionsMsg> for Handled<SecretManagerMsg> {
+impl From<VersionsMsg> for EventResult<SecretManagerMsg> {
     fn from(msg: VersionsMsg) -> Self {
-        Handled::Event(SecretManagerMsg::Version(msg))
+        Self::Event(SecretManagerMsg::Version(msg))
     }
 }
 
@@ -130,7 +144,7 @@ impl From<VersionsMsg> for Handled<SecretManagerMsg> {
 
 pub struct VersionListScreen {
     secret: Secret,
-    table: TableComponent<SecretVersion>,
+    table: Table<SecretVersion>,
     resolver: Arc<KeyResolver>,
 }
 
@@ -139,19 +153,19 @@ impl VersionListScreen {
         let title = format!(" {} - Versions ", secret.name);
         Self {
             secret,
-            table: TableComponent::new(versions, resolver.clone()).with_title(title),
+            table: Table::new(versions, resolver.clone()).with_title(title),
             resolver,
         }
     }
 }
 
 impl Screen for VersionListScreen {
-    type Msg = SecretManagerMsg;
+    type Output = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         // Delegate to table first (handles search mode, navigation, etc.)
         let result = self.table.handle_key(key)?;
-        if let Handled::Event(TableEvent::Activated(version)) = result {
+        if let EventResult::Event(TableEvent::Activated(version)) = result {
             return Ok(VersionsMsg::ViewPayload {
                 secret: self.secret.clone(),
                 version,
@@ -159,7 +173,7 @@ impl Screen for VersionListScreen {
             .into());
         }
         if result.is_consumed() {
-            return Ok(Handled::Consumed);
+            return Ok(EventResult::Consumed);
         }
 
         // Handle local shortcuts only if table didn't consume the key
@@ -172,44 +186,39 @@ impl Screen for VersionListScreen {
         if self
             .resolver
             .matches_versions(&key, VersionsAction::Disable)
+            && let Some(v) = self.table.selected_item()
+            && v.state.contains("Enabled")
         {
-            if let Some(v) = self.table.selected_item() {
-                if v.state.contains("Enabled") {
-                    return Ok(VersionsMsg::Disable {
-                        secret: self.secret.clone(),
-                        version: v.clone(),
-                    }
-                    .into());
-                }
+            return Ok(VersionsMsg::Disable {
+                secret: self.secret.clone(),
+                version: v.clone(),
             }
+            .into());
         }
-        if self.resolver.matches_versions(&key, VersionsAction::Enable) {
-            if let Some(v) = self.table.selected_item() {
-                if v.state.contains("Disabled") {
-                    return Ok(VersionsMsg::Enable {
-                        secret: self.secret.clone(),
-                        version: v.clone(),
-                    }
-                    .into());
-                }
+        if self.resolver.matches_versions(&key, VersionsAction::Enable)
+            && let Some(v) = self.table.selected_item()
+            && v.state.contains("Disabled")
+        {
+            return Ok(VersionsMsg::Enable {
+                secret: self.secret.clone(),
+                version: v.clone(),
             }
+            .into());
         }
         if self
             .resolver
             .matches_versions(&key, VersionsAction::Destroy)
+            && let Some(v) = self.table.selected_item()
+            && !v.state.contains("Destroyed")
         {
-            if let Some(v) = self.table.selected_item() {
-                if !v.state.contains("Destroyed") {
-                    return Ok(VersionsMsg::ConfirmDestroy {
-                        secret: self.secret.clone(),
-                        version: v.clone(),
-                    }
-                    .into());
-                }
+            return Ok(VersionsMsg::ConfirmDestroy {
+                secret: self.secret.clone(),
+                version: v.clone(),
             }
+            .into());
         }
 
-        Ok(Handled::Ignored)
+        Ok(EventResult::Ignored)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -251,35 +260,37 @@ impl Screen for VersionListScreen {
 
 pub struct CreateVersionDialog {
     secret: Secret,
-    input: TextInputComponent,
-    resolver: Arc<KeyResolver>,
+    input: TextInput,
+    _resolver: Arc<KeyResolver>,
 }
 
 impl CreateVersionDialog {
     pub fn new(secret: Secret, resolver: Arc<KeyResolver>) -> Self {
         Self {
             secret,
-            input: TextInputComponent::new("New Version Payload"),
-            resolver,
+            input: TextInput::new("New Version Payload"),
+            _resolver: resolver,
         }
     }
 }
 
 impl Modal for CreateVersionDialog {
-    type Msg = SecretManagerMsg;
+    type Output = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         Ok(match self.input.handle_key(key)? {
-            Handled::Event(TextInputEvent::Submitted(payload)) if !payload.is_empty() => {
+            EventResult::Event(TextInputEvent::Submitted(payload)) if !payload.is_empty() => {
                 VersionsMsg::Create {
                     secret: self.secret.clone(),
                     payload,
                 }
                 .into()
             }
-            Handled::Event(TextInputEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
-            Handled::Event(_) => Handled::Consumed, // Empty submission
-            _ => Handled::Consumed,
+            EventResult::Event(TextInputEvent::Cancelled) => {
+                SecretManagerMsg::DialogCancelled.into()
+            }
+            // Empty submission
+            _ => EventResult::Consumed,
         })
     }
 
@@ -291,13 +302,13 @@ impl Modal for CreateVersionDialog {
 pub struct DestroyVersionDialog {
     secret: Secret,
     version: SecretVersion,
-    dialog: ConfirmDialogComponent,
-    resolver: Arc<KeyResolver>,
+    dialog: ConfirmDialog,
+    _resolver: Arc<KeyResolver>,
 }
 
 impl DestroyVersionDialog {
     pub fn new(secret: Secret, version: SecretVersion, resolver: Arc<KeyResolver>) -> Self {
-        let dialog = ConfirmDialogComponent::new(
+        let dialog = ConfirmDialog::new(
             format!(
                 "Destroy version '{}'? This is permanent and cannot be undone.",
                 version.version_id
@@ -312,23 +323,23 @@ impl DestroyVersionDialog {
             secret,
             version,
             dialog,
-            resolver,
+            _resolver: resolver,
         }
     }
 }
 
 impl Modal for DestroyVersionDialog {
-    type Msg = SecretManagerMsg;
+    type Output = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         Ok(match self.dialog.handle_key(key)? {
-            Handled::Event(ConfirmEvent::Confirmed) => VersionsMsg::Destroy {
+            EventResult::Event(ConfirmEvent::Confirmed) => VersionsMsg::Destroy {
                 secret: self.secret.clone(),
                 version: self.version.clone(),
             }
             .into(),
-            Handled::Event(ConfirmEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
-            _ => Handled::Consumed,
+            EventResult::Event(ConfirmEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
+            _ => EventResult::Consumed,
         })
     }
 
@@ -339,10 +350,9 @@ impl Modal for DestroyVersionDialog {
 
 // === Update Logic ===
 
-pub(super) fn update(
-    state: &mut SecretManager,
-    msg: VersionsMsg,
-) -> color_eyre::Result<UpdateResult> {
+// Flat message dispatcher — splitting reduces readability
+#[allow(clippy::too_many_lines)]
+pub(super) fn update(state: &mut SecretManager, msg: VersionsMsg) -> Result<ServiceMsg> {
     match msg {
         VersionsMsg::Load(secret) => {
             // Use cached versions if available
@@ -352,7 +362,7 @@ pub(super) fn update(
                     versions,
                     state.get_resolver(),
                 ));
-                return Ok(UpdateResult::Idle);
+                return Ok(ServiceMsg::Idle);
             }
 
             state.display_loading_spinner("Loading versions...");
@@ -373,12 +383,12 @@ pub(super) fn update(
                 versions,
                 state.get_resolver(),
             ));
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         VersionsMsg::StartCreation(secret) => {
             state.display_overlay(CreateVersionDialog::new(secret, state.get_resolver()));
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         VersionsMsg::Create { secret, payload } => {
@@ -395,10 +405,13 @@ pub(super) fn update(
             .into())
         }
 
-        VersionsMsg::Created { secret } => {
+        VersionsMsg::Created { secret }
+        | VersionsMsg::Disabled { secret }
+        | VersionsMsg::Enabled { secret }
+        | VersionsMsg::Destroyed { secret } => {
             state.pop_view();
             state.queue(VersionsMsg::Load(secret).into());
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         VersionsMsg::Disable { secret, version } => {
@@ -414,12 +427,6 @@ pub(super) fn update(
             .into())
         }
 
-        VersionsMsg::Disabled { secret } => {
-            state.pop_view();
-            state.queue(VersionsMsg::Load(secret).into());
-            Ok(UpdateResult::Idle)
-        }
-
         VersionsMsg::Enable { secret, version } => {
             state.display_loading_spinner("Enabling version...");
             state.invalidate_versions_cache(&secret);
@@ -433,19 +440,13 @@ pub(super) fn update(
             .into())
         }
 
-        VersionsMsg::Enabled { secret } => {
-            state.pop_view();
-            state.queue(VersionsMsg::Load(secret).into());
-            Ok(UpdateResult::Idle)
-        }
-
         VersionsMsg::ConfirmDestroy { secret, version } => {
             state.display_overlay(DestroyVersionDialog::new(
                 secret,
                 version,
                 state.get_resolver(),
             ));
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         VersionsMsg::Destroy { secret, version } => {
@@ -462,12 +463,6 @@ pub(super) fn update(
             .into())
         }
 
-        VersionsMsg::Destroyed { secret } => {
-            state.pop_view();
-            state.queue(VersionsMsg::Load(secret).into());
-            Ok(UpdateResult::Idle)
-        }
-
         VersionsMsg::ViewPayload { secret, version } => {
             state.queue(
                 PayloadMsg::Load {
@@ -476,7 +471,7 @@ pub(super) fn update(
                 }
                 .into(),
             );
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
     }
 }
@@ -495,7 +490,7 @@ impl Command for FetchVersionsCmd {
         format!("Loading '{}' versions", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
         let versions = self.client.list_versions(&self.secret.name).await?;
         self.tx.send(
             VersionsMsg::Loaded {
@@ -521,7 +516,7 @@ impl Command for AddVersionCmd {
         format!("Adding version to '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
         self.client
             .add_secret_version(&self.secret.name, self.payload.as_bytes())
             .await?;
@@ -545,10 +540,13 @@ struct DisableVersionCmd {
 #[async_trait]
 impl Command for DisableVersionCmd {
     fn name(&self) -> String {
-        format!("Disabling '{}' v{}", self.secret.name, self.version.version_id)
+        format!(
+            "Disabling '{}' v{}",
+            self.secret.name, self.version.version_id
+        )
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
         self.client
             .disable_version(&self.secret.name, &self.version.version_id)
             .await?;
@@ -572,10 +570,13 @@ struct EnableVersionCmd {
 #[async_trait]
 impl Command for EnableVersionCmd {
     fn name(&self) -> String {
-        format!("Enabling '{}' v{}", self.secret.name, self.version.version_id)
+        format!(
+            "Enabling '{}' v{}",
+            self.secret.name, self.version.version_id
+        )
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
         self.client
             .enable_version(&self.secret.name, &self.version.version_id)
             .await?;
@@ -599,10 +600,13 @@ struct DestroyVersionCmd {
 #[async_trait]
 impl Command for DestroyVersionCmd {
     fn name(&self) -> String {
-        format!("Destroying '{}' v{}", self.secret.name, self.version.version_id)
+        format!(
+            "Destroying '{}' v{}",
+            self.secret.name, self.version.version_id
+        )
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
         self.client
             .destroy_version(&self.secret.name, &self.version.version_id)
             .await?;

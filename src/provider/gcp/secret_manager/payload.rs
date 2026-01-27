@@ -1,22 +1,23 @@
-use crate::Theme;
-use crate::component::Keybinding;
-use crate::config::{KeyResolver, PayloadAction};
-use crate::core::command::CopyToClipboardCmd;
-use crate::core::{Command, UpdateResult};
-use crate::provider::gcp::secret_manager::SecretManager;
-use crate::provider::gcp::secret_manager::client::SecretManagerClient;
-use crate::provider::gcp::secret_manager::secrets::Secret;
-use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
-use crate::provider::gcp::secret_manager::versions::SecretVersion;
-use crate::ui::{Handled, Result, Screen};
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Borders, Paragraph};
-use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
+
+use crate::Theme;
+use crate::commands::{Command, CommandEnv, CopyToClipboardCmd};
+use crate::config::{KeyResolver, PayloadAction};
+use crate::provider::gcp::secret_manager::SecretManager;
+use crate::provider::gcp::secret_manager::client::SecretManagerClient;
+use crate::provider::gcp::secret_manager::secrets::Secret;
+use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
+use crate::provider::gcp::secret_manager::versions::SecretVersion;
+use crate::service::ServiceMsg;
+use crate::ui::{EventResult, Keybinding, Result, Screen};
 
 // === Models ===
 
@@ -47,13 +48,13 @@ pub enum PayloadMsg {
 
 impl From<PayloadMsg> for SecretManagerMsg {
     fn from(msg: PayloadMsg) -> Self {
-        SecretManagerMsg::Payload(msg)
+        Self::Payload(msg)
     }
 }
 
-impl From<PayloadMsg> for Handled<SecretManagerMsg> {
+impl From<PayloadMsg> for EventResult<SecretManagerMsg> {
     fn from(msg: PayloadMsg) -> Self {
-        Handled::Event(SecretManagerMsg::Payload(msg))
+        Self::Event(SecretManagerMsg::Payload(msg))
     }
 }
 
@@ -67,7 +68,7 @@ pub struct PayloadScreen {
 }
 
 impl PayloadScreen {
-    pub fn new(
+    pub const fn new(
         secret: Secret,
         version: Option<SecretVersion>,
         payload: SecretPayload,
@@ -83,9 +84,9 @@ impl PayloadScreen {
 }
 
 impl Screen for PayloadScreen {
-    type Msg = SecretManagerMsg;
+    type Output = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         if self.resolver.matches_payload(&key, PayloadAction::Reload) {
             return Ok(PayloadMsg::Load {
                 secret: self.secret.clone(),
@@ -104,14 +105,14 @@ impl Screen for PayloadScreen {
             }
             .into());
         }
-        Ok(Handled::Ignored)
+        Ok(EventResult::Ignored)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        let version = match &self.version {
-            Some(v) => v.version_id.as_str(),
-            None => "latest",
-        };
+        let version = self
+            .version
+            .as_ref()
+            .map_or("latest", |v| v.version_id.as_str());
         let title = format!(" {} - v{} ", self.secret.name, version);
 
         let p = Paragraph::new(self.payload.data.as_str())
@@ -145,21 +146,18 @@ impl Screen for PayloadScreen {
 
 // === Update Logic ===
 
-pub(super) fn update(
-    state: &mut SecretManager,
-    msg: PayloadMsg,
-) -> color_eyre::Result<UpdateResult> {
+pub(super) fn update(state: &mut SecretManager, msg: PayloadMsg) -> Result<ServiceMsg> {
     match msg {
         PayloadMsg::Load { secret, version } => {
             // Use cached payload if available
-            if let Some(payload) = state.get_cached_payload(&secret, &version) {
+            if let Some(payload) = state.get_cached_payload(&secret, version.as_ref()) {
                 state.push_view(PayloadScreen::new(
                     secret,
                     version,
                     payload,
                     state.get_resolver(),
                 ));
-                return Ok(UpdateResult::Idle);
+                return Ok(ServiceMsg::Idle);
             }
 
             state.display_loading_spinner("Loading payload...");
@@ -187,18 +185,18 @@ pub(super) fn update(
             payload,
         } => {
             state.hide_loading_spinner();
-            state.cache_payload(&secret, &version, payload.clone());
+            state.cache_payload(&secret, version.as_ref(), payload.clone());
             state.push_view(PayloadScreen::new(
                 secret,
                 version,
                 payload,
                 state.get_resolver(),
             ));
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         PayloadMsg::Copy { data, description } => {
-            Ok(CopyToClipboardCmd::new(data, description, state.get_cmd_env()).into())
+            Ok(CopyToClipboardCmd::new(data, description).into())
         }
     }
 }
@@ -215,10 +213,13 @@ struct FetchPayloadCmd {
 #[async_trait]
 impl Command for FetchPayloadCmd {
     fn name(&self) -> String {
-        format!("Loading '{}' v{}", self.secret.name, self.version.version_id)
+        format!(
+            "Loading '{}' v{}",
+            self.secret.name, self.version.version_id
+        )
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
         let payload = self
             .client
             .access_version(&self.secret.name, &self.version.version_id)
@@ -247,7 +248,7 @@ impl Command for FetchLatestPayloadCmd {
         format!("Loading '{}' (latest)", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
         let payload = self.client.access_latest_version(&self.secret.name).await?;
         self.tx.send(
             PayloadMsg::Loaded {

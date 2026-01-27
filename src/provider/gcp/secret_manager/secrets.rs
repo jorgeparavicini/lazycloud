@@ -1,18 +1,7 @@
-use crate::Theme;
-use crate::component::{
-    ColumnDef, ConfirmDialogComponent, ConfirmEvent, Keybinding, TableComponent, TableEvent,
-    TableRow, TextInputComponent, TextInputEvent,
-};
-use crate::config::{KeyResolver, SearchAction, SecretsAction};
-use crate::core::command::CopyToClipboardCmd;
-use crate::core::{Command, UpdateResult};
-use crate::provider::gcp::secret_manager::SecretManager;
-use crate::provider::gcp::secret_manager::client::SecretManagerClient;
-use crate::provider::gcp::secret_manager::payload::PayloadMsg;
-use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
-use crate::provider::gcp::secret_manager::versions::VersionsMsg;
-use crate::search::Matcher;
-use crate::ui::{Component, Handled, Modal, Result, Screen};
+use std::collections::HashMap;
+use std::fmt::Display;
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
@@ -20,10 +9,34 @@ use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Cell, Paragraph};
-use std::collections::HashMap;
-use std::fmt::Display;
-use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
+
+use crate::Theme;
+use crate::commands::{Command, CommandEnv, CopyToClipboardCmd};
+use crate::config::{KeyResolver, SearchAction, SecretsAction};
+use crate::provider::gcp::secret_manager::SecretManager;
+use crate::provider::gcp::secret_manager::client::SecretManagerClient;
+use crate::provider::gcp::secret_manager::payload::PayloadMsg;
+use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
+use crate::provider::gcp::secret_manager::versions::VersionsMsg;
+use crate::search::Matcher;
+use crate::service::ServiceMsg;
+use crate::ui::{
+    ColumnDef,
+    Component,
+    ConfirmDialog,
+    ConfirmEvent,
+    EventResult,
+    Keybinding,
+    Modal,
+    Result,
+    Screen,
+    Table,
+    TableEvent,
+    TableRow,
+    TextInput,
+    TextInputEvent,
+};
 
 // === Models ===
 
@@ -124,11 +137,9 @@ pub enum ReplicationConfig {
 impl ReplicationConfig {
     pub fn short_display(&self) -> String {
         match self {
-            ReplicationConfig::Automatic => "Automatic".to_string(),
-            ReplicationConfig::UserManaged { locations } if locations.len() == 1 => {
-                locations[0].clone()
-            }
-            ReplicationConfig::UserManaged { locations } => {
+            Self::Automatic => "Automatic".to_string(),
+            Self::UserManaged { locations } if locations.len() == 1 => locations[0].clone(),
+            Self::UserManaged { locations } => {
                 format!("{} regions", locations.len())
             }
         }
@@ -252,43 +263,43 @@ pub enum SecretsMsg {
 
 impl From<SecretsMsg> for SecretManagerMsg {
     fn from(msg: SecretsMsg) -> Self {
-        SecretManagerMsg::Secret(msg)
+        Self::Secret(msg)
     }
 }
 
-impl From<SecretsMsg> for Handled<SecretManagerMsg> {
+impl From<SecretsMsg> for EventResult<SecretManagerMsg> {
     fn from(msg: SecretsMsg) -> Self {
-        Handled::Event(SecretManagerMsg::Secret(msg))
+        Self::Event(SecretManagerMsg::Secret(msg))
     }
 }
 
 // === Screens ===
 
 pub struct SecretListScreen {
-    table: TableComponent<Secret>,
+    table: Table<Secret>,
     resolver: Arc<KeyResolver>,
 }
 
 impl SecretListScreen {
     pub fn new(secrets: Vec<Secret>, resolver: Arc<KeyResolver>) -> Self {
         Self {
-            table: TableComponent::new(secrets, resolver.clone()).with_title(" Secrets "),
+            table: Table::new(secrets, resolver.clone()).with_title(" Secrets "),
             resolver,
         }
     }
 }
 
 impl Screen for SecretListScreen {
-    type Msg = SecretManagerMsg;
+    type Output = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         let result = self.table.handle_key(key)?;
 
-        if let Handled::Event(TableEvent::Activated(secret)) = result {
+        if let EventResult::Event(TableEvent::Activated(secret)) = result {
             return Ok(SecretsMsg::ViewPayload(secret).into());
         }
         if result.is_consumed() {
-            return Ok(Handled::Consumed);
+            return Ok(EventResult::Consumed);
         }
 
         if self.resolver.matches_secrets(&key, SecretsAction::Reload) {
@@ -297,41 +308,40 @@ impl Screen for SecretListScreen {
         if self.resolver.matches_secrets(&key, SecretsAction::New) {
             return Ok(SecretsMsg::StartCreation.into());
         }
-        if self.resolver.matches_secrets(&key, SecretsAction::Copy) {
-            if let Some(secret) = self.table.selected_item() {
-                return Ok(SecretsMsg::CopyPayload(secret.clone()).into());
-            }
+        if self.resolver.matches_secrets(&key, SecretsAction::Copy)
+            && let Some(secret) = self.table.selected_item()
+        {
+            return Ok(SecretsMsg::CopyPayload(secret.clone()).into());
         }
-        if self.resolver.matches_secrets(&key, SecretsAction::Delete) {
-            if let Some(secret) = self.table.selected_item() {
-                return Ok(SecretsMsg::ConfirmDelete(secret.clone()).into());
-            }
+        if self.resolver.matches_secrets(&key, SecretsAction::Delete)
+            && let Some(secret) = self.table.selected_item()
+        {
+            return Ok(SecretsMsg::ConfirmDelete(secret.clone()).into());
         }
-        if self.resolver.matches_secrets(&key, SecretsAction::Versions) {
-            if let Some(secret) = self.table.selected_item() {
-                return Ok(SecretsMsg::ViewVersions(secret.clone()).into());
-            }
+        if self.resolver.matches_secrets(&key, SecretsAction::Versions)
+            && let Some(secret) = self.table.selected_item()
+        {
+            return Ok(SecretsMsg::ViewVersions(secret.clone()).into());
         }
-        if self.resolver.matches_secrets(&key, SecretsAction::Labels) {
-            if let Some(secret) = self.table.selected_item() {
-                return Ok(SecretsMsg::ViewLabels(secret.clone()).into());
-            }
+        if self.resolver.matches_secrets(&key, SecretsAction::Labels)
+            && let Some(secret) = self.table.selected_item()
+        {
+            return Ok(SecretsMsg::ViewLabels(secret.clone()).into());
         }
-        if self.resolver.matches_secrets(&key, SecretsAction::Iam) {
-            if let Some(secret) = self.table.selected_item() {
-                return Ok(SecretsMsg::ViewIamPolicy(secret.clone()).into());
-            }
+        if self.resolver.matches_secrets(&key, SecretsAction::Iam)
+            && let Some(secret) = self.table.selected_item()
+        {
+            return Ok(SecretsMsg::ViewIamPolicy(secret.clone()).into());
         }
         if self
             .resolver
             .matches_secrets(&key, SecretsAction::Replication)
+            && let Some(secret) = self.table.selected_item()
         {
-            if let Some(secret) = self.table.selected_item() {
-                return Ok(SecretsMsg::ViewReplicationInfo(secret.clone()).into());
-            }
+            return Ok(SecretsMsg::ViewReplicationInfo(secret.clone()).into());
         }
 
-        Ok(Handled::Ignored)
+        Ok(EventResult::Ignored)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -374,7 +384,7 @@ impl Screen for SecretListScreen {
 
 pub struct LabelsScreen {
     secret: Secret,
-    table: TableComponent<LabelEntry>,
+    table: Table<LabelEntry>,
     resolver: Arc<KeyResolver>,
 }
 
@@ -392,29 +402,29 @@ impl LabelsScreen {
         let title = format!(" {} - Labels ", secret.name);
         Self {
             secret,
-            table: TableComponent::new(labels, resolver.clone()).with_title(title),
+            table: Table::new(labels, resolver.clone()).with_title(title),
             resolver,
         }
     }
 }
 
 impl Screen for LabelsScreen {
-    type Msg = SecretManagerMsg;
+    type Output = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         let result = self.table.handle_key(key)?;
-        if let Handled::Event(TableEvent::Activated(_)) = result {
-            return Ok(Handled::Consumed);
+        if let EventResult::Event(TableEvent::Activated(_)) = result {
+            return Ok(EventResult::Consumed);
         }
         if result.is_consumed() {
-            return Ok(Handled::Consumed);
+            return Ok(EventResult::Consumed);
         }
 
         if self.resolver.matches_secrets(&key, SecretsAction::Reload) {
             return Ok(SecretsMsg::ViewLabels(self.secret.clone()).into());
         }
 
-        Ok(Handled::Ignored)
+        Ok(EventResult::Ignored)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -434,7 +444,7 @@ impl Screen for LabelsScreen {
 
 pub struct IamPolicyScreen {
     secret: Secret,
-    table: TableComponent<IamBinding>,
+    table: Table<IamBinding>,
     resolver: Arc<KeyResolver>,
 }
 
@@ -443,26 +453,26 @@ impl IamPolicyScreen {
         let title = format!(" {} - IAM Policy ", secret.name);
         Self {
             secret,
-            table: TableComponent::new(policy.bindings, resolver.clone()).with_title(title),
+            table: Table::new(policy.bindings, resolver.clone()).with_title(title),
             resolver,
         }
     }
 }
 
 impl Screen for IamPolicyScreen {
-    type Msg = SecretManagerMsg;
+    type Output = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         let result = self.table.handle_key(key)?;
         if result.is_consumed() {
-            return Ok(Handled::Consumed);
+            return Ok(EventResult::Consumed);
         }
 
         if self.resolver.matches_secrets(&key, SecretsAction::Reload) {
             return Ok(SecretsMsg::ViewIamPolicy(self.secret.clone()).into());
         }
 
-        Ok(Handled::Ignored)
+        Ok(EventResult::Ignored)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -487,7 +497,11 @@ pub struct ReplicationScreen {
 }
 
 impl ReplicationScreen {
-    pub fn new(secret: Secret, replication: ReplicationConfig, resolver: Arc<KeyResolver>) -> Self {
+    pub const fn new(
+        secret: Secret,
+        replication: ReplicationConfig,
+        resolver: Arc<KeyResolver>,
+    ) -> Self {
         Self {
             secret,
             replication,
@@ -497,13 +511,13 @@ impl ReplicationScreen {
 }
 
 impl Screen for ReplicationScreen {
-    type Msg = SecretManagerMsg;
+    type Output = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         if self.resolver.matches_secrets(&key, SecretsAction::Reload) {
             return Ok(SecretsMsg::ViewReplicationInfo(self.secret.clone()).into());
         }
-        Ok(Handled::Ignored)
+        Ok(EventResult::Ignored)
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -593,37 +607,37 @@ enum CreateSecretWizardStep {
 
 pub struct CreateSecretWizard {
     step: CreateSecretWizardStep,
-    name_input: TextInputComponent,
-    payload_input: TextInputComponent,
+    name_input: TextInput,
+    payload_input: TextInput,
 }
 
 impl CreateSecretWizard {
     pub fn new() -> Self {
         Self {
             step: CreateSecretWizardStep::Name,
-            name_input: TextInputComponent::new("Secret Name").with_placeholder("my-secret"),
-            payload_input: TextInputComponent::new("Initial Payload (optional)"),
+            name_input: TextInput::new("Secret Name").with_placeholder("my-secret"),
+            payload_input: TextInput::new("Initial Payload (optional)"),
         }
     }
 }
 
 impl Modal for CreateSecretWizard {
-    type Msg = SecretManagerMsg;
+    type Output = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         Ok(match self.step {
             CreateSecretWizardStep::Name => match self.name_input.handle_key(key)? {
-                Handled::Event(TextInputEvent::Submitted(name)) if !name.is_empty() => {
+                EventResult::Event(TextInputEvent::Submitted(name)) if !name.is_empty() => {
                     self.step = CreateSecretWizardStep::Payload;
-                    Handled::Consumed
+                    EventResult::Consumed
                 }
-                Handled::Event(TextInputEvent::Cancelled) => {
+                EventResult::Event(TextInputEvent::Cancelled) => {
                     SecretManagerMsg::DialogCancelled.into()
                 }
-                _ => Handled::Consumed,
+                _ => EventResult::Consumed,
             },
             CreateSecretWizardStep::Payload => match self.payload_input.handle_key(key)? {
-                Handled::Event(TextInputEvent::Submitted(payload)) => {
+                EventResult::Event(TextInputEvent::Submitted(payload)) => {
                     let name = self.name_input.value().to_string();
                     let payload = if payload.is_empty() {
                         None
@@ -632,10 +646,10 @@ impl Modal for CreateSecretWizard {
                     };
                     SecretsMsg::Create { name, payload }.into()
                 }
-                Handled::Event(TextInputEvent::Cancelled) => {
+                EventResult::Event(TextInputEvent::Cancelled) => {
                     SecretManagerMsg::DialogCancelled.into()
                 }
-                _ => Handled::Consumed,
+                _ => EventResult::Consumed,
             },
         })
     }
@@ -650,12 +664,12 @@ impl Modal for CreateSecretWizard {
 
 pub struct DeleteSecretDialog {
     secret: Secret,
-    dialog: ConfirmDialogComponent,
+    dialog: ConfirmDialog,
 }
 
 impl DeleteSecretDialog {
     pub fn new(secret: Secret, resolver: Arc<KeyResolver>) -> Self {
-        let dialog = ConfirmDialogComponent::new(
+        let dialog = ConfirmDialog::new(
             format!(
                 "Are you sure you want to delete the secret \"{}\"?",
                 secret.name
@@ -672,15 +686,15 @@ impl DeleteSecretDialog {
 }
 
 impl Modal for DeleteSecretDialog {
-    type Msg = SecretManagerMsg;
+    type Output = SecretManagerMsg;
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<Handled<Self::Msg>> {
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         Ok(match self.dialog.handle_key(key)? {
-            Handled::Event(ConfirmEvent::Confirmed) => {
+            EventResult::Event(ConfirmEvent::Confirmed) => {
                 SecretsMsg::Delete(self.secret.clone()).into()
             }
-            Handled::Event(ConfirmEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
-            _ => Handled::Consumed,
+            EventResult::Event(ConfirmEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
+            _ => EventResult::Consumed,
         })
     }
 
@@ -691,17 +705,16 @@ impl Modal for DeleteSecretDialog {
 
 // === Update Logic ===
 
-pub(super) fn update(
-    state: &mut SecretManager,
-    msg: SecretsMsg,
-) -> color_eyre::Result<UpdateResult> {
+// Flat message dispatcher — splitting reduces readability
+#[allow(clippy::too_many_lines)]
+pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> color_eyre::Result<ServiceMsg> {
     let resolver = state.get_resolver();
 
     match msg {
         SecretsMsg::Load => {
             if let Some(secrets) = state.get_cached_secrets() {
                 state.push_view(SecretListScreen::new(secrets, resolver));
-                return Ok(UpdateResult::Idle);
+                return Ok(ServiceMsg::Idle);
             }
 
             state.display_loading_spinner("Loading secrets...");
@@ -717,12 +730,12 @@ pub(super) fn update(
             state.hide_loading_spinner();
             state.cache_secrets(&secrets);
             state.push_view(SecretListScreen::new(secrets, resolver));
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::StartCreation => {
             state.display_overlay(CreateSecretWizard::new());
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::Create { name, payload } => {
@@ -741,12 +754,12 @@ pub(super) fn update(
         SecretsMsg::Created(_secret) => {
             state.invalidate_secrets_cache();
             state.queue(SecretsMsg::Load.into());
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::ConfirmDelete(secret) => {
             state.display_overlay(DeleteSecretDialog::new(secret, resolver));
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::Delete(secret) => {
@@ -765,12 +778,12 @@ pub(super) fn update(
             state.invalidate_secrets_cache();
             state.pop_to_root();
             state.queue(SecretsMsg::Load.into());
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::ViewVersions(secret) => {
             state.queue(VersionsMsg::Load(secret).into());
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::ViewPayload(secret) => {
@@ -781,12 +794,12 @@ pub(super) fn update(
                 }
                 .into(),
             );
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::ViewLabels(secret) => {
             state.push_view(LabelsScreen::new(secret, resolver));
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::UpdateLabels { secret, labels } => {
@@ -806,7 +819,7 @@ pub(super) fn update(
             state.invalidate_secrets_cache();
             state.pop_view();
             state.push_view(LabelsScreen::new(secret, resolver));
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::ViewIamPolicy(secret) => {
@@ -823,7 +836,7 @@ pub(super) fn update(
         SecretsMsg::IamPolicyLoaded { secret, policy } => {
             state.hide_loading_spinner();
             state.push_view(IamPolicyScreen::new(secret, policy, resolver));
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::ViewReplicationInfo(secret) => {
@@ -843,7 +856,7 @@ pub(super) fn update(
         } => {
             state.hide_loading_spinner();
             state.push_view(ReplicationScreen::new(secret, replication, resolver));
-            Ok(UpdateResult::Idle)
+            Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::CopyPayload(secret) => Ok(LoadPayloadCmd {
@@ -854,8 +867,8 @@ pub(super) fn update(
         .into()),
 
         SecretsMsg::PayloadLoaded { data, secret_name } => {
-            let desc = format!("payload for '{}'", secret_name);
-            Ok(CopyToClipboardCmd::new(data, desc, state.get_cmd_env()).into())
+            let desc = format!("payload for '{secret_name}'");
+            Ok(CopyToClipboardCmd::new(data, desc).into())
         }
     }
 }
@@ -868,21 +881,21 @@ fn format_labels(labels: &HashMap<String, String>, query: &str) -> String {
     }
 
     // Find the best matching label if there's a query
-    let best_label = if !query.is_empty() {
+    let best_label = if query.is_empty() {
+        labels.iter().next()
+    } else {
         let matcher = Matcher::new();
         labels
             .iter()
-            .find(|(key, value)| matcher.matches(format!("{}:{}", key, value).as_str(), query))
+            .find(|(key, value)| matcher.matches(format!("{key}:{value}").as_str(), query))
             .or_else(|| labels.iter().next())
-    } else {
-        labels.iter().next()
     };
 
     if let Some((key, value)) = best_label {
         let label = if value.is_empty() {
             key.clone()
         } else {
-            format!("{}:{}", key, value)
+            format!("{key}:{value}")
         };
 
         // Truncate if too long
@@ -916,7 +929,7 @@ impl Command for FetchSecretsCmd {
         "Loading secrets".to_string()
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
         let secrets = self.client.list_secrets().await?;
         self.tx.send(SecretsMsg::Loaded(secrets).into())?;
         Ok(())
@@ -936,7 +949,7 @@ impl Command for CreateSecretCmd {
         format!("Creating '{}'", self.name)
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
         let secret = if let Some(payload) = self.payload {
             self.client
                 .create_secret_with_payload(&self.name, payload.as_bytes())
@@ -961,7 +974,7 @@ impl Command for DeleteSecretCmd {
         format!("Deleting '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
         self.client.delete_secret(&self.secret.name).await?;
         self.tx.send(SecretsMsg::Deleted(self.secret.name).into())?;
         Ok(())
@@ -981,7 +994,7 @@ impl Command for UpdateLabelsCmd {
         format!("Updating labels on '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
         let secret = self
             .client
             .update_labels(&self.secret.name, self.labels)
@@ -1003,7 +1016,7 @@ impl Command for FetchIamPolicyCmd {
         format!("Loading IAM for '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
         let policy = self.client.get_iam_policy(&self.secret.name).await?;
         self.tx.send(
             SecretsMsg::IamPolicyLoaded {
@@ -1028,7 +1041,7 @@ impl Command for FetchSecretMetadataCmd {
         format!("Loading metadata for '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
         let secret = self.client.get_secret(&self.secret.name).await?;
         let replication = secret.replication.clone();
         self.tx.send(
@@ -1054,7 +1067,7 @@ impl Command for LoadPayloadCmd {
         format!("Loading payload for '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
         let payload = self.client.access_latest_version(&self.secret.name).await?;
         self.tx.send(
             SecretsMsg::PayloadLoaded {

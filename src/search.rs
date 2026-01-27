@@ -51,6 +51,7 @@ impl Matcher {
     ///
     /// Returns `Some(score)` if the pattern matches, where higher scores
     /// indicate better matches. Returns `None` if there's no match.
+    #[allow(dead_code)]
     pub fn score(&self, text: &str, pattern: &str) -> Option<i64> {
         // Convert pattern to lowercase for case-insensitive matching
         let pattern_lower = pattern.to_lowercase();
@@ -58,6 +59,7 @@ impl Matcher {
     }
 
     /// Check if any of the provided texts match the pattern.
+    #[allow(dead_code)]
     pub fn matches_any<'a>(&self, texts: impl IntoIterator<Item = &'a str>, pattern: &str) -> bool {
         texts.into_iter().any(|text| self.matches(text, pattern))
     }
@@ -91,10 +93,10 @@ mod tests {
     fn test_matches_any() {
         let matcher = Matcher::new();
 
-        let texts = vec!["apple", "banana", "cherry"];
-        assert!(matcher.matches_any(texts.iter().map(|s| *s), "ban"));
-        assert!(matcher.matches_any(texts.iter().map(|s| *s), "cher"));
-        assert!(!matcher.matches_any(texts.iter().map(|s| *s), "xyz"));
+        let texts = ["apple", "banana", "cherry"];
+        assert!(matcher.matches_any(texts.iter().copied(), "ban"));
+        assert!(matcher.matches_any(texts.iter().copied(), "cher"));
+        assert!(!matcher.matches_any(texts.iter().copied(), "xyz"));
     }
 
     #[test]
