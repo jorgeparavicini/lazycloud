@@ -76,7 +76,7 @@ impl StatusBar {
         self.render_keybindings(frame, chunks[1], theme, local_keybindings);
 
         // === Right: Logo ===
-        self.render_logo(frame, chunks[2], theme);
+        Self::render_logo(frame, chunks[2], theme);
     }
 
     fn render_status_info(&self, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -176,7 +176,7 @@ impl StatusBar {
         }
     }
 
-    fn render_logo(&self, frame: &mut Frame, area: Rect, theme: &Theme) {
+    fn render_logo(frame: &mut Frame, area: Rect, theme: &Theme) {
         let logo_lines: Vec<Line> = LOGO
             .iter()
             .map(|line| {

@@ -16,7 +16,7 @@ pub enum Provider {
 
 impl Provider {
     /// Human-readable display name for the provider.
-    pub const fn display_name(&self) -> &'static str {
+    pub const fn display_name(self) -> &'static str {
         match self {
             Self::Aws => "AWS",
             Self::Azure => "Azure",
@@ -25,7 +25,7 @@ impl Provider {
     }
 
     /// Short lowercase identifier for the provider.
-    pub const fn id(&self) -> &'static str {
+    pub const fn id(self) -> &'static str {
         match self {
             Self::Aws => "aws",
             Self::Azure => "azure",

@@ -109,10 +109,7 @@ impl Screen for PayloadScreen {
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        let version = match &self.version {
-            Some(v) => v.version_id.as_str(),
-            None => "latest",
-        };
+        let version = self.version.as_ref().map_or("latest", |v| v.version_id.as_str());
         let title = format!(" {} - v{} ", self.secret.name, version);
 
         let p = Paragraph::new(self.payload.data.as_str())
@@ -149,11 +146,11 @@ impl Screen for PayloadScreen {
 pub(super) fn update(
     state: &mut SecretManager,
     msg: PayloadMsg,
-) -> color_eyre::Result<ServiceMsg> {
+) -> Result<ServiceMsg> {
     match msg {
         PayloadMsg::Load { secret, version } => {
             // Use cached payload if available
-            if let Some(payload) = state.get_cached_payload(&secret, &version) {
+            if let Some(payload) = state.get_cached_payload(&secret, version.as_ref()) {
                 state.push_view(PayloadScreen::new(
                     secret,
                     version,
@@ -188,7 +185,7 @@ pub(super) fn update(
             payload,
         } => {
             state.hide_loading_spinner();
-            state.cache_payload(&secret, &version, payload.clone());
+            state.cache_payload(&secret, version.as_ref(), payload.clone());
             state.push_view(PayloadScreen::new(
                 secret,
                 version,

@@ -697,6 +697,8 @@ impl Modal for DeleteSecretDialog {
 
 // === Update Logic ===
 
+// Flat message dispatcher — splitting reduces readability
+#[allow(clippy::too_many_lines)]
 pub(super) fn update(
     state: &mut SecretManager,
     msg: SecretsMsg,

@@ -94,9 +94,9 @@ mod tests {
         let matcher = Matcher::new();
 
         let texts = ["apple", "banana", "cherry"];
-        assert!(matcher.matches_any(texts.iter().map(|s| *s), "ban"));
-        assert!(matcher.matches_any(texts.iter().map(|s| *s), "cher"));
-        assert!(!matcher.matches_any(texts.iter().map(|s| *s), "xyz"));
+        assert!(matcher.matches_any(texts.iter().copied(), "ban"));
+        assert!(matcher.matches_any(texts.iter().copied(), "cher"));
+        assert!(!matcher.matches_any(texts.iter().copied(), "xyz"));
     }
 
     #[test]

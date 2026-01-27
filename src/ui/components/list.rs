@@ -100,10 +100,7 @@ impl<T: ListRow + Clone> Component for List<T> {
         }
         if self.resolver.matches_nav(&key, NavAction::PageUp) {
             let step = 5;
-            let new_index = match self.state.selected() {
-                Some(i) => i.saturating_sub(step),
-                None => 0,
-            };
+            let new_index = self.state.selected().map_or(0, |i| i.saturating_sub(step));
             self.state.select(Some(new_index));
             return Ok(self.get_change_event(before));
         }

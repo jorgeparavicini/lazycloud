@@ -45,7 +45,7 @@ impl SecretManagerClient {
         let mut secrets = Vec::new();
         for secret in response.secrets {
             if let Some(name) = secret.name.split('/').next_back() {
-                let replication = parse_replication(&secret.replication);
+                let replication = parse_replication(secret.replication.as_ref());
                 let expire_time = secret
                     .expire_time()
                     .as_ref()
@@ -163,7 +163,7 @@ impl SecretManagerClient {
 
         Ok(Secret {
             name: secret_id.to_string(),
-            replication: parse_replication(&response.replication),
+            replication: parse_replication(response.replication.as_ref()),
             created_at: response
                 .create_time
                 .as_ref()
@@ -338,7 +338,7 @@ impl SecretManagerClient {
 
         Ok(Secret {
             name: secret_id.to_string(),
-            replication: parse_replication(&response.replication),
+            replication: parse_replication(response.replication.as_ref()),
             created_at: response
                 .create_time
                 .as_ref()
@@ -380,7 +380,7 @@ impl SecretManagerClient {
 
         Ok(Secret {
             name: secret_id.to_string(),
-            replication: parse_replication(&response.replication),
+            replication: parse_replication(response.replication.as_ref()),
             created_at: response
                 .create_time
                 .as_ref()
@@ -388,7 +388,7 @@ impl SecretManagerClient {
             expire_time: response
                 .expire_time()
                 .map(|t| format_timestamp(t.seconds())),
-            labels: response.labels.clone(),
+            labels: response.labels,
         })
     }
 }
@@ -399,7 +399,7 @@ fn format_timestamp(seconds: i64) -> String {
     DateTime::<Utc>::from_timestamp(seconds, 0).map_or_else(|| "Unknown".to_string(), |dt| dt.format("%Y-%m-%d %H:%M").to_string())
 }
 
-fn parse_replication(replication: &Option<model::Replication>) -> ReplicationConfig {
+fn parse_replication(replication: Option<&model::Replication>) -> ReplicationConfig {
     let Some(replication) = replication else {
         return ReplicationConfig::Automatic;
     };

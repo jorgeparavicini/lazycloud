@@ -98,7 +98,7 @@ impl ServiceSelectorView {
         resolver: Arc<KeyResolver>,
     ) -> Self {
         let services: Vec<ServiceItem> = registry
-            .available_services(&context)
+            .available_services(context)
             .into_iter()
             .map(|provider| ServiceItem { provider })
             .collect();

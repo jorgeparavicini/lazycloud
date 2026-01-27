@@ -89,26 +89,26 @@ impl Theme {
     }
 
     /// Catppuccin Mocha theme (dark).
-    #[must_use] 
-    pub fn catppuccin_mocha() -> Self {
+    #[must_use]
+    pub const fn catppuccin_mocha() -> Self {
         Self::from_catppuccin(&PALETTE.mocha)
     }
 
     /// Catppuccin Latte theme (light).
-    #[must_use] 
-    pub fn catppuccin_latte() -> Self {
+    #[must_use]
+    pub const fn catppuccin_latte() -> Self {
         Self::from_catppuccin(&PALETTE.latte)
     }
 
     /// Catppuccin Frappé theme (dark).
-    #[must_use] 
-    pub fn catppuccin_frappe() -> Self {
+    #[must_use]
+    pub const fn catppuccin_frappe() -> Self {
         Self::from_catppuccin(&PALETTE.frappe)
     }
 
     /// Catppuccin Macchiato theme (dark).
-    #[must_use] 
-    pub fn catppuccin_macchiato() -> Self {
+    #[must_use]
+    pub const fn catppuccin_macchiato() -> Self {
         Self::from_catppuccin(&PALETTE.macchiato)
     }
 

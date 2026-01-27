@@ -96,6 +96,7 @@ impl Component for ToastManager {
         let visible_toasts: Vec<_> = self.toasts.iter().collect();
 
         for (i, toast) in visible_toasts.iter().enumerate() {
+            #[allow(clippy::cast_possible_truncation)]
             let y_offset = (i as u16) * (toast_height + spacing);
             let y = area.y + area.height.saturating_sub(toast_height + y_offset + 1);
             let x = area.x + area.width.saturating_sub(toast_width + 2);

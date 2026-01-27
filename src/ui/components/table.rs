@@ -153,7 +153,7 @@ impl<T: TableRow + Clone> Table<T> {
         EventResult::Consumed
     }
 
-    fn handle_search_key(&mut self, key: KeyEvent) -> Result<EventResult<TableEvent<T>>> {
+    fn handle_search_key(&mut self, key: KeyEvent) -> EventResult<TableEvent<T>> {
         // Check for search exit key (Esc)
         if self.resolver.matches_search(&key, SearchAction::Exit) {
             // Exit search mode and clear filter
@@ -161,20 +161,20 @@ impl<T: TableRow + Clone> Table<T> {
             let had_query = !self.query.is_empty();
             self.query.clear();
             self.update_filter();
-            return Ok(if had_query {
+            return if had_query {
                 TableEvent::SearchChanged(String::new()).into()
             } else {
                 EventResult::Consumed
-            });
+            };
         }
 
         // Check for select (Enter) to exit search but keep filter
         if self.resolver.matches_nav(&key, NavAction::Select) {
             self.searching = false;
-            return Ok(EventResult::Consumed);
+            return EventResult::Consumed;
         }
 
-        Ok(match key.code {
+        match key.code {
             KeyCode::Backspace => {
                 self.query.pop();
                 self.update_filter();
@@ -187,28 +187,28 @@ impl<T: TableRow + Clone> Table<T> {
             }
             // Consume all other keys in search mode
             _ => EventResult::Consumed,
-        })
+        }
     }
 
-    fn handle_navigation_key(&mut self, key: KeyEvent) -> Result<EventResult<TableEvent<T>>> {
+    fn handle_navigation_key(&mut self, key: KeyEvent) -> EventResult<TableEvent<T>> {
         let before = self.state.selected();
 
         // Check navigation actions using resolver
         if self.resolver.matches_nav(&key, NavAction::Down) {
             self.select_next();
-            return Ok(self.get_change_event(before));
+            return self.get_change_event(before);
         }
         if self.resolver.matches_nav(&key, NavAction::Up) {
             self.select_previous();
-            return Ok(self.get_change_event(before));
+            return self.get_change_event(before);
         }
         if self.resolver.matches_nav(&key, NavAction::Home) {
             self.select_first();
-            return Ok(self.get_change_event(before));
+            return self.get_change_event(before);
         }
         if self.resolver.matches_nav(&key, NavAction::End) {
             self.select_last();
-            return Ok(self.get_change_event(before));
+            return self.get_change_event(before);
         }
         if self.resolver.matches_nav(&key, NavAction::PageDown) {
             let step = 10;
@@ -221,40 +221,37 @@ impl<T: TableRow + Clone> Table<T> {
             if !self.filtered_indices.is_empty() {
                 self.state.select(Some(new_index));
             }
-            return Ok(self.get_change_event(before));
+            return self.get_change_event(before);
         }
         if self.resolver.matches_nav(&key, NavAction::PageUp) {
             let step = 10;
-            let new_index = match self.state.selected() {
-                Some(i) => i.saturating_sub(step),
-                None => 0,
-            };
+            let new_index = self.state.selected().map_or(0, |i| i.saturating_sub(step));
             if !self.filtered_indices.is_empty() {
                 self.state.select(Some(new_index));
             }
-            return Ok(self.get_change_event(before));
+            return self.get_change_event(before);
         }
         if self.resolver.matches_nav(&key, NavAction::Select) {
             if let Some(selected) = self.state.selected() {
-                return Ok(self
+                return self
                     .filtered_indices
                     .get(selected)
-                    .map_or(EventResult::Ignored, |&idx| TableEvent::Activated(self.items[idx].clone()).into()));
+                    .map_or(EventResult::Ignored, |&idx| TableEvent::Activated(self.items[idx].clone()).into());
             }
-            return Ok(EventResult::Ignored);
+            return EventResult::Ignored;
         }
         if self.resolver.matches_search(&key, SearchAction::Toggle) {
             self.searching = true;
-            return Ok(EventResult::Consumed);
+            return EventResult::Consumed;
         }
         if self.resolver.matches_search(&key, SearchAction::Exit) && !self.query.is_empty() {
             // Clear filter when not searching
             self.query.clear();
             self.update_filter();
-            return Ok(EventResult::Consumed);
+            return EventResult::Consumed;
         }
 
-        Ok(EventResult::Ignored)
+        EventResult::Ignored
     }
 }
 
@@ -263,9 +260,9 @@ impl<T: TableRow + Clone> Component for Table<T> {
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         if self.searching {
-            self.handle_search_key(key)
+            Ok(self.handle_search_key(key))
         } else {
-            self.handle_navigation_key(key)
+            Ok(self.handle_navigation_key(key))
         }
     }
 

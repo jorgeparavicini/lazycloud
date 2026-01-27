@@ -137,14 +137,14 @@ impl App {
 
         match (&args.context, &args.service) {
             (Some(ctx_name), Some(svc_name)) => {
-                let context = self.find_context(&contexts, ctx_name)?;
+                let context = Self::find_context(&contexts, ctx_name)?;
                 let service_id = self.find_service(&context, svc_name)?;
-                self.start_service(context, service_id);
+                self.start_service(&context, &service_id);
             }
 
             (Some(ctx_name), None) => {
-                let context = self.find_context(&contexts, ctx_name)?;
-                self.go_to_service_selection(context);
+                let context = Self::find_context(&contexts, ctx_name)?;
+                self.go_to_service_selection(&context);
             }
 
             (None, Some(svc_name)) => {
@@ -152,11 +152,11 @@ impl App {
 
                 // Try last context if compatible
                 if let Some(ctx_name) = &self.config.last_context
-                    && let Ok(context) = self.find_context(&contexts, ctx_name)
+                    && let Ok(context) = Self::find_context(&contexts, ctx_name)
                     && context.provider() == provider
                 {
                     let service_id = self.find_service(&context, svc_name)?;
-                    self.start_service(context, service_id);
+                    self.start_service(&context, &service_id);
                     return Ok(());
                 }
 
@@ -179,7 +179,7 @@ impl App {
         Ok(())
     }
 
-    fn find_context(&self, contexts: &[CloudContext], name: &str) -> Result<CloudContext> {
+    fn find_context(contexts: &[CloudContext], name: &str) -> Result<CloudContext> {
         contexts
             .iter()
             .find(|c| c.name().eq_ignore_ascii_case(name))
@@ -220,11 +220,11 @@ impl App {
             .ok_or_else(|| eyre!("Unknown service: {}", name))
     }
 
-    fn start_service(&mut self, context: CloudContext, service_id: ServiceId) {
+    fn start_service(&mut self, context: &CloudContext, service_id: &ServiceId) {
         self.active_context = Some(context.clone());
         self.status_bar.set_active_context(context.clone());
-        if let Some(provider) = self.registry.get(&service_id) {
-            let service = provider.create_service(&context, self.resolver.clone());
+        if let Some(provider) = self.registry.get(service_id) {
+            let service = provider.create_service(context, self.resolver.clone());
             self.go_to_active_service(service);
         }
     }
@@ -236,6 +236,8 @@ impl App {
         ));
     }
 
+    // App is single-threaded; making dyn Service Send would cascade through the entire trait hierarchy
+    #[allow(clippy::future_not_send)]
     pub async fn run(&mut self) -> Result<()> {
         let mut tui = Tui::new(60.0, 4.0)?;
         tui.enter()?;
@@ -309,12 +311,12 @@ impl App {
     }
 
     /// Transition to service selection.
-    fn go_to_service_selection(&mut self, context: CloudContext) {
+    fn go_to_service_selection(&mut self, context: &CloudContext) {
         self.active_context = Some(context.clone());
         self.status_bar.set_active_context(context.clone());
         self.state = AppState::SelectingService(ServiceSelectorView::new(
             &self.registry,
-            &context,
+            context,
             self.resolver.clone(),
         ));
     }
@@ -346,7 +348,7 @@ impl App {
             }
             AppState::ActiveService(service) => {
                 service.destroy();
-                if let Some(ctx) = self.active_context.clone() {
+                if let Some(ref ctx) = self.active_context.clone() {
                     self.go_to_service_selection(ctx);
                 } else {
                     self.go_to_context_selection();
@@ -355,37 +357,92 @@ impl App {
         }
     }
 
+    fn open_help_overlay(&mut self) {
+        let local = match &self.state {
+            AppState::ActiveService(service) => service.keybindings(),
+            _ => vec![],
+        };
+        let local_title = match &self.state {
+            AppState::ActiveService(service) => service
+                .breadcrumbs()
+                .last()
+                .cloned()
+                .unwrap_or_else(|| "Current View".to_string()),
+            _ => "Navigation".to_string(),
+        };
+        self.popup = Some(ActivePopup::Help(HelpOverlay::with_sections(vec![
+            KeybindingSection::new(&local_title, local),
+            KeybindingSection::new("Global", self.status_bar.global_keybindings()),
+        ])));
+    }
+
+    fn handle_popup_event(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
+        let Some(ref mut popup) = self.popup else {
+            return Ok(());
+        };
+        match popup {
+            ActivePopup::Help(help) => {
+                if matches!(
+                    help.handle_key(key),
+                    Ok(EventResult::Event(HelpEvent::Close))
+                ) {
+                    self.msg_tx.send(AppMessage::ClosePopup)?;
+                }
+            }
+            ActivePopup::ThemeSelector(selector) => match selector.handle_key(key) {
+                Ok(EventResult::Event(ThemeEvent::Selected(theme_info))) => {
+                    self.msg_tx.send(AppMessage::SelectTheme(theme_info))?;
+                }
+                Ok(EventResult::Event(ThemeEvent::Cancelled)) => {
+                    self.msg_tx.send(AppMessage::ClosePopup)?;
+                }
+                _ => {}
+            },
+            ActivePopup::Error(dialog) => {
+                if matches!(
+                    dialog.handle_key(key),
+                    Ok(EventResult::Event(ErrorDialogEvent::Dismissed))
+                ) {
+                    self.msg_tx.send(AppMessage::ClosePopup)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_global_event(&self, event: &Event) -> Result<()> {
+        match event {
+            Event::Quit => self.msg_tx.send(AppMessage::Quit)?,
+            Event::Render => self.msg_tx.send(AppMessage::Render)?,
+            Event::Resize(width, height) => {
+                self.msg_tx.send(AppMessage::Resize(*width, *height))?;
+            }
+            Event::Key(key) => {
+                if self.resolver.matches_global(key, GlobalAction::Quit) {
+                    self.msg_tx.send(AppMessage::Quit)?;
+                } else if self.resolver.matches_global(key, GlobalAction::Help) {
+                    self.msg_tx.send(AppMessage::DisplayHelp)?;
+                } else if self.resolver.matches_global(key, GlobalAction::Theme) {
+                    self.msg_tx.send(AppMessage::DisplayThemeSelector)?;
+                } else if self
+                    .resolver
+                    .matches_global(key, GlobalAction::CommandsToggle)
+                {
+                    self.msg_tx.send(AppMessage::ToggleCommandStatus)?;
+                } else if self.resolver.matches_global(key, GlobalAction::Back) {
+                    self.msg_tx.send(AppMessage::GoBack)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     fn handle_event(&mut self, event: &Event) -> Result<()> {
         // Popup intercepts all key events when visible
-        if let Some(ref mut popup) = self.popup
-            && let Event::Key(key) = event
-        {
-            match popup {
-                ActivePopup::Help(help) => {
-                    if matches!(
-                        help.handle_key(*key),
-                        Ok(EventResult::Event(HelpEvent::Close))
-                    ) {
-                        self.msg_tx.send(AppMessage::ClosePopup)?;
-                    }
-                }
-                ActivePopup::ThemeSelector(selector) => match selector.handle_key(*key) {
-                    Ok(EventResult::Event(ThemeEvent::Selected(theme_info))) => {
-                        self.msg_tx.send(AppMessage::SelectTheme(theme_info))?;
-                    }
-                    Ok(EventResult::Event(ThemeEvent::Cancelled)) => {
-                        self.msg_tx.send(AppMessage::ClosePopup)?;
-                    }
-                    _ => {}
-                },
-                ActivePopup::Error(dialog) => {
-                    if matches!(
-                        dialog.handle_key(*key),
-                        Ok(EventResult::Event(ErrorDialogEvent::Dismissed))
-                    ) {
-                        self.msg_tx.send(AppMessage::ClosePopup)?;
-                    }
-                }
+        if self.popup.is_some() {
+            if let Event::Key(key) = event {
+                self.handle_popup_event(*key)?;
             }
             return Ok(());
         }
@@ -434,7 +491,6 @@ impl App {
                 if let Event::Key(key) = event {
                     let result = service.handle_key(*key);
                     if result.is_consumed() {
-                        // Input was consumed, process any queued messages
                         let msg = service.update();
                         self.process_update_result(msg);
                     }
@@ -445,32 +501,8 @@ impl App {
             }
         };
 
-        // Handle global events if not consumed
         if !handled {
-            match event {
-                Event::Quit => self.msg_tx.send(AppMessage::Quit)?,
-                Event::Render => self.msg_tx.send(AppMessage::Render)?,
-                Event::Resize(width, height) => {
-                    self.msg_tx.send(AppMessage::Resize(*width, *height))?;
-                }
-                Event::Key(key) => {
-                    if self.resolver.matches_global(key, GlobalAction::Quit) {
-                        self.msg_tx.send(AppMessage::Quit)?;
-                    } else if self.resolver.matches_global(key, GlobalAction::Help) {
-                        self.msg_tx.send(AppMessage::DisplayHelp)?;
-                    } else if self.resolver.matches_global(key, GlobalAction::Theme) {
-                        self.msg_tx.send(AppMessage::DisplayThemeSelector)?;
-                    } else if self
-                        .resolver
-                        .matches_global(key, GlobalAction::CommandsToggle)
-                    {
-                        self.msg_tx.send(AppMessage::ToggleCommandStatus)?;
-                    } else if self.resolver.matches_global(key, GlobalAction::Back) {
-                        self.msg_tx.send(AppMessage::GoBack)?;
-                    }
-                }
-                _ => {}
-            }
+            self.handle_global_event(event)?;
         }
 
         Ok(())
@@ -504,24 +536,7 @@ impl App {
                     self.resolver.clone(),
                 )));
             }
-            AppMessage::DisplayHelp => {
-                let local = match &self.state {
-                    AppState::ActiveService(service) => service.keybindings(),
-                    _ => vec![],
-                };
-                let local_title = match &self.state {
-                    AppState::ActiveService(service) => service
-                        .breadcrumbs()
-                        .last()
-                        .cloned()
-                        .unwrap_or_else(|| "Current View".to_string()),
-                    _ => "Navigation".to_string(),
-                };
-                self.popup = Some(ActivePopup::Help(HelpOverlay::with_sections(vec![
-                    KeybindingSection::new(&local_title, local),
-                    KeybindingSection::new("Global", self.status_bar.global_keybindings()),
-                ])));
-            }
+            AppMessage::DisplayHelp => self.open_help_overlay(),
             AppMessage::DisplayThemeSelector => {
                 self.popup = Some(ActivePopup::ThemeSelector(ThemeSelectorView::new(
                     self.resolver.clone(),
@@ -567,11 +582,11 @@ impl App {
                 if let Some(svc_name) = self.pending_service.take()
                     && let Ok(service_id) = self.find_service(&context, &svc_name)
                 {
-                    self.start_service(context, service_id);
+                    self.start_service(&context, &service_id);
                     return Ok(());
                 }
 
-                self.go_to_service_selection(context);
+                self.go_to_service_selection(&context);
             }
             AppMessage::SelectService(service_id) => {
                 if let Some(ctx) = &self.active_context

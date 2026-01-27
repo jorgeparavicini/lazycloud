@@ -58,7 +58,7 @@ impl ServiceProvider for SecretManagerProvider {
     }
 
     fn icon(&self) -> Option<&'static str> {
-        Some("🔐")
+        None
     }
 
     fn create_service(&self, ctx: &CloudContext, resolver: Arc<KeyResolver>) -> Box<dyn Service> {
@@ -204,7 +204,7 @@ impl SecretManager {
     pub(super) fn get_cached_payload(
         &self,
         secret: &Secret,
-        version: &Option<SecretVersion>,
+        version: Option<&SecretVersion>,
     ) -> Option<SecretPayload> {
         let cache_key = Self::payload_cache_key(secret, version);
         self.cached_payloads.get(&cache_key).cloned()
@@ -213,16 +213,15 @@ impl SecretManager {
     pub(super) fn cache_payload(
         &mut self,
         secret: &Secret,
-        version: &Option<SecretVersion>,
+        version: Option<&SecretVersion>,
         payload: SecretPayload,
     ) {
         let cache_key = Self::payload_cache_key(secret, version);
         self.cached_payloads.insert(cache_key, payload);
     }
 
-    fn payload_cache_key(secret: &Secret, version: &Option<SecretVersion>) -> String {
+    fn payload_cache_key(secret: &Secret, version: Option<&SecretVersion>) -> String {
         let version_id = version
-            .as_ref()
             .map_or("latest", |v| v.version_id.as_str());
         format!("{}/{}", secret.name, version_id)
     }
@@ -366,7 +365,7 @@ impl Service for SecretManager {
 
     fn keybindings(&self) -> Vec<Keybinding> {
         self.current_screen()
-            .map(|s| s.keybindings())
+            .map(Screen::keybindings)
             .unwrap_or_default()
     }
 }

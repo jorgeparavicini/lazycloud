@@ -121,6 +121,7 @@ impl CommandPanel {
             )
         };
 
+        #[allow(clippy::cast_possible_truncation)]
         let width = status.len() as u16 + 3; // +3 for spinner and spacing
 
         // Position on right side of area
@@ -140,6 +141,116 @@ impl CommandPanel {
         frame.render_widget(text, text_area);
 
         width
+    }
+
+    fn render_running_section(&self, theme: &Theme, inner_width: usize) -> Vec<Line<'static>> {
+        let mut lines = Vec::new();
+        if self.running.is_empty() {
+            return lines;
+        }
+
+        let running_prefix_len = 7; // "  ▰▰▱ "
+        let running_time_col = 10;
+
+        lines.push(Line::from(vec![
+            Span::styled("⚡ ", Style::default().fg(theme.yellow())),
+            Span::styled(
+                "RUNNING",
+                Style::default()
+                    .fg(theme.yellow())
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]));
+
+        let name_max_len = inner_width
+            .saturating_sub(running_prefix_len)
+            .saturating_sub(running_time_col);
+
+        for cmd in &self.running {
+            let elapsed = cmd.started_at.elapsed();
+            let time_str = format_duration(elapsed);
+
+            let progress_char = match elapsed.as_secs() % 4 {
+                0 => "▰▱▱",
+                1 => "▰▰▱",
+                2 => "▰▰▰",
+                _ => "▱▰▰",
+            };
+
+            let name = truncate_with_ellipsis(&cmd.name, name_max_len);
+            let padding = name_max_len.saturating_sub(display_width(&name));
+            let time_display = format!("{time_str:>running_time_col$}");
+
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(progress_char, Style::default().fg(theme.peach())),
+                Span::raw(" "),
+                Span::styled(name, Style::default().fg(theme.text())),
+                Span::raw(" ".repeat(padding)),
+                Span::styled(
+                    time_display,
+                    Style::default()
+                        .fg(theme.overlay1())
+                        .add_modifier(Modifier::DIM),
+                ),
+            ]));
+        }
+        lines
+    }
+
+    fn render_history_section(&self, theme: &Theme, inner_width: usize) -> Vec<Line<'static>> {
+        let mut lines = Vec::new();
+        if self.history.is_empty() {
+            return lines;
+        }
+
+        let history_prefix_len = 4; // "  ✓ "
+        let history_time_col = 18;
+
+        lines.push(Line::from(vec![
+            Span::styled("📋 ", Style::default().fg(theme.subtext0())),
+            Span::styled(
+                "RECENT",
+                Style::default()
+                    .fg(theme.subtext0())
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]));
+
+        let name_max_len = inner_width
+            .saturating_sub(history_prefix_len)
+            .saturating_sub(history_time_col);
+
+        for cmd in self.history.iter().take(5) {
+            let (icon, color) = if cmd.success {
+                ("✓", theme.green())
+            } else {
+                ("✗", theme.red())
+            };
+
+            let duration_str = format_duration(cmd.duration);
+            let age = format_age(cmd.completed_at.elapsed());
+            let time_info = format!("{duration_str} · {age}");
+
+            let name = truncate_with_ellipsis(&cmd.name, name_max_len);
+            let padding = name_max_len.saturating_sub(display_width(&name));
+            let time_display = format!("{time_info:>history_time_col$}");
+
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(icon, Style::default().fg(color)),
+                Span::raw(" "),
+                Span::styled(name, Style::default().fg(theme.subtext1())),
+                Span::raw(" ".repeat(padding)),
+                Span::styled(
+                    time_display,
+                    Style::default()
+                        .fg(theme.overlay0())
+                        .add_modifier(Modifier::DIM),
+                ),
+            ]));
+        }
+        lines
     }
 
     /// Render expanded overlay panel with full details.
@@ -168,6 +279,7 @@ impl CommandPanel {
         }
 
         let width = MIN_WIDTH.min(area.width.saturating_sub(4));
+        #[allow(clippy::cast_possible_truncation)]
         let height = (content_lines as u16 + 2).min(15); // +2 for borders
 
         // Position in bottom right of main area
@@ -203,116 +315,16 @@ impl CommandPanel {
         let inner = block.inner(widget_area);
         frame.render_widget(block, widget_area);
 
-        // Layout: "  ▰▰▱ <name padded/truncated>  <time right-aligned>"
-        // Running: prefix "  ▰▰▱ " = 7 chars, time col = 8 chars (e.g., "  1.2s  ")
-        // History: prefix "  ✓ " = 4 chars, time col = 18 chars (e.g., "  1.2s · just now")
         let inner_width = inner.width as usize;
-        let running_prefix_len = 7; // "  ▰▰▱ "
-        let running_time_col = 10;
-        let history_prefix_len = 4; // "  ✓ "
-        let history_time_col = 18;
-
         let mut lines: Vec<Line> = Vec::new();
 
-        // Running commands section
-        if !self.running.is_empty() {
-            lines.push(Line::from(vec![
-                Span::styled("⚡ ", Style::default().fg(theme.yellow())),
-                Span::styled(
-                    "RUNNING",
-                    Style::default()
-                        .fg(theme.yellow())
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ]));
+        lines.extend(self.render_running_section(theme, inner_width));
 
-            let name_max_len = inner_width
-                .saturating_sub(running_prefix_len)
-                .saturating_sub(running_time_col);
-
-            for cmd in &self.running {
-                let elapsed = cmd.started_at.elapsed();
-                let time_str = format_duration(elapsed);
-
-                // Create a simple progress indicator based on time
-                let progress_char = match elapsed.as_secs() % 4 {
-                    0 => "▰▱▱",
-                    1 => "▰▰▱",
-                    2 => "▰▰▰",
-                    _ => "▱▰▰",
-                };
-
-                let name = truncate_with_ellipsis(&cmd.name, name_max_len);
-                let padding = name_max_len.saturating_sub(display_width(&name));
-                let time_display = format!("{time_str:>running_time_col$}");
-
-                lines.push(Line::from(vec![
-                    Span::raw("  "),
-                    Span::styled(progress_char, Style::default().fg(theme.peach())),
-                    Span::raw(" "),
-                    Span::styled(name, Style::default().fg(theme.text())),
-                    Span::raw(" ".repeat(padding)),
-                    Span::styled(
-                        time_display,
-                        Style::default()
-                            .fg(theme.overlay1())
-                            .add_modifier(Modifier::DIM),
-                    ),
-                ]));
-            }
-        }
-
-        // Separator
         if !self.running.is_empty() && !self.history.is_empty() {
             lines.push(Line::raw(""));
         }
 
-        // History section
-        if !self.history.is_empty() {
-            lines.push(Line::from(vec![
-                Span::styled("📋 ", Style::default().fg(theme.subtext0())),
-                Span::styled(
-                    "RECENT",
-                    Style::default()
-                        .fg(theme.subtext0())
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ]));
-
-            let name_max_len = inner_width
-                .saturating_sub(history_prefix_len)
-                .saturating_sub(history_time_col);
-
-            for cmd in self.history.iter().take(5) {
-                let (icon, color) = if cmd.success {
-                    ("✓", theme.green())
-                } else {
-                    ("✗", theme.red())
-                };
-
-                let duration_str = format_duration(cmd.duration);
-                let age = format_age(cmd.completed_at.elapsed());
-                let time_info = format!("{duration_str} · {age}");
-
-                let name = truncate_with_ellipsis(&cmd.name, name_max_len);
-                let padding = name_max_len.saturating_sub(display_width(&name));
-                let time_display = format!("{time_info:>history_time_col$}");
-
-                lines.push(Line::from(vec![
-                    Span::raw("  "),
-                    Span::styled(icon, Style::default().fg(color)),
-                    Span::raw(" "),
-                    Span::styled(name, Style::default().fg(theme.subtext1())),
-                    Span::raw(" ".repeat(padding)),
-                    Span::styled(
-                        time_display,
-                        Style::default()
-                            .fg(theme.overlay0())
-                            .add_modifier(Modifier::DIM),
-                    ),
-                ]));
-            }
-        }
+        lines.extend(self.render_history_section(theme, inner_width));
 
         let paragraph = Paragraph::new(lines);
         frame.render_widget(paragraph, inner);
