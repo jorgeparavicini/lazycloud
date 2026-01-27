@@ -81,19 +81,22 @@ impl CommandPanel {
         }
     }
 
-    pub fn toggle_expanded(&mut self) {
+    pub const fn toggle_expanded(&mut self) {
         self.expanded = !self.expanded;
     }
 
-    pub fn is_expanded(&self) -> bool {
+    #[allow(dead_code)]
+    pub const fn is_expanded(&self) -> bool {
         self.expanded
     }
 
-    pub fn running_count(&self) -> usize {
+    #[allow(dead_code)]
+    pub const fn running_count(&self) -> usize {
         self.running.len()
     }
 
-    pub fn has_running(&self) -> bool {
+    #[allow(dead_code)]
+    pub const fn has_running(&self) -> bool {
         !self.running.is_empty()
     }
 
@@ -140,7 +143,7 @@ impl CommandPanel {
     }
 
     /// Render expanded overlay panel with full details.
-    pub fn render_expanded_panel(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+    pub fn render_expanded_panel(&self, frame: &mut Frame, area: Rect, theme: &Theme) {
         if !self.expanded {
             return;
         }
@@ -157,11 +160,7 @@ impl CommandPanel {
         } else {
             history_to_show + 1 // +1 for header
         };
-        let separator = if running_lines > 0 && history_lines > 0 {
-            1
-        } else {
-            0
-        };
+        let separator = usize::from(running_lines > 0 && history_lines > 0);
         let content_lines = running_lines + history_lines + separator;
 
         if content_lines == 0 {
@@ -245,7 +244,7 @@ impl CommandPanel {
 
                 let name = truncate_with_ellipsis(&cmd.name, name_max_len);
                 let padding = name_max_len.saturating_sub(display_width(&name));
-                let time_display = format!("{:>width$}", time_str, width = running_time_col);
+                let time_display = format!("{time_str:>running_time_col$}");
 
                 lines.push(Line::from(vec![
                     Span::raw("  "),
@@ -293,11 +292,11 @@ impl CommandPanel {
 
                 let duration_str = format_duration(cmd.duration);
                 let age = format_age(cmd.completed_at.elapsed());
-                let time_info = format!("{} · {}", duration_str, age);
+                let time_info = format!("{duration_str} · {age}");
 
                 let name = truncate_with_ellipsis(&cmd.name, name_max_len);
                 let padding = name_max_len.saturating_sub(display_width(&name));
-                let time_display = format!("{:>width$}", time_info, width = history_time_col);
+                let time_display = format!("{time_info:>history_time_col$}");
 
                 lines.push(Line::from(vec![
                     Span::raw("  "),
@@ -331,7 +330,7 @@ fn truncate_with_ellipsis(s: &str, max_len: usize) -> String {
         "…".to_string()
     } else {
         let truncated: String = chars[..max_len - 1].iter().collect();
-        format!("{}…", truncated)
+        format!("{truncated}…")
     }
 }
 
@@ -344,12 +343,12 @@ fn format_duration(d: Duration) -> String {
     if secs < 1.0 {
         format!("{:.0}ms", d.as_millis())
     } else if secs < 10.0 {
-        format!("{:.1}s", secs)
+        format!("{secs:.1}s")
     } else if secs < 60.0 {
-        format!("{:.0}s", secs)
+        format!("{secs:.0}s")
     } else {
         let mins = secs / 60.0;
-        format!("{:.1}m", mins)
+        format!("{mins:.1}m")
     }
 }
 
@@ -358,7 +357,7 @@ fn format_age(d: Duration) -> String {
     if secs < 5 {
         "just now".to_string()
     } else if secs < 60 {
-        format!("{}s ago", secs)
+        format!("{secs}s ago")
     } else if secs < 3600 {
         format!("{}m ago", secs / 60)
     } else {

@@ -1,5 +1,8 @@
-use std::sync::Arc;
+use crate::Theme;
 use crate::commands::Command;
+use crate::config::KeyResolver;
+use crate::context::CloudContext;
+use crate::registry::{ServiceId, ServiceProvider, ServiceRegistry};
 use crate::ui::{Component, EventResult, Keybinding, List, ListEvent, ListRow};
 use color_eyre::Result;
 use crossterm::event::KeyEvent;
@@ -7,10 +10,7 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::prelude::Style;
 use ratatui::widgets::ListItem;
-use crate::config::KeyResolver;
-use crate::context::CloudContext;
-use crate::registry::{ServiceId, ServiceProvider, ServiceRegistry};
-use crate::Theme;
+use std::sync::Arc;
 
 pub enum ServiceMsg {
     /// No action needed
@@ -23,7 +23,7 @@ pub enum ServiceMsg {
 
 impl<T: Command> From<T> for ServiceMsg {
     fn from(value: T) -> Self {
-        ServiceMsg::Run(vec![Box::new(value)])
+        Self::Run(vec![Box::new(value)])
     }
 }
 
@@ -53,6 +53,10 @@ pub trait Service {
     fn handle_key(&mut self, key: KeyEvent) -> EventResult<()>;
 
     /// Process all queued messages and return the result.
+    ///
+    /// # Errors
+    /// Returns an error if message processing fails.
+    /// In this case, the App will display the error and the service might be in an invalid state.
     fn update(&mut self) -> Result<ServiceMsg>;
 
     /// Render the service to the frame.
@@ -67,7 +71,6 @@ pub trait Service {
     }
 }
 
-
 #[derive(Clone)]
 struct ServiceItem {
     provider: Arc<dyn ServiceProvider>,
@@ -75,11 +78,10 @@ struct ServiceItem {
 
 impl ListRow for ServiceItem {
     fn render_row(&self, theme: &Theme) -> ListItem<'static> {
-        let text = if let Some(icon) = self.provider.icon() {
-            format!("{} {}", icon, self.provider.display_name())
-        } else {
-            self.provider.display_name().to_string()
-        };
+        let text = self.provider.icon().map_or_else(
+            || self.provider.display_name().to_string(),
+            |icon| format!("{} {}", icon, self.provider.display_name()),
+        );
         ListItem::new(text).style(Style::default().fg(theme.text()))
     }
 }
@@ -89,9 +91,10 @@ pub struct ServiceSelectorView {
 }
 
 impl ServiceSelectorView {
+    #[must_use]
     pub fn new(
-        registry: Arc<ServiceRegistry>,
-        context: CloudContext,
+        registry: &Arc<ServiceRegistry>,
+        context: &CloudContext,
         resolver: Arc<KeyResolver>,
     ) -> Self {
         let services: Vec<ServiceItem> = registry

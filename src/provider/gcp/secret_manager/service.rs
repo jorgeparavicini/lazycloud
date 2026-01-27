@@ -81,7 +81,7 @@ pub struct SecretManager {
     cached_secrets: Option<Vec<Secret>>,
     /// Key: secret name
     cached_versions: HashMap<String, Vec<SecretVersion>>,
-    /// Key: "secret_name/version_id"
+    /// Key: "`secret_name/version_id`"
     cached_payloads: HashMap<String, SecretPayload>,
     resolver: Arc<KeyResolver>,
 }
@@ -163,11 +163,11 @@ impl SecretManager {
 
     // === Loading spinner ===
 
-    pub(super) fn display_loading_spinner(&mut self, label: &'static str) {
+    pub(super) const fn display_loading_spinner(&mut self, label: &'static str) {
         self.loading = Some(label);
     }
 
-    pub(super) fn hide_loading_spinner(&mut self) {
+    pub(super) const fn hide_loading_spinner(&mut self) {
         self.loading = None;
     }
 
@@ -177,8 +177,8 @@ impl SecretManager {
         self.cached_secrets.clone()
     }
 
-    pub(super) fn cache_secrets(&mut self, secrets: &Vec<Secret>) {
-        self.cached_secrets = Some(secrets.clone());
+    pub(super) fn cache_secrets(&mut self, secrets: &[Secret]) {
+        self.cached_secrets = Some(secrets.to_vec());
     }
 
     pub(super) fn invalidate_secrets_cache(&mut self) {
@@ -223,15 +223,14 @@ impl SecretManager {
     fn payload_cache_key(secret: &Secret, version: &Option<SecretVersion>) -> String {
         let version_id = version
             .as_ref()
-            .map(|v| v.version_id.as_str())
-            .unwrap_or("latest");
+            .map_or("latest", |v| v.version_id.as_str());
         format!("{}/{}", secret.name, version_id)
     }
 
     // === Message processing ===
 
-    fn current_screen(&self) -> Option<&Box<dyn Screen<Output = SecretManagerMsg>>> {
-        self.screen_stack.last()
+    fn current_screen(&self) -> Option<&dyn Screen<Output = SecretManagerMsg>> {
+        self.screen_stack.last().map(|b| &**b)
     }
 
     fn current_screen_mut(&mut self) -> Option<&mut Box<dyn Screen<Output = SecretManagerMsg>>> {

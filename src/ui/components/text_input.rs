@@ -32,6 +32,7 @@ impl TextInput {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_value(mut self, value: impl Into<String>) -> Self {
         self.value = value.into();
         self.cursor = self.value.len();
@@ -43,7 +44,8 @@ impl TextInput {
         self
     }
 
-    pub fn masked(mut self) -> Self {
+    #[allow(dead_code)]
+    pub const fn masked(mut self) -> Self {
         self.masked = true;
         self
     }
@@ -70,21 +72,21 @@ impl TextInput {
         }
     }
 
-    fn move_cursor_left(&mut self) {
+    const fn move_cursor_left(&mut self) {
         self.cursor = self.cursor.saturating_sub(1);
     }
 
-    fn move_cursor_right(&mut self) {
+    const fn move_cursor_right(&mut self) {
         if self.cursor < self.value.len() {
             self.cursor += 1;
         }
     }
 
-    fn move_cursor_start(&mut self) {
+    const fn move_cursor_start(&mut self) {
         self.cursor = 0;
     }
 
-    fn move_cursor_end(&mut self) {
+    const fn move_cursor_end(&mut self) {
         self.cursor = self.value.len();
     }
 

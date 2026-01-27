@@ -39,7 +39,9 @@ pub struct CommandEnv {
     app_tx: UnboundedSender<AppMessage>,
 }
 
+// TODO: Remove this
 impl CommandEnv {
+    #[must_use]
     pub fn new(app_tx: UnboundedSender<AppMessage>) -> Self {
         Self {
             clipboard: Arc::new(Mutex::new(None)),
@@ -52,6 +54,9 @@ impl CommandEnv {
     }
 
     /// Copy text to the system clipboard.
+    ///
+    /// # Errors
+    /// Returns an error if clipboard access fails.
     pub fn set_clipboard(&self, text: &str) -> Result<()> {
         let mut guard = self
             .clipboard
@@ -67,6 +72,7 @@ impl CommandEnv {
             clipboard.set_text(text)?;
         }
 
+        drop(guard);
         Ok(())
     }
 }

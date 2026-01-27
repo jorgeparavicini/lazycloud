@@ -16,7 +16,7 @@ pub use color_eyre::Result;
 use crate::Theme;
 
 // Re-export components
-pub use components::{ConfirmDialog, ConfirmEvent, ConfirmStyle, List, ListEvent, ListRow, Table, TableEvent, TableRow, ColumnDef, TextInput, TextInputEvent};
+pub use components::{ConfirmDialog, ConfirmEvent, List, ListEvent, ListRow, Table, TableEvent, TableRow, ColumnDef, TextInput, TextInputEvent};
 
 // Re-export widgets
 pub use widgets::Spinner;
@@ -46,20 +46,20 @@ pub enum EventResult<E> {
 
 impl<E> EventResult<E> {
     /// Returns true if the input was consumed (either with or without an event).
-    pub fn is_consumed(&self) -> bool {
-        !matches!(self, EventResult::Ignored)
+    pub const fn is_consumed(&self) -> bool {
+        !matches!(self, Self::Ignored)
     }
 }
 
 impl<E> From<E> for EventResult<E> {
     fn from(event: E) -> Self {
-        EventResult::Event(event)
+        Self::Event(event)
     }
 }
 
 /// Extension trait for processing `Result<EventResult<T>>` from component handlers.
 pub trait EventResultExt<T> {
-    /// Process the result into a tuple of (was_consumed, optional_message).
+    /// Process the result into a tuple of (`was_consumed`, `optional_message`).
     fn process(self) -> (bool, Option<T>);
 }
 
@@ -68,8 +68,7 @@ impl<T> EventResultExt<T> for Result<EventResult<T>> {
         match self {
             Ok(EventResult::Event(msg)) => (true, Some(msg)),
             Ok(EventResult::Consumed) => (true, None),
-            Ok(EventResult::Ignored) => (false, None),
-            Err(_) => (false, None),
+            Ok(EventResult::Ignored) | Err(_) => (false, None),
         }
     }
 }
@@ -133,6 +132,7 @@ pub trait Modal {
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme);
 
     /// Title shown in the modal header (optional).
+    #[allow(dead_code)]
     fn title(&self) -> Option<&str> {
         None
     }
@@ -159,6 +159,7 @@ pub trait Screen {
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme);
 
     /// Called on each tick for animations and time-based updates.
+    #[allow(dead_code)]
     fn handle_tick(&mut self) {}
 
     /// Breadcrumb segments for navigation context.

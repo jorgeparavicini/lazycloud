@@ -17,16 +17,16 @@ pub enum ToastType {
 
 pub struct Toast {
     message: String,
-    toast_type: ToastType,
+    kind: ToastType,
     created_at: Instant,
     duration: Duration,
 }
 
 impl Toast {
-    pub fn new(message: impl Into<String>, toast_type: ToastType) -> Self {
+    pub fn new(message: impl Into<String>, kind: ToastType) -> Self {
         Self {
             message: message.into(),
-            toast_type,
+            kind,
             created_at: Instant::now(),
             duration: Duration::from_secs(3),
         }
@@ -57,7 +57,7 @@ impl Default for ToastManager {
 }
 
 impl ToastManager {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             toasts: VecDeque::new(),
             max_visible: 3,
@@ -106,7 +106,7 @@ impl Component for ToastManager {
 
             let toast_area = Rect::new(x, y, toast_width, toast_height);
 
-            let (border_color, icon) = match toast.toast_type {
+            let (border_color, icon) = match toast.kind {
                 ToastType::Success => (theme.green(), "✓"),
                 ToastType::Info => (theme.blue(), "ℹ"),
             };

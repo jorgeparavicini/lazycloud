@@ -13,6 +13,7 @@ use crate::ui::{Component, EventResult, Result};
 pub enum TableEvent<T> {
     Changed(T),
     Activated(T),
+    #[allow(dead_code)]
     SearchChanged(String),
 }
 
@@ -75,11 +76,10 @@ impl<T: TableRow + Clone> Table<T> {
     }
 
     pub fn selected_item(&self) -> Option<&T> {
-        if let Some(selected) = self.state.selected() {
-            if let Some(&idx) = self.filtered_indices.get(selected) {
+        if let Some(selected) = self.state.selected()
+            && let Some(&idx) = self.filtered_indices.get(selected) {
                 return self.items.get(idx);
             }
-        }
         None
     }
 
@@ -98,13 +98,13 @@ impl<T: TableRow + Clone> Table<T> {
         } else if self
             .state
             .selected()
-            .map_or(true, |i| i >= self.filtered_indices.len())
+            .is_none_or(|i| i >= self.filtered_indices.len())
         {
             self.state.select(Some(0));
         }
     }
 
-    fn select_next(&mut self) {
+    const fn select_next(&mut self) {
         if self.filtered_indices.is_empty() {
             return;
         }
@@ -121,7 +121,7 @@ impl<T: TableRow + Clone> Table<T> {
         self.state.select(Some(i));
     }
 
-    fn select_previous(&mut self) {
+    const fn select_previous(&mut self) {
         if self.filtered_indices.is_empty() {
             return;
         }
@@ -132,26 +132,24 @@ impl<T: TableRow + Clone> Table<T> {
         self.state.select(Some(i));
     }
 
-    fn select_first(&mut self) {
+    const fn select_first(&mut self) {
         if !self.filtered_indices.is_empty() {
             self.state.select(Some(0));
         }
     }
 
-    fn select_last(&mut self) {
+    const fn select_last(&mut self) {
         if !self.filtered_indices.is_empty() {
             self.state.select(Some(self.filtered_indices.len() - 1));
         }
     }
 
     fn get_change_event(&self, before: Option<usize>) -> EventResult<TableEvent<T>> {
-        if let Some(selected) = self.state.selected() {
-            if Some(selected) != before {
-                if let Some(&idx) = self.filtered_indices.get(selected) {
+        if let Some(selected) = self.state.selected()
+            && Some(selected) != before
+                && let Some(&idx) = self.filtered_indices.get(selected) {
                     return TableEvent::Changed(self.items[idx].clone()).into();
                 }
-            }
-        }
         EventResult::Consumed
     }
 
@@ -241,11 +239,9 @@ impl<T: TableRow + Clone> Table<T> {
                 return Ok(self
                     .filtered_indices
                     .get(selected)
-                    .map(|&idx| TableEvent::Activated(self.items[idx].clone()).into())
-                    .unwrap_or(EventResult::Ignored));
-            } else {
-                return Ok(EventResult::Ignored);
+                    .map_or(EventResult::Ignored, |&idx| TableEvent::Activated(self.items[idx].clone()).into()));
             }
+            return Ok(EventResult::Ignored);
         }
         if self.resolver.matches_search(&key, SearchAction::Toggle) {
             self.searching = true;

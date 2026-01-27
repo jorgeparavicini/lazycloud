@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crossterm::event::KeyEvent;
 
-use crate::config::actions::*;
+use crate::config::actions::{GlobalAction, NavAction, SearchAction, SecretsAction, VersionsAction, PayloadAction, DialogAction};
 use crate::config::keybindings::KeybindingsConfig;
 
 pub struct KeyResolver {
@@ -10,7 +10,7 @@ pub struct KeyResolver {
 }
 
 impl KeyResolver {
-    pub fn new(keybindings: Arc<KeybindingsConfig>) -> Self {
+    pub const fn new(keybindings: Arc<KeybindingsConfig>) -> Self {
         Self { keybindings }
     }
 

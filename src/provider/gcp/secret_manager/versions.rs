@@ -130,13 +130,13 @@ pub enum VersionsMsg {
 
 impl From<VersionsMsg> for SecretManagerMsg {
     fn from(msg: VersionsMsg) -> Self {
-        SecretManagerMsg::Version(msg)
+        Self::Version(msg)
     }
 }
 
 impl From<VersionsMsg> for EventResult<SecretManagerMsg> {
     fn from(msg: VersionsMsg) -> Self {
-        EventResult::Event(SecretManagerMsg::Version(msg))
+        Self::Event(SecretManagerMsg::Version(msg))
     }
 }
 
@@ -186,42 +186,34 @@ impl Screen for VersionListScreen {
         if self
             .resolver
             .matches_versions(&key, VersionsAction::Disable)
-        {
-            if let Some(v) = self.table.selected_item() {
-                if v.state.contains("Enabled") {
+            && let Some(v) = self.table.selected_item()
+                && v.state.contains("Enabled") {
                     return Ok(VersionsMsg::Disable {
                         secret: self.secret.clone(),
                         version: v.clone(),
                     }
                     .into());
                 }
-            }
-        }
-        if self.resolver.matches_versions(&key, VersionsAction::Enable) {
-            if let Some(v) = self.table.selected_item() {
-                if v.state.contains("Disabled") {
+        if self.resolver.matches_versions(&key, VersionsAction::Enable)
+            && let Some(v) = self.table.selected_item()
+                && v.state.contains("Disabled") {
                     return Ok(VersionsMsg::Enable {
                         secret: self.secret.clone(),
                         version: v.clone(),
                     }
                     .into());
                 }
-            }
-        }
         if self
             .resolver
             .matches_versions(&key, VersionsAction::Destroy)
-        {
-            if let Some(v) = self.table.selected_item() {
-                if !v.state.contains("Destroyed") {
+            && let Some(v) = self.table.selected_item()
+                && !v.state.contains("Destroyed") {
                     return Ok(VersionsMsg::ConfirmDestroy {
                         secret: self.secret.clone(),
                         version: v.clone(),
                     }
                     .into());
                 }
-            }
-        }
 
         Ok(EventResult::Ignored)
     }
@@ -266,7 +258,7 @@ impl Screen for VersionListScreen {
 pub struct CreateVersionDialog {
     secret: Secret,
     input: TextInput,
-    resolver: Arc<KeyResolver>,
+    _resolver: Arc<KeyResolver>,
 }
 
 impl CreateVersionDialog {
@@ -274,7 +266,7 @@ impl CreateVersionDialog {
         Self {
             secret,
             input: TextInput::new("New Version Payload"),
-            resolver,
+            _resolver: resolver,
         }
     }
 }
@@ -292,7 +284,7 @@ impl Modal for CreateVersionDialog {
                 .into()
             }
             EventResult::Event(TextInputEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
-            EventResult::Event(_) => EventResult::Consumed, // Empty submission
+            // Empty submission
             _ => EventResult::Consumed,
         })
     }
@@ -306,7 +298,7 @@ pub struct DestroyVersionDialog {
     secret: Secret,
     version: SecretVersion,
     dialog: ConfirmDialog,
-    resolver: Arc<KeyResolver>,
+    _resolver: Arc<KeyResolver>,
 }
 
 impl DestroyVersionDialog {
@@ -326,7 +318,7 @@ impl DestroyVersionDialog {
             secret,
             version,
             dialog,
-            resolver,
+            _resolver: resolver,
         }
     }
 }
@@ -409,7 +401,10 @@ pub(super) fn update(
             .into())
         }
 
-        VersionsMsg::Created { secret } => {
+        VersionsMsg::Created { secret }
+        | VersionsMsg::Disabled { secret }
+        | VersionsMsg::Enabled { secret }
+        | VersionsMsg::Destroyed { secret } => {
             state.pop_view();
             state.queue(VersionsMsg::Load(secret).into());
             Ok(ServiceMsg::Idle)
@@ -428,12 +423,6 @@ pub(super) fn update(
             .into())
         }
 
-        VersionsMsg::Disabled { secret } => {
-            state.pop_view();
-            state.queue(VersionsMsg::Load(secret).into());
-            Ok(ServiceMsg::Idle)
-        }
-
         VersionsMsg::Enable { secret, version } => {
             state.display_loading_spinner("Enabling version...");
             state.invalidate_versions_cache(&secret);
@@ -445,12 +434,6 @@ pub(super) fn update(
                 tx: state.get_msg_sender(),
             }
             .into())
-        }
-
-        VersionsMsg::Enabled { secret } => {
-            state.pop_view();
-            state.queue(VersionsMsg::Load(secret).into());
-            Ok(ServiceMsg::Idle)
         }
 
         VersionsMsg::ConfirmDestroy { secret, version } => {
@@ -474,12 +457,6 @@ pub(super) fn update(
                 tx: state.get_msg_sender(),
             }
             .into())
-        }
-
-        VersionsMsg::Destroyed { secret } => {
-            state.pop_view();
-            state.queue(VersionsMsg::Load(secret).into());
-            Ok(ServiceMsg::Idle)
         }
 
         VersionsMsg::ViewPayload { secret, version } => {

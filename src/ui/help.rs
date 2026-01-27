@@ -58,13 +58,14 @@ pub struct HelpOverlay {
 }
 
 impl HelpOverlay {
+    #[allow(dead_code)]
     pub fn new(keybindings: Vec<Keybinding>) -> Self {
         Self {
             sections: vec![KeybindingSection::new("Keybindings", keybindings)],
         }
     }
 
-    pub fn with_sections(sections: Vec<KeybindingSection>) -> Self {
+    pub const fn with_sections(sections: Vec<KeybindingSection>) -> Self {
         Self { sections }
     }
 }
@@ -74,7 +75,7 @@ impl Component for HelpOverlay {
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         Ok(match key.code {
-            KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => HelpEvent::Close.into(),
+            KeyCode::Esc | KeyCode::Char('?' | 'q') => HelpEvent::Close.into(),
             _ => EventResult::Ignored,
         })
     }

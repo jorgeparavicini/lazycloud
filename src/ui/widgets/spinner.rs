@@ -20,7 +20,7 @@ impl Spinner {
         }
     }
 
-    pub fn set_label(&mut self, label: &'static str) {
+    pub const fn set_label(&mut self, label: &'static str) {
         self.label = Some(label);
     }
 }
@@ -55,6 +55,6 @@ impl Component for Spinner {
 
         let area = area.centered(Constraint::Length(width), Constraint::Length(1));
 
-        frame.render_stateful_widget(throbber, area, &mut self.throbber_state)
+        frame.render_stateful_widget(throbber, area, &mut self.throbber_state);
     }
 }

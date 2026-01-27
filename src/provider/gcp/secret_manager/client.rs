@@ -167,7 +167,7 @@ impl SecretManagerClient {
             created_at: response
                 .create_time
                 .as_ref()
-                .map_or("Unknown".to_string(), |t| format_timestamp(t.seconds())),
+                .map_or_else(|| "Unknown".to_string(), |t| format_timestamp(t.seconds())),
             expire_time: response
                 .expire_time()
                 .map(|t| format_timestamp(t.seconds())),
@@ -220,7 +220,7 @@ impl SecretManagerClient {
         let version_id = response
             .name
             .split('/')
-            .last()
+            .next_back()
             .unwrap_or("unknown")
             .to_string();
 
@@ -230,7 +230,7 @@ impl SecretManagerClient {
             created_at: response
                 .create_time
                 .as_ref()
-                .map_or("Unknown".to_string(), |t| format_timestamp(t.seconds())),
+                .map_or_else(|| "Unknown".to_string(), |t| format_timestamp(t.seconds())),
         })
     }
 
@@ -258,7 +258,7 @@ impl SecretManagerClient {
             created_at: response
                 .create_time
                 .as_ref()
-                .map_or("Unknown".to_string(), |t| format_timestamp(t.seconds())),
+                .map_or_else(|| "Unknown".to_string(), |t| format_timestamp(t.seconds())),
         })
     }
 
@@ -282,7 +282,7 @@ impl SecretManagerClient {
             created_at: response
                 .create_time
                 .as_ref()
-                .map_or("Unknown".to_string(), |t| format_timestamp(t.seconds())),
+                .map_or_else(|| "Unknown".to_string(), |t| format_timestamp(t.seconds())),
         })
     }
 
@@ -310,7 +310,7 @@ impl SecretManagerClient {
             created_at: response
                 .create_time
                 .as_ref()
-                .map_or("Unknown".to_string(), |t| format_timestamp(t.seconds())),
+                .map_or_else(|| "Unknown".to_string(), |t| format_timestamp(t.seconds())),
         })
     }
 
@@ -323,8 +323,8 @@ impl SecretManagerClient {
         let name = format!("projects/{}/secrets/{}", self.project_id, secret_id);
 
         let mut secret = model::Secret::default();
-        secret.name = name.clone();
-        secret.labels = labels.clone();
+        secret.name.clone_from(&name);
+        secret.labels.clone_from(&labels);
 
         let update_mask = FieldMask::default().set_paths(vec!["labels".to_string()]);
 
@@ -342,7 +342,7 @@ impl SecretManagerClient {
             created_at: response
                 .create_time
                 .as_ref()
-                .map_or("Unknown".to_string(), |t| format_timestamp(t.seconds())),
+                .map_or_else(|| "Unknown".to_string(), |t| format_timestamp(t.seconds())),
             expire_time: response
                 .expire_time()
                 .map(|t| format_timestamp(t.seconds())),
@@ -384,7 +384,7 @@ impl SecretManagerClient {
             created_at: response
                 .create_time
                 .as_ref()
-                .map_or("Unknown".to_string(), |t| format_timestamp(t.seconds())),
+                .map_or_else(|| "Unknown".to_string(), |t| format_timestamp(t.seconds())),
             expire_time: response
                 .expire_time()
                 .map(|t| format_timestamp(t.seconds())),
@@ -396,9 +396,7 @@ impl SecretManagerClient {
 // === Utilities ===
 
 fn format_timestamp(seconds: i64) -> String {
-    DateTime::<Utc>::from_timestamp(seconds, 0)
-        .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
-        .unwrap_or_else(|| "Unknown".to_string())
+    DateTime::<Utc>::from_timestamp(seconds, 0).map_or_else(|| "Unknown".to_string(), |dt| dt.format("%Y-%m-%d %H:%M").to_string())
 }
 
 fn parse_replication(replication: &Option<model::Replication>) -> ReplicationConfig {
@@ -410,12 +408,11 @@ fn parse_replication(replication: &Option<model::Replication>) -> ReplicationCon
     };
 
     match rep {
-        model::replication::Replication::Automatic(_) => ReplicationConfig::Automatic,
         model::replication::Replication::UserManaged(user_managed) => {
             let locations = user_managed
                 .replicas
                 .iter()
-                .filter_map(|r| Some(r.location.clone()))
+                .map(|r| r.location.clone())
                 .collect();
             ReplicationConfig::UserManaged { locations }
         }

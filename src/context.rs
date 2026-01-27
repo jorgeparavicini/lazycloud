@@ -1,5 +1,5 @@
 use crate::Theme;
-use crate::config::KeyResolver;
+use crate::config::{KeyResolver, config_dir};
 use crate::provider::Provider;
 use crate::provider::gcp::discover_gcloud_configs;
 use crate::ui::{Component, EventResult, List, ListEvent, ListRow, Screen};
@@ -73,7 +73,7 @@ impl std::fmt::Display for CloudContext {
 }
 
 pub fn load_contexts() -> Vec<CloudContext> {
-    if let Some(config_dir) = get_config_dir() {
+    if let Some(config_dir) = config_dir() {
         let path = config_dir.join(CONTEXTS_FILE);
         if let Ok(data) = std::fs::read_to_string(path)
             && let Ok(contexts) = serde_json::from_str::<Vec<CloudContext>>(&data)
@@ -85,7 +85,7 @@ pub fn load_contexts() -> Vec<CloudContext> {
 }
 
 pub fn save_contexts(contexts: &[CloudContext]) -> Result<()> {
-    if let Some(config_dir) = get_config_dir() {
+    if let Some(config_dir) = config_dir() {
         std::fs::create_dir_all(&config_dir)?;
         let path = config_dir.join(CONTEXTS_FILE);
         let data = serde_json::to_string_pretty(contexts)?;
@@ -116,10 +116,6 @@ pub fn reconcile_contexts() -> Result<Vec<CloudContext>> {
     save_contexts(&contexts)?;
 
     Ok(contexts)
-}
-
-fn get_config_dir() -> Option<std::path::PathBuf> {
-    dirs::config_dir().map(|dir| dir.join(crate::config::CONFIG_FOLDER))
 }
 
 // === UI ===

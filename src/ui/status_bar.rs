@@ -13,13 +13,13 @@ use crate::context::CloudContext;
 
 /// ASCII art logo for the status bar.
 const LOGO: &[&str] = &[
-    r#"  .--.            z Z "#,
-    r#" (^_^ )  .--.      Z  "#,
-    r#"  `--'  ( u.u) .--. z "#,
-    r#"         `--' (^o^ )  "#,
-    r#"    .--.       `--'   "#,
-    r#"   ( -.-) lazycloud   "#,
-    r#"    `--'              "#,
+    r"  .--.            z Z ",
+    r" (^_^ )  .--.      Z  ",
+    r"  `--'  ( u.u) .--. z ",
+    r"         `--' (^o^ )  ",
+    r"    .--.       `--'   ",
+    r"   ( -.-) lazycloud   ",
+    r"    `--'              ",
 ];
 
 pub struct StatusBar {
@@ -28,7 +28,7 @@ pub struct StatusBar {
 }
 
 impl StatusBar {
-    pub fn new(resolver: Arc<KeyResolver>) -> Self {
+    pub const fn new(resolver: Arc<KeyResolver>) -> Self {
         Self {
             active_context: None,
             resolver,
@@ -44,7 +44,7 @@ impl StatusBar {
     }
 
     pub fn render_with_keybindings(
-        &mut self,
+        &self,
         frame: &mut Frame,
         area: Rect,
         theme: &Theme,

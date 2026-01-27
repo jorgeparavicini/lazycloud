@@ -1,5 +1,4 @@
 pub mod actions;
-mod defaults;
 pub mod key;
 pub mod keybindings;
 pub mod loader;
@@ -7,11 +6,9 @@ pub mod resolver;
 
 pub use actions::*;
 use keybindings::KeybindingsConfig;
-pub use loader::{load, save_last_context, save_theme};
+pub use loader::{config_dir, load, save_last_context, save_theme};
 pub use resolver::KeyResolver;
 use serde::{Deserialize, Serialize};
-
-pub const CONFIG_FOLDER: &str = ".lazycloud";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThemeConfig {

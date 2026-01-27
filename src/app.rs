@@ -313,8 +313,8 @@ impl App {
         self.active_context = Some(context.clone());
         self.status_bar.set_active_context(context.clone());
         self.state = AppState::SelectingService(ServiceSelectorView::new(
-            self.registry.clone(),
-            context,
+            &self.registry,
+            &context,
             self.resolver.clone(),
         ));
     }

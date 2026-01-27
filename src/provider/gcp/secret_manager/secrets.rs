@@ -137,11 +137,11 @@ pub enum ReplicationConfig {
 impl ReplicationConfig {
     pub fn short_display(&self) -> String {
         match self {
-            ReplicationConfig::Automatic => "Automatic".to_string(),
-            ReplicationConfig::UserManaged { locations } if locations.len() == 1 => {
+            Self::Automatic => "Automatic".to_string(),
+            Self::UserManaged { locations } if locations.len() == 1 => {
                 locations[0].clone()
             }
-            ReplicationConfig::UserManaged { locations } => {
+            Self::UserManaged { locations } => {
                 format!("{} regions", locations.len())
             }
         }
@@ -265,13 +265,13 @@ pub enum SecretsMsg {
 
 impl From<SecretsMsg> for SecretManagerMsg {
     fn from(msg: SecretsMsg) -> Self {
-        SecretManagerMsg::Secret(msg)
+        Self::Secret(msg)
     }
 }
 
 impl From<SecretsMsg> for EventResult<SecretManagerMsg> {
     fn from(msg: SecretsMsg) -> Self {
-        EventResult::Event(SecretManagerMsg::Secret(msg))
+        Self::Event(SecretManagerMsg::Secret(msg))
     }
 }
 
@@ -310,39 +310,32 @@ impl Screen for SecretListScreen {
         if self.resolver.matches_secrets(&key, SecretsAction::New) {
             return Ok(SecretsMsg::StartCreation.into());
         }
-        if self.resolver.matches_secrets(&key, SecretsAction::Copy) {
-            if let Some(secret) = self.table.selected_item() {
+        if self.resolver.matches_secrets(&key, SecretsAction::Copy)
+            && let Some(secret) = self.table.selected_item() {
                 return Ok(SecretsMsg::CopyPayload(secret.clone()).into());
             }
-        }
-        if self.resolver.matches_secrets(&key, SecretsAction::Delete) {
-            if let Some(secret) = self.table.selected_item() {
+        if self.resolver.matches_secrets(&key, SecretsAction::Delete)
+            && let Some(secret) = self.table.selected_item() {
                 return Ok(SecretsMsg::ConfirmDelete(secret.clone()).into());
             }
-        }
-        if self.resolver.matches_secrets(&key, SecretsAction::Versions) {
-            if let Some(secret) = self.table.selected_item() {
+        if self.resolver.matches_secrets(&key, SecretsAction::Versions)
+            && let Some(secret) = self.table.selected_item() {
                 return Ok(SecretsMsg::ViewVersions(secret.clone()).into());
             }
-        }
-        if self.resolver.matches_secrets(&key, SecretsAction::Labels) {
-            if let Some(secret) = self.table.selected_item() {
+        if self.resolver.matches_secrets(&key, SecretsAction::Labels)
+            && let Some(secret) = self.table.selected_item() {
                 return Ok(SecretsMsg::ViewLabels(secret.clone()).into());
             }
-        }
-        if self.resolver.matches_secrets(&key, SecretsAction::Iam) {
-            if let Some(secret) = self.table.selected_item() {
+        if self.resolver.matches_secrets(&key, SecretsAction::Iam)
+            && let Some(secret) = self.table.selected_item() {
                 return Ok(SecretsMsg::ViewIamPolicy(secret.clone()).into());
             }
-        }
         if self
             .resolver
             .matches_secrets(&key, SecretsAction::Replication)
-        {
-            if let Some(secret) = self.table.selected_item() {
+            && let Some(secret) = self.table.selected_item() {
                 return Ok(SecretsMsg::ViewReplicationInfo(secret.clone()).into());
             }
-        }
 
         Ok(EventResult::Ignored)
     }
@@ -500,7 +493,7 @@ pub struct ReplicationScreen {
 }
 
 impl ReplicationScreen {
-    pub fn new(secret: Secret, replication: ReplicationConfig, resolver: Arc<KeyResolver>) -> Self {
+    pub const fn new(secret: Secret, replication: ReplicationConfig, resolver: Arc<KeyResolver>) -> Self {
         Self {
             secret,
             replication,
@@ -867,7 +860,7 @@ pub(super) fn update(
         .into()),
 
         SecretsMsg::PayloadLoaded { data, secret_name } => {
-            let desc = format!("payload for '{}'", secret_name);
+            let desc = format!("payload for '{secret_name}'");
             Ok(CopyToClipboardCmd::new(data, desc).into())
         }
     }
@@ -881,21 +874,21 @@ fn format_labels(labels: &HashMap<String, String>, query: &str) -> String {
     }
 
     // Find the best matching label if there's a query
-    let best_label = if !query.is_empty() {
+    let best_label = if query.is_empty() {
+        labels.iter().next()
+    } else {
         let matcher = Matcher::new();
         labels
             .iter()
-            .find(|(key, value)| matcher.matches(format!("{}:{}", key, value).as_str(), query))
+            .find(|(key, value)| matcher.matches(format!("{key}:{value}").as_str(), query))
             .or_else(|| labels.iter().next())
-    } else {
-        labels.iter().next()
     };
 
     if let Some((key, value)) = best_label {
         let label = if value.is_empty() {
             key.clone()
         } else {
-            format!("{}:{}", key, value)
+            format!("{key}:{value}")
         };
 
         // Truncate if too long

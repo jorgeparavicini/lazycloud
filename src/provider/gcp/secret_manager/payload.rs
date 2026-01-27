@@ -48,13 +48,13 @@ pub enum PayloadMsg {
 
 impl From<PayloadMsg> for SecretManagerMsg {
     fn from(msg: PayloadMsg) -> Self {
-        SecretManagerMsg::Payload(msg)
+        Self::Payload(msg)
     }
 }
 
 impl From<PayloadMsg> for EventResult<SecretManagerMsg> {
     fn from(msg: PayloadMsg) -> Self {
-        EventResult::Event(SecretManagerMsg::Payload(msg))
+        Self::Event(SecretManagerMsg::Payload(msg))
     }
 }
 
@@ -68,7 +68,7 @@ pub struct PayloadScreen {
 }
 
 impl PayloadScreen {
-    pub fn new(
+    pub const fn new(
         secret: Secret,
         version: Option<SecretVersion>,
         payload: SecretPayload,

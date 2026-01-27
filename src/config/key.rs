@@ -11,21 +11,21 @@ pub struct Key {
 }
 
 impl Key {
-    pub fn new(code: KeyCode) -> Self {
+    pub const fn new(code: KeyCode) -> Self {
         Self {
             code,
             modifiers: KeyModifiers::NONE,
         }
     }
 
-    pub fn with_ctrl(code: KeyCode) -> Self {
+    pub const fn with_ctrl(code: KeyCode) -> Self {
         Self {
             code,
             modifiers: KeyModifiers::CONTROL,
         }
     }
 
-    pub fn with_shift(code: KeyCode) -> Self {
+    pub const fn with_shift(code: KeyCode) -> Self {
         Self {
             code,
             modifiers: KeyModifiers::SHIFT,
@@ -40,7 +40,7 @@ impl Key {
                 let chars_match = a == b
                     || (a.is_ascii_alphabetic()
                         && b.is_ascii_alphabetic()
-                        && a.to_ascii_lowercase() == b.to_ascii_lowercase());
+                        && a.eq_ignore_ascii_case(&b));
 
                 // Handle shift modifier for uppercase characters
                 let expected_mods = if a.is_ascii_uppercase() {
@@ -93,7 +93,7 @@ impl Key {
             KeyCode::Down => "Down".to_string(),
             KeyCode::Left => "Left".to_string(),
             KeyCode::Right => "Right".to_string(),
-            KeyCode::F(n) => format!("F{}", n),
+            KeyCode::F(n) => format!("F{n}"),
             _ => "?".to_string(),
         };
 
@@ -110,19 +110,20 @@ impl FromStr for Key {
         let parts: Vec<&str> = s.split('+').collect();
 
         let mut modifiers = KeyModifiers::NONE;
-        let mut key_part = s;
 
-        if parts.len() > 1 {
+        let key_part = if parts.len() > 1 {
             for part in &parts[..parts.len() - 1] {
                 match part.to_lowercase().as_str() {
                     "ctrl" | "control" => modifiers |= KeyModifiers::CONTROL,
                     "alt" => modifiers |= KeyModifiers::ALT,
                     "shift" => modifiers |= KeyModifiers::SHIFT,
-                    _ => return Err(format!("Unknown modifier: {}", part)),
+                    _ => return Err(format!("Unknown modifier: {part}")),
                 }
             }
-            key_part = parts[parts.len() - 1];
-        }
+            parts[parts.len() - 1]
+        } else {
+            s
+        };
 
         let code = match key_part.to_lowercase().as_str() {
             "enter" | "return" => KeyCode::Enter,
@@ -143,19 +144,19 @@ impl FromStr for Key {
             s if s.starts_with('f') && s.len() > 1 => {
                 let num: u8 = s[1..]
                     .parse()
-                    .map_err(|_| format!("Invalid function key: {}", key_part))?;
+                    .map_err(|_| format!("Invalid function key: {key_part}"))?;
                 KeyCode::F(num)
             }
             s if s.len() == 1 => {
-                let c = s.chars().next().unwrap();
+                let _c = s.chars().next().unwrap();
                 // Preserve case from original input for single chars
                 let original_char = key_part.chars().next().unwrap();
                 KeyCode::Char(original_char)
             }
-            _ => return Err(format!("Unknown key: {}", key_part)),
+            _ => return Err(format!("Unknown key: {key_part}")),
         };
 
-        Ok(Key { code, modifiers })
+        Ok(Self { code, modifiers })
     }
 }
 
@@ -180,7 +181,7 @@ impl<'de> Deserialize<'de> for Key {
         D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        Key::from_str(&s).map_err(serde::de::Error::custom)
+        Self::from_str(&s).map_err(serde::de::Error::custom)
     }
 }
 
@@ -192,27 +193,27 @@ pub enum KeyBinding {
 }
 
 impl KeyBinding {
-    pub fn single(key: Key) -> Self {
-        KeyBinding::Single(key)
+    pub const fn single(key: Key) -> Self {
+        Self::Single(key)
     }
 
-    pub fn multiple(keys: Vec<Key>) -> Self {
-        KeyBinding::Multiple(keys)
+    pub const fn multiple(keys: Vec<Key>) -> Self {
+        Self::Multiple(keys)
     }
 
     pub fn matches(&self, event: &KeyEvent) -> bool {
         match self {
-            KeyBinding::Single(key) => key.matches(event),
-            KeyBinding::Multiple(keys) => keys.iter().any(|k| k.matches(event)),
+            Self::Single(key) => key.matches(event),
+            Self::Multiple(keys) => keys.iter().any(|k| k.matches(event)),
         }
     }
 
     pub fn display(&self) -> String {
         match self {
-            KeyBinding::Single(key) => key.display(),
-            KeyBinding::Multiple(keys) => keys
+            Self::Single(key) => key.display(),
+            Self::Multiple(keys) => keys
                 .iter()
-                .map(|k| k.display())
+                .map(Key::display)
                 .collect::<Vec<_>>()
                 .join("/"),
         }
@@ -220,8 +221,8 @@ impl KeyBinding {
 
     pub fn first_key(&self) -> &Key {
         match self {
-            KeyBinding::Single(key) => key,
-            KeyBinding::Multiple(keys) => {
+            Self::Single(key) => key,
+            Self::Multiple(keys) => {
                 keys.first().expect("Multiple must have at least one key")
             }
         }
@@ -230,19 +231,19 @@ impl KeyBinding {
 
 impl Default for KeyBinding {
     fn default() -> Self {
-        KeyBinding::Single(Key::new(KeyCode::Null))
+        Self::Single(Key::new(KeyCode::Null))
     }
 }
 
 impl From<Key> for KeyBinding {
     fn from(key: Key) -> Self {
-        KeyBinding::Single(key)
+        Self::Single(key)
     }
 }
 
 impl From<Vec<Key>> for KeyBinding {
     fn from(keys: Vec<Key>) -> Self {
-        KeyBinding::Multiple(keys)
+        Self::Multiple(keys)
     }
 }
 

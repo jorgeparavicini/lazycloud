@@ -7,6 +7,7 @@ use std::io::Stdout;
 use std::ops::{Deref, DerefMut};
 use std::time::Duration;
 
+use color_eyre::Result;
 use crossterm::cursor;
 use crossterm::event::{
     DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
@@ -64,7 +65,10 @@ impl Tui {
     /// # Arguments
     /// * `frame_rate` - Frames per second for rendering (e.g., 60.0)
     /// * `tick_rate` - Ticks per second for animations (e.g., 4.0)
-    pub fn new(frame_rate: f64, tick_rate: f64) -> color_eyre::Result<Self> {
+    /// 
+    /// # Errors
+    /// Returns an error if the terminal cannot be initialized.
+    pub fn new(frame_rate: f64, tick_rate: f64) -> Result<Self> {
         let (event_tx, event_rx) = mpsc::unbounded_channel();
         Ok(Self {
             terminal: Terminal::new(Backend::new(std::io::stdout()))?,
@@ -78,7 +82,10 @@ impl Tui {
     }
 
     /// Enter the TUI (raw mode, alternate commands, mouse capture).
-    pub fn enter(&mut self) -> color_eyre::Result<()> {
+    /// 
+    /// # Errors
+    /// Returns an error if the terminal state cannot be changed.
+    pub fn enter(&mut self) -> Result<()> {
         crossterm::terminal::enable_raw_mode()?;
         crossterm::execute!(std::io::stdout(), EnterAlternateScreen, cursor::Hide)?;
         crossterm::execute!(std::io::stdout(), EnableMouseCapture)?;
@@ -88,7 +95,10 @@ impl Tui {
     }
 
     /// Exit the TUI (restore terminal state).
-    pub fn exit(&mut self) -> color_eyre::Result<()> {
+    /// 
+    /// # Errors
+    /// Returns an error if the terminal state cannot be restored.
+    pub fn exit(&mut self) -> Result<()> {
         self.stop()?;
         if crossterm::terminal::is_raw_mode_enabled()? {
             self.flush()?;
@@ -101,7 +111,10 @@ impl Tui {
     }
 
     /// Suspend the TUI (for Ctrl+Z handling).
-    pub fn suspend(&mut self) -> color_eyre::Result<()> {
+    /// 
+    /// # Errors
+    /// Returns an error if the terminal state cannot be changed.
+    pub fn suspend(&mut self) -> Result<()> {
         self.exit()?;
         #[cfg(not(windows))]
         signal_hook::low_level::raise(signal_hook::consts::SIGTSTP)?;
@@ -109,7 +122,10 @@ impl Tui {
     }
 
     /// Resume the TUI after suspension.
-    pub fn resume(&mut self) -> color_eyre::Result<()> {
+    /// 
+    /// # Errors
+    /// Returns an error if the terminal state cannot be changed.
+    pub fn resume(&mut self) -> Result<()> {
         self.enter()?;
         Ok(())
     }
@@ -131,7 +147,7 @@ impl Tui {
         self.task = tokio::spawn(event_loop);
     }
 
-    fn stop(&mut self) -> color_eyre::Result<()> {
+    fn stop(&self) -> Result<()> {
         self.cancel();
         let mut shutdown_counter = 0;
         while !self.task.is_finished() {
@@ -180,7 +196,7 @@ impl Tui {
 
         loop {
             let event = tokio::select! {
-                _ = cancellation_token.cancelled() => {
+                () = cancellation_token.cancelled() => {
                     break;
                 }
                 _ = tick_interval.tick() => Event::Tick,

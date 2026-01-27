@@ -30,8 +30,8 @@ pub struct GcloudComputeConfig {
 pub fn discover_gcloud_configs() -> Vec<GcloudConfig> {
     let mut contexts = Vec::new();
 
-    let config_dir = match dirs::config_dir() {
-        Some(dir) => dir.join("gcloud").join("configurations"),
+    let config_dir = match dirs::home_dir() {
+        Some(dir) => dir.join(".config").join("gcloud").join("configurations"),
         None => return contexts,
     };
 
@@ -60,7 +60,7 @@ pub fn discover_gcloud_configs() -> Vec<GcloudConfig> {
             continue;
         };
 
-        let Ok(mut config) = toml::from_str::<GcloudConfig>(&content) else {
+        let Ok(mut config) = serini::from_str::<GcloudConfig>(&content) else {
             continue;
         };
 

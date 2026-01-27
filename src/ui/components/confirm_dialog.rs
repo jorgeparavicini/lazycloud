@@ -60,7 +60,7 @@ impl ConfirmDialog {
         self
     }
 
-    pub fn danger(mut self) -> Self {
+    pub const fn danger(mut self) -> Self {
         self.style = ConfirmStyle::Danger;
         self
     }

@@ -38,10 +38,12 @@ impl<T: ListRow + Clone> List<T> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn selected(&self) -> Option<&T> {
         self.state.selected().and_then(|i| self.items.get(i))
     }
 
+    #[allow(dead_code)]
     pub fn set_items(&mut self, items: Vec<T>) {
         self.items = items;
 
@@ -57,11 +59,10 @@ impl<T: ListRow + Clone> List<T> {
     }
 
     fn get_change_event(&self, before: Option<usize>) -> EventResult<ListEvent<T>> {
-        if let Some(selected) = self.state.selected() {
-            if Some(selected) != before {
+        if let Some(selected) = self.state.selected()
+            && Some(selected) != before {
                 return ListEvent::Changed(self.items[selected].clone()).into();
             }
-        }
         EventResult::Consumed
     }
 }
@@ -109,9 +110,8 @@ impl<T: ListRow + Clone> Component for List<T> {
         if self.resolver.matches_nav(&key, NavAction::Select) {
             if let Some(selected) = self.state.selected() {
                 return Ok(ListEvent::Activated(self.items[selected].clone()).into());
-            } else {
-                return Ok(EventResult::Ignored);
             }
+            return Ok(EventResult::Ignored);
         }
 
         Ok(EventResult::Ignored)
@@ -129,6 +129,6 @@ impl<T: ListRow + Clone> Component for List<T> {
             )
             .highlight_symbol("▶ ");
 
-        frame.render_stateful_widget(list, area, &mut self.state)
+        frame.render_stateful_widget(list, area, &mut self.state);
     }
 }
