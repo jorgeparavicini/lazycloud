@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "A terminal UI for various cloud provider CLIs"
 authors = ["Jorge Paravicini"]
 edition = "2024"
+license = "MIT"
 resolver = "3"
 
 [dependencies]

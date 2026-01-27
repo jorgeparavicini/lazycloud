@@ -7,7 +7,11 @@ no-default-features = false
 feature-depth = 1
 
 [advisories]
-ignore = []
+ignore = [
+  # Transitive dep via google-cloud-auth; no safe upgrade available.
+  # See https://rustsec.org/advisories/RUSTSEC-2025-0134
+  "RUSTSEC-2025-0134",
+]
 
 [licenses]
 allow = [
