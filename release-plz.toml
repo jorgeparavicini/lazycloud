@@ -1,0 +1,6 @@
+[workspace]
+changelog_config = "cliff.toml"
+git_tag_enable = true
+git_release_enable = true
+publish = true
+pr_name = "chore: release v{{ version }}"

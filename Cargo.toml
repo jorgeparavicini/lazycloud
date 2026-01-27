@@ -5,6 +5,10 @@ description = "A terminal UI for various cloud provider CLIs"
 authors = ["Jorge Paravicini"]
 edition = "2024"
 license = "MIT"
+repository = "https://github.com/jorgeparavicini/lazycloud"
+keywords = ["tui", "cloud", "gcp", "terminal", "cli"]
+categories = ["command-line-utilities"]
+readme = "README.md"
 resolver = "3"
 
 [dependencies]
