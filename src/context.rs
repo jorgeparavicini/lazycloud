@@ -177,10 +177,7 @@ impl TableRow for CloudContext {
                         .region
                         .as_ref()
                         .is_some_and(|r| matcher.matches(r, query))
-                    || ctx
-                        .zone
-                        .as_ref()
-                        .is_some_and(|z| matcher.matches(z, query))
+                    || ctx.zone.as_ref().is_some_and(|z| matcher.matches(z, query))
             }
         }
     }

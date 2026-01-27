@@ -86,11 +86,7 @@ impl StatusBar {
 
         let lines = match &self.active_context {
             Some(CloudContext::Gcp(gcp)) => {
-                let region = gcp
-                    .region
-                    .as_deref()
-                    .or(gcp.zone.as_deref())
-                    .unwrap_or("—");
+                let region = gcp.region.as_deref().or(gcp.zone.as_deref()).unwrap_or("—");
 
                 vec![
                     Line::from(Span::styled(
@@ -100,21 +96,25 @@ impl StatusBar {
                             .add_modifier(Modifier::BOLD),
                     )),
                     Line::from(""),
-                    status_line("provider", "GCP", w, label_style, Style::default().fg(theme.blue())),
+                    status_line(
+                        "provider",
+                        "GCP",
+                        w,
+                        label_style,
+                        Style::default().fg(theme.blue()),
+                    ),
                     status_line("project", &gcp.project_id, w, label_style, value_style),
                     status_line("account", &gcp.account, w, label_style, value_style),
                     status_line("region", region, w, label_style, value_style),
                 ]
             }
             None => {
-                vec![
-                    Line::from(Span::styled(
-                        "No context",
-                        Style::default()
-                            .fg(theme.overlay0())
-                            .add_modifier(Modifier::BOLD),
-                    )),
-                ]
+                vec![Line::from(Span::styled(
+                    "No context",
+                    Style::default()
+                        .fg(theme.overlay0())
+                        .add_modifier(Modifier::BOLD),
+                ))]
             }
         };
 
@@ -146,7 +146,11 @@ impl StatusBar {
         // Compute alignment widths from actual content so the separator
         // forms a straight vertical line regardless of key length.
         let max_key_w = hints.iter().map(|kb| kb.key.len()).max().unwrap_or(1);
-        let max_desc_w = hints.iter().map(|kb| kb.description.len()).max().unwrap_or(1);
+        let max_desc_w = hints
+            .iter()
+            .map(|kb| kb.description.len())
+            .max()
+            .unwrap_or(1);
         // key(right-aligned) + " │ " (3) + desc + gap(2)
         let col_width = u16::try_from(max_key_w + 3 + max_desc_w + 2).unwrap_or(u16::MAX);
         let num_cols = (area.width / col_width).max(1) as usize;
