@@ -10,8 +10,16 @@ use std::time::Duration;
 use color_eyre::Result;
 use crossterm::cursor;
 use crossterm::event::{
-    DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-    Event as CrosstermEvent, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
+    DisableBracketedPaste,
+    DisableMouseCapture,
+    EnableBracketedPaste,
+    EnableMouseCapture,
+    Event as CrosstermEvent,
+    EventStream,
+    KeyCode,
+    KeyEvent,
+    KeyEventKind,
+    KeyModifiers,
     MouseEvent,
 };
 use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
@@ -65,7 +73,7 @@ impl Tui {
     /// # Arguments
     /// * `frame_rate` - Frames per second for rendering (e.g., 60.0)
     /// * `tick_rate` - Ticks per second for animations (e.g., 4.0)
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the terminal cannot be initialized.
     pub fn new(frame_rate: f64, tick_rate: f64) -> Result<Self> {
@@ -82,7 +90,7 @@ impl Tui {
     }
 
     /// Enter the TUI (raw mode, alternate commands, mouse capture).
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the terminal state cannot be changed.
     pub fn enter(&mut self) -> Result<()> {
@@ -95,7 +103,7 @@ impl Tui {
     }
 
     /// Exit the TUI (restore terminal state).
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the terminal state cannot be restored.
     pub fn exit(&mut self) -> Result<()> {
@@ -111,7 +119,7 @@ impl Tui {
     }
 
     /// Suspend the TUI (for Ctrl+Z handling).
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the terminal state cannot be changed.
     pub fn suspend(&mut self) -> Result<()> {
@@ -122,7 +130,7 @@ impl Tui {
     }
 
     /// Resume the TUI after suspension.
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the terminal state cannot be changed.
     pub fn resume(&mut self) -> Result<()> {

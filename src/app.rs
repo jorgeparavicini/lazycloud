@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use color_eyre::Result;
 use color_eyre::eyre::eyre;
 use log::debug;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -8,24 +9,31 @@ use ratatui::widgets::{Block, Paragraph};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
-use crate::Theme;
 use crate::cli::Args;
 use crate::commands::{Command, CommandEnv};
 use crate::config::{AppConfig, GlobalAction, KeyResolver, save_last_context, save_theme};
-use crate::context;
 use crate::context::{CloudContext, ContextSelectorView, load_contexts};
 use crate::registry::{ServiceId, ServiceRegistry};
-use crate::service::ServiceSelectorView;
-use crate::service::{Service, ServiceMsg};
-use crate::theme::ThemeInfo;
-use crate::theme::{ThemeEvent, ThemeSelectorView};
+use crate::service::{Service, ServiceMsg, ServiceSelectorView};
+use crate::theme::{ThemeEvent, ThemeInfo, ThemeSelectorView};
 use crate::tui::{Event, Tui};
 use crate::ui::{
-    CommandId, CommandPanel, ErrorDialog, ErrorDialogEvent, HelpEvent, HelpOverlay,
-    KeybindingSection, Screen, StatusBar, Toast, ToastManager, ToastType,
+    CommandId,
+    CommandPanel,
+    Component,
+    ErrorDialog,
+    ErrorDialogEvent,
+    EventResult,
+    HelpEvent,
+    HelpOverlay,
+    KeybindingSection,
+    Screen,
+    StatusBar,
+    Toast,
+    ToastManager,
+    ToastType,
 };
-use crate::ui::{Component, EventResult};
-use color_eyre::Result;
+use crate::{Theme, context};
 
 #[derive(Debug, Clone)]
 pub enum AppMessage {
@@ -265,7 +273,8 @@ impl App {
     fn go_to_context_selection(&mut self) {
         self.active_context = None;
         self.status_bar.clear_context();
-        self.state = AppState::SelectingContext(ContextSelectorView::new(self.resolver.clone()).unwrap());
+        self.state =
+            AppState::SelectingContext(ContextSelectorView::new(self.resolver.clone()).unwrap());
     }
 
     /// Transition to service selection.

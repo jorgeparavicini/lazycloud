@@ -1,24 +1,24 @@
 use std::sync::Arc;
 
 use clap::Parser;
+use color_eyre::Result;
 
 use crate::app::App;
 use crate::config::KeyResolver;
 use crate::registry::ServiceRegistry;
-use color_eyre::Result;
 
 mod app;
 mod cli;
+pub mod commands;
 mod config;
 mod context;
 mod provider;
 mod registry;
 mod search;
-mod theme;
-mod ui;
-pub mod tui;
 pub mod service;
-pub mod commands;
+mod theme;
+pub mod tui;
+mod ui;
 
 pub use theme::Theme;
 

@@ -9,15 +9,15 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::Theme;
-use crate::ui::{EventResult, Keybinding, Result, Screen};
-use crate::config::{KeyResolver, PayloadAction};
 use crate::commands::{Command, CommandEnv, CopyToClipboardCmd};
-use crate::service::ServiceMsg;
+use crate::config::{KeyResolver, PayloadAction};
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::secrets::Secret;
 use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::versions::SecretVersion;
+use crate::service::ServiceMsg;
+use crate::ui::{EventResult, Keybinding, Result, Screen};
 
 // === Models ===
 
@@ -109,7 +109,10 @@ impl Screen for PayloadScreen {
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        let version = self.version.as_ref().map_or("latest", |v| v.version_id.as_str());
+        let version = self
+            .version
+            .as_ref()
+            .map_or("latest", |v| v.version_id.as_str());
         let title = format!(" {} - v{} ", self.secret.name, version);
 
         let p = Paragraph::new(self.payload.data.as_str())
@@ -143,10 +146,7 @@ impl Screen for PayloadScreen {
 
 // === Update Logic ===
 
-pub(super) fn update(
-    state: &mut SecretManager,
-    msg: PayloadMsg,
-) -> Result<ServiceMsg> {
+pub(super) fn update(state: &mut SecretManager, msg: PayloadMsg) -> Result<ServiceMsg> {
     match msg {
         PayloadMsg::Load { secret, version } => {
             // Use cached payload if available

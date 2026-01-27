@@ -113,198 +113,198 @@ impl Theme {
     }
 
     // Base colors
-    #[must_use] 
+    #[must_use]
     pub const fn base(&self) -> Color {
         self.base
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn mantle(&self) -> Color {
         self.mantle
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn crust(&self) -> Color {
         self.crust
     }
 
     // Surface colors
-    #[must_use] 
+    #[must_use]
     pub const fn surface0(&self) -> Color {
         self.surface0
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn surface1(&self) -> Color {
         self.surface1
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn surface2(&self) -> Color {
         self.surface2
     }
 
     // Overlay colors
-    #[must_use] 
+    #[must_use]
     pub const fn overlay0(&self) -> Color {
         self.overlay0
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn overlay1(&self) -> Color {
         self.overlay1
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn overlay2(&self) -> Color {
         self.overlay2
     }
 
     // Text colors
-    #[must_use] 
+    #[must_use]
     pub const fn text(&self) -> Color {
         self.text
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn subtext0(&self) -> Color {
         self.subtext0
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn subtext1(&self) -> Color {
         self.subtext1
     }
 
     // Accent colors
-    #[must_use] 
+    #[must_use]
     pub const fn rosewater(&self) -> Color {
         self.rosewater
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn flamingo(&self) -> Color {
         self.flamingo
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn pink(&self) -> Color {
         self.pink
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn mauve(&self) -> Color {
         self.mauve
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn red(&self) -> Color {
         self.red
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn maroon(&self) -> Color {
         self.maroon
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn peach(&self) -> Color {
         self.peach
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn yellow(&self) -> Color {
         self.yellow
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn green(&self) -> Color {
         self.green
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn teal(&self) -> Color {
         self.teal
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn sky(&self) -> Color {
         self.sky
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn sapphire(&self) -> Color {
         self.sapphire
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn blue(&self) -> Color {
         self.blue
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn lavender(&self) -> Color {
         self.lavender
     }
 
     // Semantic colors
-    #[must_use] 
+    #[must_use]
     pub const fn primary(&self) -> Color {
         self.blue
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn secondary(&self) -> Color {
         self.mauve
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn success(&self) -> Color {
         self.green
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn warning(&self) -> Color {
         self.yellow
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn error(&self) -> Color {
         self.red
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn info(&self) -> Color {
         self.sky
     }
 
     // UI element colors
-    #[must_use] 
+    #[must_use]
     pub const fn border(&self) -> Color {
         self.surface1
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn border_focused(&self) -> Color {
         self.lavender
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn selection_bg(&self) -> Color {
         self.surface1
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn selection_fg(&self) -> Color {
         self.text
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn header(&self) -> Color {
         self.yellow
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn highlight(&self) -> Color {
         self.mauve
     }

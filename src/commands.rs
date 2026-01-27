@@ -6,13 +6,15 @@
 
 mod clipboard;
 
+use std::sync::{Arc, Mutex};
+
 use arboard::Clipboard;
 use async_trait::async_trait;
 pub use clipboard::CopyToClipboardCmd;
 use color_eyre::Result;
-use std::sync::{Arc, Mutex};
 use color_eyre::eyre::eyre;
 use tokio::sync::mpsc::UnboundedSender;
+
 use crate::app::AppMessage;
 
 /// Async commands that perform side effects.

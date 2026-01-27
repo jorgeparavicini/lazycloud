@@ -51,7 +51,9 @@ impl Component for Spinner {
         if let Some(label) = self.label {
             throbber = throbber.label(label);
             #[allow(clippy::cast_possible_truncation)]
-            { width += label.len() as u16 + 1; } // +1 for space between throbber and label
+            {
+                width += label.len() as u16 + 1;
+            } // +1 for space between throbber and label
         }
 
         let area = area.centered(Constraint::Length(width), Constraint::Length(1));

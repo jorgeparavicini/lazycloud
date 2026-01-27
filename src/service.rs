@@ -1,16 +1,18 @@
-use crate::Theme;
-use crate::commands::Command;
-use crate::config::KeyResolver;
-use crate::context::CloudContext;
-use crate::registry::{ServiceId, ServiceProvider, ServiceRegistry};
-use crate::ui::{Component, EventResult, Keybinding, List, ListEvent, ListRow};
+use std::sync::Arc;
+
 use color_eyre::Result;
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::prelude::Style;
 use ratatui::widgets::ListItem;
-use std::sync::Arc;
+
+use crate::Theme;
+use crate::commands::Command;
+use crate::config::KeyResolver;
+use crate::context::CloudContext;
+use crate::registry::{ServiceId, ServiceProvider, ServiceRegistry};
+use crate::ui::{Component, EventResult, Keybinding, List, ListEvent, ListRow};
 
 pub enum ServiceMsg {
     /// No action needed

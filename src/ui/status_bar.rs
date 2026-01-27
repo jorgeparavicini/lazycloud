@@ -7,9 +7,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 
 use crate::Theme;
-use crate::ui::Keybinding;
 use crate::config::{GlobalAction, KeyResolver, NavAction};
 use crate::context::CloudContext;
+use crate::ui::Keybinding;
 
 /// ASCII art logo for the status bar.
 const LOGO: &[&str] = &[

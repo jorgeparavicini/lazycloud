@@ -1,7 +1,8 @@
+use async_trait::async_trait;
+
 use crate::app::AppMessage;
 use crate::commands::{Command, CommandEnv};
 use crate::ui::ToastType;
-use async_trait::async_trait;
 
 /// Copies a string to the system clipboard and shows a success toast notification.
 pub struct CopyToClipboardCmd {

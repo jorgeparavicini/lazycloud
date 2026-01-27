@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
@@ -19,7 +20,6 @@ use crate::provider::gcp::secret_manager::{payload, secrets, versions};
 use crate::registry::ServiceProvider;
 use crate::service::{Service, ServiceMsg};
 use crate::ui::{Component, EventResult, EventResultExt, Keybinding, Modal, Screen, Spinner};
-use crossterm::event::KeyEvent;
 
 // === Messages ===
 
@@ -221,8 +221,7 @@ impl SecretManager {
     }
 
     fn payload_cache_key(secret: &Secret, version: Option<&SecretVersion>) -> String {
-        let version_id = version
-            .map_or("latest", |v| v.version_id.as_str());
+        let version_id = version.map_or("latest", |v| v.version_id.as_str());
         format!("{}/{}", secret.name, version_id)
     }
 

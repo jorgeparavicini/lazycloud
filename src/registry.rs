@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
+
 use color_eyre::eyre::{Result, eyre};
+
 use crate::config::KeyResolver;
 use crate::context::CloudContext;
 use crate::provider::Provider;
@@ -88,18 +90,13 @@ pub trait ServiceProvider: Send + Sync {
     }
 
     /// Create a new service instance.
-    fn create_service(
-        &self,
-        ctx: &CloudContext,
-        resolver: Arc<KeyResolver>,
-    ) -> Box<dyn Service>;
+    fn create_service(&self, ctx: &CloudContext, resolver: Arc<KeyResolver>) -> Box<dyn Service>;
 
     /// Check if this service is available for the given context.
     fn is_available(&self, ctx: &CloudContext) -> bool {
         self.provider() == ctx.provider()
     }
 }
-
 
 /// Registry of available cloud services.
 ///
@@ -226,15 +223,15 @@ mod tests {
     use std::sync::Arc;
 
     use crossterm::event::KeyEvent;
-    use ratatui::layout::Rect;
     use ratatui::Frame;
+    use ratatui::layout::Rect;
 
     use super::*;
+    use crate::Theme;
     use crate::config::KeyResolver;
     use crate::context::{AuthMethod, GcpContext};
     use crate::service::{Service, ServiceMsg};
     use crate::ui::EventResult;
-    use crate::Theme;
 
     #[test]
     fn test_service_id_display() {

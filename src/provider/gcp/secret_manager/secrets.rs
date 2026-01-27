@@ -12,6 +12,15 @@ use ratatui::widgets::{Block, BorderType, Borders, Cell, Paragraph};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::Theme;
+use crate::commands::{Command, CommandEnv, CopyToClipboardCmd};
+use crate::config::{KeyResolver, SearchAction, SecretsAction};
+use crate::provider::gcp::secret_manager::SecretManager;
+use crate::provider::gcp::secret_manager::client::SecretManagerClient;
+use crate::provider::gcp::secret_manager::payload::PayloadMsg;
+use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
+use crate::provider::gcp::secret_manager::versions::VersionsMsg;
+use crate::search::Matcher;
+use crate::service::ServiceMsg;
 use crate::ui::{
     ColumnDef,
     Component,
@@ -28,15 +37,6 @@ use crate::ui::{
     TextInput,
     TextInputEvent,
 };
-use crate::config::{KeyResolver, SearchAction, SecretsAction};
-use crate::commands::{Command, CommandEnv, CopyToClipboardCmd};
-use crate::service::ServiceMsg;
-use crate::provider::gcp::secret_manager::SecretManager;
-use crate::provider::gcp::secret_manager::client::SecretManagerClient;
-use crate::provider::gcp::secret_manager::payload::PayloadMsg;
-use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
-use crate::provider::gcp::secret_manager::versions::VersionsMsg;
-use crate::search::Matcher;
 
 // === Models ===
 
@@ -138,9 +138,7 @@ impl ReplicationConfig {
     pub fn short_display(&self) -> String {
         match self {
             Self::Automatic => "Automatic".to_string(),
-            Self::UserManaged { locations } if locations.len() == 1 => {
-                locations[0].clone()
-            }
+            Self::UserManaged { locations } if locations.len() == 1 => locations[0].clone(),
             Self::UserManaged { locations } => {
                 format!("{} regions", locations.len())
             }
@@ -311,31 +309,37 @@ impl Screen for SecretListScreen {
             return Ok(SecretsMsg::StartCreation.into());
         }
         if self.resolver.matches_secrets(&key, SecretsAction::Copy)
-            && let Some(secret) = self.table.selected_item() {
-                return Ok(SecretsMsg::CopyPayload(secret.clone()).into());
-            }
+            && let Some(secret) = self.table.selected_item()
+        {
+            return Ok(SecretsMsg::CopyPayload(secret.clone()).into());
+        }
         if self.resolver.matches_secrets(&key, SecretsAction::Delete)
-            && let Some(secret) = self.table.selected_item() {
-                return Ok(SecretsMsg::ConfirmDelete(secret.clone()).into());
-            }
+            && let Some(secret) = self.table.selected_item()
+        {
+            return Ok(SecretsMsg::ConfirmDelete(secret.clone()).into());
+        }
         if self.resolver.matches_secrets(&key, SecretsAction::Versions)
-            && let Some(secret) = self.table.selected_item() {
-                return Ok(SecretsMsg::ViewVersions(secret.clone()).into());
-            }
+            && let Some(secret) = self.table.selected_item()
+        {
+            return Ok(SecretsMsg::ViewVersions(secret.clone()).into());
+        }
         if self.resolver.matches_secrets(&key, SecretsAction::Labels)
-            && let Some(secret) = self.table.selected_item() {
-                return Ok(SecretsMsg::ViewLabels(secret.clone()).into());
-            }
+            && let Some(secret) = self.table.selected_item()
+        {
+            return Ok(SecretsMsg::ViewLabels(secret.clone()).into());
+        }
         if self.resolver.matches_secrets(&key, SecretsAction::Iam)
-            && let Some(secret) = self.table.selected_item() {
-                return Ok(SecretsMsg::ViewIamPolicy(secret.clone()).into());
-            }
+            && let Some(secret) = self.table.selected_item()
+        {
+            return Ok(SecretsMsg::ViewIamPolicy(secret.clone()).into());
+        }
         if self
             .resolver
             .matches_secrets(&key, SecretsAction::Replication)
-            && let Some(secret) = self.table.selected_item() {
-                return Ok(SecretsMsg::ViewReplicationInfo(secret.clone()).into());
-            }
+            && let Some(secret) = self.table.selected_item()
+        {
+            return Ok(SecretsMsg::ViewReplicationInfo(secret.clone()).into());
+        }
 
         Ok(EventResult::Ignored)
     }
@@ -493,7 +497,11 @@ pub struct ReplicationScreen {
 }
 
 impl ReplicationScreen {
-    pub const fn new(secret: Secret, replication: ReplicationConfig, resolver: Arc<KeyResolver>) -> Self {
+    pub const fn new(
+        secret: Secret,
+        replication: ReplicationConfig,
+        resolver: Arc<KeyResolver>,
+    ) -> Self {
         Self {
             secret,
             replication,
@@ -699,10 +707,7 @@ impl Modal for DeleteSecretDialog {
 
 // Flat message dispatcher — splitting reduces readability
 #[allow(clippy::too_many_lines)]
-pub(super) fn update(
-    state: &mut SecretManager,
-    msg: SecretsMsg,
-) -> color_eyre::Result<ServiceMsg> {
+pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> color_eyre::Result<ServiceMsg> {
     let resolver = state.get_resolver();
 
     match msg {

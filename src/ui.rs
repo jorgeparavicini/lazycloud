@@ -7,26 +7,34 @@ mod help;
 mod status_bar;
 mod toast;
 
-use crossterm::event::KeyEvent;
-use ratatui::layout::Rect;
-use ratatui::Frame;
-
 pub use color_eyre::Result;
-
-use crate::Theme;
-
+// Re-export app-level UI
+pub use command_panel::{CommandId, CommandPanel};
 // Re-export components
-pub use components::{ConfirmDialog, ConfirmEvent, List, ListEvent, ListRow, Table, TableEvent, TableRow, ColumnDef, TextInput, TextInputEvent};
-
+pub use components::{
+    ColumnDef,
+    ConfirmDialog,
+    ConfirmEvent,
+    List,
+    ListEvent,
+    ListRow,
+    Table,
+    TableEvent,
+    TableRow,
+    TextInput,
+    TextInputEvent,
+};
+use crossterm::event::KeyEvent;
+pub use error_dialog::{ErrorDialog, ErrorDialogEvent};
+pub use help::{HelpEvent, HelpOverlay, Keybinding, KeybindingSection};
+use ratatui::Frame;
+use ratatui::layout::Rect;
+pub use status_bar::StatusBar;
+pub use toast::{Toast, ToastManager, ToastType};
 // Re-export widgets
 pub use widgets::Spinner;
 
-// Re-export app-level UI
-pub use command_panel::{CommandId, CommandPanel};
-pub use error_dialog::{ErrorDialog, ErrorDialogEvent};
-pub use help::{HelpEvent, HelpOverlay, Keybinding, KeybindingSection};
-pub use status_bar::StatusBar;
-pub use toast::{Toast, ToastManager, ToastType};
+use crate::Theme;
 
 /// Result of handling an input event.
 ///

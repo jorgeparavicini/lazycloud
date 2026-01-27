@@ -1,17 +1,21 @@
 use std::collections::HashMap;
 
-use crate::context::GcpContext;
-use crate::provider::gcp::secret_manager::payload::SecretPayload;
-use crate::provider::gcp::secret_manager::secrets::{
-    IamBinding, IamPolicy, ReplicationConfig, Secret,
-};
-use crate::provider::gcp::secret_manager::versions::SecretVersion;
 use chrono::{DateTime, Utc};
 use color_eyre::Result;
 use google_cloud_secretmanager_v1::client::SecretManagerService as GcpSecretManagerClient;
 use google_cloud_secretmanager_v1::model;
 use google_cloud_wkt::FieldMask;
 use tokio_util::bytes::Bytes;
+
+use crate::context::GcpContext;
+use crate::provider::gcp::secret_manager::payload::SecretPayload;
+use crate::provider::gcp::secret_manager::secrets::{
+    IamBinding,
+    IamPolicy,
+    ReplicationConfig,
+    Secret,
+};
+use crate::provider::gcp::secret_manager::versions::SecretVersion;
 
 #[derive(Clone, Debug)]
 pub struct SecretManagerClient {
@@ -396,7 +400,10 @@ impl SecretManagerClient {
 // === Utilities ===
 
 fn format_timestamp(seconds: i64) -> String {
-    DateTime::<Utc>::from_timestamp(seconds, 0).map_or_else(|| "Unknown".to_string(), |dt| dt.format("%Y-%m-%d %H:%M").to_string())
+    DateTime::<Utc>::from_timestamp(seconds, 0).map_or_else(
+        || "Unknown".to_string(),
+        |dt| dt.format("%Y-%m-%d %H:%M").to_string(),
+    )
 }
 
 fn parse_replication(replication: Option<&model::Replication>) -> ReplicationConfig {

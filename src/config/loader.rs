@@ -1,8 +1,9 @@
 use std::fs;
 use std::path::PathBuf;
 
-use crate::config::AppConfig;
 use color_eyre::Result;
+
+use crate::config::AppConfig;
 
 const CONFIG_DIR: &str = "lazycloud";
 const CONFIG_FILE: &str = "config.toml";

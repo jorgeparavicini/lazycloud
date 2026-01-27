@@ -4,7 +4,16 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::prelude::{Modifier, Style};
-use ratatui::widgets::{Block, BorderType, Borders, Cell, Paragraph, Row, Table as RatatuiTable, TableState};
+use ratatui::widgets::{
+    Block,
+    BorderType,
+    Borders,
+    Cell,
+    Paragraph,
+    Row,
+    Table as RatatuiTable,
+    TableState,
+};
 
 use crate::Theme;
 use crate::config::{KeyResolver, NavAction, SearchAction};
@@ -77,9 +86,10 @@ impl<T: TableRow + Clone> Table<T> {
 
     pub fn selected_item(&self) -> Option<&T> {
         if let Some(selected) = self.state.selected()
-            && let Some(&idx) = self.filtered_indices.get(selected) {
-                return self.items.get(idx);
-            }
+            && let Some(&idx) = self.filtered_indices.get(selected)
+        {
+            return self.items.get(idx);
+        }
         None
     }
 
@@ -147,9 +157,10 @@ impl<T: TableRow + Clone> Table<T> {
     fn get_change_event(&self, before: Option<usize>) -> EventResult<TableEvent<T>> {
         if let Some(selected) = self.state.selected()
             && Some(selected) != before
-                && let Some(&idx) = self.filtered_indices.get(selected) {
-                    return TableEvent::Changed(self.items[idx].clone()).into();
-                }
+            && let Some(&idx) = self.filtered_indices.get(selected)
+        {
+            return TableEvent::Changed(self.items[idx].clone()).into();
+        }
         EventResult::Consumed
     }
 
@@ -236,7 +247,9 @@ impl<T: TableRow + Clone> Table<T> {
                 return self
                     .filtered_indices
                     .get(selected)
-                    .map_or(EventResult::Ignored, |&idx| TableEvent::Activated(self.items[idx].clone()).into());
+                    .map_or(EventResult::Ignored, |&idx| {
+                        TableEvent::Activated(self.items[idx].clone()).into()
+                    });
             }
             return EventResult::Ignored;
         }

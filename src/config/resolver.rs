@@ -2,7 +2,15 @@ use std::sync::Arc;
 
 use crossterm::event::KeyEvent;
 
-use crate::config::actions::{GlobalAction, NavAction, SearchAction, SecretsAction, VersionsAction, PayloadAction, DialogAction};
+use crate::config::actions::{
+    DialogAction,
+    GlobalAction,
+    NavAction,
+    PayloadAction,
+    SearchAction,
+    SecretsAction,
+    VersionsAction,
+};
 use crate::config::keybindings::KeybindingsConfig;
 
 pub struct KeyResolver {

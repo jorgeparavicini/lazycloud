@@ -65,8 +65,7 @@ pub struct DialogKeybindings {
     pub dismiss: KeyBinding,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct KeybindingsConfig {
     pub global: GlobalKeybindings,
     pub navigation: NavigationKeybindings,
@@ -174,4 +173,3 @@ impl Default for DialogKeybindings {
         }
     }
 }
-

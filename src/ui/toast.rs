@@ -6,8 +6,8 @@ use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
-use crate::Theme;
 use super::{Component, EventResult, Result};
+use crate::Theme;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToastType {

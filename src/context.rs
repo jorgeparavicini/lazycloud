@@ -1,8 +1,5 @@
-use crate::Theme;
-use crate::config::{KeyResolver, config_dir};
-use crate::provider::Provider;
-use crate::provider::gcp::discover_gcloud_configs;
-use crate::ui::{Component, EventResult, List, ListEvent, ListRow, Screen};
+use std::sync::Arc;
+
 use color_eyre::eyre::{Result, eyre};
 use crossterm::event::KeyEvent;
 use google_cloud_auth::credentials::Credentials;
@@ -11,7 +8,12 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::widgets::ListItem;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+
+use crate::Theme;
+use crate::config::{KeyResolver, config_dir};
+use crate::provider::Provider;
+use crate::provider::gcp::discover_gcloud_configs;
+use crate::ui::{Component, EventResult, List, ListEvent, ListRow, Screen};
 
 const CONTEXTS_FILE: &str = "contexts.json";
 

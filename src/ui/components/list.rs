@@ -60,9 +60,10 @@ impl<T: ListRow + Clone> List<T> {
 
     fn get_change_event(&self, before: Option<usize>) -> EventResult<ListEvent<T>> {
         if let Some(selected) = self.state.selected()
-            && Some(selected) != before {
-                return ListEvent::Changed(self.items[selected].clone()).into();
-            }
+            && Some(selected) != before
+        {
+            return ListEvent::Changed(self.items[selected].clone()).into();
+        }
         EventResult::Consumed
     }
 }

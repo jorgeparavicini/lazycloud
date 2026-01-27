@@ -5,6 +5,7 @@
 pub mod gcp;
 
 use std::fmt;
+
 use crate::registry::ServiceRegistry;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

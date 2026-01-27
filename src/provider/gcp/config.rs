@@ -1,5 +1,6 @@
-use serde::{Deserialize};
 use std::fs;
+
+use serde::Deserialize;
 
 /// A discovered GCP context from gcloud CLI configuration.
 #[derive(Deserialize)]

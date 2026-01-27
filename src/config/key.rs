@@ -211,20 +211,14 @@ impl KeyBinding {
     pub fn display(&self) -> String {
         match self {
             Self::Single(key) => key.display(),
-            Self::Multiple(keys) => keys
-                .iter()
-                .map(Key::display)
-                .collect::<Vec<_>>()
-                .join("/"),
+            Self::Multiple(keys) => keys.iter().map(Key::display).collect::<Vec<_>>().join("/"),
         }
     }
 
     pub fn first_key(&self) -> &Key {
         match self {
             Self::Single(key) => key,
-            Self::Multiple(keys) => {
-                keys.first().expect("Multiple must have at least one key")
-            }
+            Self::Multiple(keys) => keys.first().expect("Multiple must have at least one key"),
         }
     }
 }

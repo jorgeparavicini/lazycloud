@@ -9,6 +9,15 @@ use ratatui::widgets::Cell;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::Theme;
+use crate::commands::{Command, CommandEnv};
+use crate::config::{KeyResolver, SearchAction, VersionsAction};
+use crate::provider::gcp::secret_manager::SecretManager;
+use crate::provider::gcp::secret_manager::client::SecretManagerClient;
+use crate::provider::gcp::secret_manager::payload::PayloadMsg;
+use crate::provider::gcp::secret_manager::secrets::Secret;
+use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
+use crate::search::Matcher;
+use crate::service::ServiceMsg;
 use crate::ui::{
     ColumnDef,
     Component,
@@ -25,15 +34,6 @@ use crate::ui::{
     TextInput,
     TextInputEvent,
 };
-use crate::config::{KeyResolver, SearchAction, VersionsAction};
-use crate::commands::{Command, CommandEnv};
-use crate::service::ServiceMsg;
-use crate::provider::gcp::secret_manager::SecretManager;
-use crate::provider::gcp::secret_manager::client::SecretManagerClient;
-use crate::provider::gcp::secret_manager::payload::PayloadMsg;
-use crate::provider::gcp::secret_manager::secrets::Secret;
-use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
-use crate::search::Matcher;
 
 // === Models ===
 
@@ -187,33 +187,36 @@ impl Screen for VersionListScreen {
             .resolver
             .matches_versions(&key, VersionsAction::Disable)
             && let Some(v) = self.table.selected_item()
-                && v.state.contains("Enabled") {
-                    return Ok(VersionsMsg::Disable {
-                        secret: self.secret.clone(),
-                        version: v.clone(),
-                    }
-                    .into());
-                }
+            && v.state.contains("Enabled")
+        {
+            return Ok(VersionsMsg::Disable {
+                secret: self.secret.clone(),
+                version: v.clone(),
+            }
+            .into());
+        }
         if self.resolver.matches_versions(&key, VersionsAction::Enable)
             && let Some(v) = self.table.selected_item()
-                && v.state.contains("Disabled") {
-                    return Ok(VersionsMsg::Enable {
-                        secret: self.secret.clone(),
-                        version: v.clone(),
-                    }
-                    .into());
-                }
+            && v.state.contains("Disabled")
+        {
+            return Ok(VersionsMsg::Enable {
+                secret: self.secret.clone(),
+                version: v.clone(),
+            }
+            .into());
+        }
         if self
             .resolver
             .matches_versions(&key, VersionsAction::Destroy)
             && let Some(v) = self.table.selected_item()
-                && !v.state.contains("Destroyed") {
-                    return Ok(VersionsMsg::ConfirmDestroy {
-                        secret: self.secret.clone(),
-                        version: v.clone(),
-                    }
-                    .into());
-                }
+            && !v.state.contains("Destroyed")
+        {
+            return Ok(VersionsMsg::ConfirmDestroy {
+                secret: self.secret.clone(),
+                version: v.clone(),
+            }
+            .into());
+        }
 
         Ok(EventResult::Ignored)
     }
@@ -283,7 +286,9 @@ impl Modal for CreateVersionDialog {
                 }
                 .into()
             }
-            EventResult::Event(TextInputEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
+            EventResult::Event(TextInputEvent::Cancelled) => {
+                SecretManagerMsg::DialogCancelled.into()
+            }
             // Empty submission
             _ => EventResult::Consumed,
         })
@@ -347,10 +352,7 @@ impl Modal for DestroyVersionDialog {
 
 // Flat message dispatcher — splitting reduces readability
 #[allow(clippy::too_many_lines)]
-pub(super) fn update(
-    state: &mut SecretManager,
-    msg: VersionsMsg,
-) -> Result<ServiceMsg> {
+pub(super) fn update(state: &mut SecretManager, msg: VersionsMsg) -> Result<ServiceMsg> {
     match msg {
         VersionsMsg::Load(secret) => {
             // Use cached versions if available
