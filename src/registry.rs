@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
+use color_eyre::eyre::{Result, eyre};
 use crate::config::KeyResolver;
 use crate::context::CloudContext;
 use crate::provider::Provider;
@@ -174,6 +175,33 @@ impl ServiceRegistry {
     /// Get all registered service providers.
     pub fn all_providers(&self) -> Vec<Arc<dyn ServiceProvider>> {
         self.providers.values().cloned().collect()
+    }
+
+    /// Find a service by case-insensitive name within a context.
+    pub fn find_service_by_name(&self, context: &CloudContext, name: &str) -> Result<ServiceId> {
+        let services = self.available_services(context);
+        services
+            .iter()
+            .find(|s| s.service_key().eq_ignore_ascii_case(name))
+            .map(|s| s.service_id())
+            .ok_or_else(|| {
+                let available: Vec<_> = services.iter().map(|s| s.service_key()).collect();
+                eyre!(
+                    "Service '{}' not available for {}. Available: {}",
+                    name,
+                    context.provider().display_name(),
+                    available.join(", ")
+                )
+            })
+    }
+
+    /// Find the provider for a service by case-insensitive name.
+    pub fn find_provider_by_name(&self, name: &str) -> Result<Provider> {
+        self.all_providers()
+            .iter()
+            .find(|p| p.service_key().eq_ignore_ascii_case(name))
+            .map(|p| p.provider())
+            .ok_or_else(|| eyre!("Unknown service: {}", name))
     }
 
     /// Get the number of registered services.

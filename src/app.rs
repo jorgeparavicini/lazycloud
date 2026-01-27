@@ -12,9 +12,8 @@ use crate::Theme;
 use crate::cli::Args;
 use crate::commands::{Command, CommandEnv};
 use crate::config::{AppConfig, GlobalAction, KeyResolver, save_last_context, save_theme};
-use crate::context::ContextSelectorView;
-use crate::context::{CloudContext, load_contexts};
-use crate::provider::Provider;
+use crate::context;
+use crate::context::{CloudContext, ContextSelectorView, load_contexts};
 use crate::registry::{ServiceId, ServiceRegistry};
 use crate::service::ServiceSelectorView;
 use crate::service::{Service, ServiceMsg};
@@ -137,25 +136,25 @@ impl App {
 
         match (&args.context, &args.service) {
             (Some(ctx_name), Some(svc_name)) => {
-                let context = Self::find_context(&contexts, ctx_name)?;
-                let service_id = self.find_service(&context, svc_name)?;
+                let context = context::find_by_name(&contexts, ctx_name)?;
+                let service_id = self.registry.find_service_by_name(&context, svc_name)?;
                 self.start_service(&context, &service_id);
             }
 
             (Some(ctx_name), None) => {
-                let context = Self::find_context(&contexts, ctx_name)?;
+                let context = context::find_by_name(&contexts, ctx_name)?;
                 self.go_to_service_selection(&context);
             }
 
             (None, Some(svc_name)) => {
-                let provider = self.find_service_provider(svc_name)?;
+                let provider = self.registry.find_provider_by_name(svc_name)?;
 
                 // Try last context if compatible
                 if let Some(ctx_name) = &self.config.last_context
-                    && let Ok(context) = Self::find_context(&contexts, ctx_name)
+                    && let Ok(context) = context::find_by_name(&contexts, ctx_name)
                     && context.provider() == provider
                 {
-                    let service_id = self.find_service(&context, svc_name)?;
+                    let service_id = self.registry.find_service_by_name(&context, svc_name)?;
                     self.start_service(&context, &service_id);
                     return Ok(());
                 }
@@ -177,47 +176,6 @@ impl App {
             (None, None) => {}
         }
         Ok(())
-    }
-
-    fn find_context(contexts: &[CloudContext], name: &str) -> Result<CloudContext> {
-        contexts
-            .iter()
-            .find(|c| c.name().eq_ignore_ascii_case(name))
-            .cloned()
-            .ok_or_else(|| {
-                let available: Vec<_> = contexts.iter().map(CloudContext::name).collect();
-                eyre!(
-                    "Context '{}' not found. Available: {}",
-                    name,
-                    available.join(", ")
-                )
-            })
-    }
-
-    fn find_service(&self, context: &CloudContext, name: &str) -> Result<ServiceId> {
-        let services = self.registry.available_services(context);
-        services
-            .iter()
-            .find(|s| s.service_key().eq_ignore_ascii_case(name))
-            .map(|s| s.service_id())
-            .ok_or_else(|| {
-                let available: Vec<_> = services.iter().map(|s| s.service_key()).collect();
-                eyre!(
-                    "Service '{}' not available for {}. Available: {}",
-                    name,
-                    context.provider().display_name(),
-                    available.join(", ")
-                )
-            })
-    }
-
-    fn find_service_provider(&self, name: &str) -> Result<Provider> {
-        self.registry
-            .all_providers()
-            .iter()
-            .find(|p| p.service_key().eq_ignore_ascii_case(name))
-            .map(|p| p.provider())
-            .ok_or_else(|| eyre!("Unknown service: {}", name))
     }
 
     fn start_service(&mut self, context: &CloudContext, service_id: &ServiceId) {
@@ -580,7 +538,7 @@ impl App {
             AppMessage::SelectContext(context) => {
                 // Check for pending service from CLI args
                 if let Some(svc_name) = self.pending_service.take()
-                    && let Ok(service_id) = self.find_service(&context, &svc_name)
+                    && let Ok(service_id) = self.registry.find_service_by_name(&context, &svc_name)
                 {
                     self.start_service(&context, &service_id);
                     return Ok(());

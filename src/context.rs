@@ -3,7 +3,7 @@ use crate::config::{KeyResolver, config_dir};
 use crate::provider::Provider;
 use crate::provider::gcp::discover_gcloud_configs;
 use crate::ui::{Component, EventResult, List, ListEvent, ListRow, Screen};
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{Result, eyre};
 use crossterm::event::KeyEvent;
 use google_cloud_auth::credentials::Credentials;
 use ratatui::Frame;
@@ -92,6 +92,21 @@ pub fn save_contexts(contexts: &[CloudContext]) -> Result<()> {
         std::fs::write(path, data)?;
     }
     Ok(())
+}
+
+pub fn find_by_name(contexts: &[CloudContext], name: &str) -> Result<CloudContext> {
+    contexts
+        .iter()
+        .find(|c| c.name().eq_ignore_ascii_case(name))
+        .cloned()
+        .ok_or_else(|| {
+            let available: Vec<_> = contexts.iter().map(CloudContext::name).collect();
+            eyre!(
+                "Context '{}' not found. Available: {}",
+                name,
+                available.join(", ")
+            )
+        })
 }
 
 pub fn reconcile_contexts() -> Result<Vec<CloudContext>> {
