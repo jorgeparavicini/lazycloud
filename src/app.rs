@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use color_eyre::Result;
 use color_eyre::eyre::eyre;
-use log::debug;
+use tracing::{debug, error, warn};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Paragraph};
@@ -480,7 +480,7 @@ impl App {
             }
             AppMessage::Render => self.render(tui)?,
             AppMessage::DisplayError(err) => {
-                log::error!("Error: {err}");
+                error!("Error: {err}");
                 self.popup = Some(ActivePopup::Error(ErrorDialog::new(
                     err,
                     self.resolver.clone(),
@@ -498,7 +498,7 @@ impl App {
             AppMessage::SelectTheme(theme_info) => {
                 // Persist theme to config file
                 if let Err(e) = save_theme(theme_info.name) {
-                    log::warn!("Failed to persist theme: {e}");
+                    warn!("Failed to persist theme: {e}");
                 }
                 self.theme = theme_info.theme;
                 self.popup = None;

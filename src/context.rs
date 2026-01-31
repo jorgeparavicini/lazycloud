@@ -7,6 +7,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::widgets::Cell;
 use serde::{Deserialize, Serialize};
+use tracing::{debug, error, info};
 
 use crate::Theme;
 use crate::config::{KeyResolver, config_dir};
@@ -77,10 +78,18 @@ impl std::fmt::Display for CloudContext {
 pub fn load_contexts() -> Vec<CloudContext> {
     if let Some(config_dir) = config_dir() {
         let path = config_dir.join(CONTEXTS_FILE);
-        if let Ok(data) = std::fs::read_to_string(path)
-            && let Ok(contexts) = serde_json::from_str::<Vec<CloudContext>>(&data)
-        {
-            return contexts;
+        match std::fs::read_to_string(&path) {
+            Ok(data) => match serde_json::from_str::<Vec<CloudContext>>(&data) {
+                Ok(contexts) => {
+                    info!(path = %path.display(), count = contexts.len(), "Loaded contexts");
+                    return contexts;
+                }
+                Err(err) => error!(path = %path.display(), %err, "Failed to parse contexts file"),
+            },
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                debug!(path = %path.display(), "Contexts file not found");
+            }
+            Err(err) => error!(path = %path.display(), %err, "Failed to read contexts file"),
         }
     }
     Vec::new()
@@ -91,7 +100,8 @@ pub fn save_contexts(contexts: &[CloudContext]) -> Result<()> {
         std::fs::create_dir_all(&config_dir)?;
         let path = config_dir.join(CONTEXTS_FILE);
         let data = serde_json::to_string_pretty(contexts)?;
-        std::fs::write(path, data)?;
+        std::fs::write(&path, data)?;
+        info!(path = %path.display(), count = contexts.len(), "Saved contexts");
     }
     Ok(())
 }
@@ -103,6 +113,7 @@ pub fn find_by_name(contexts: &[CloudContext], name: &str) -> Result<CloudContex
         .cloned()
         .ok_or_else(|| {
             let available: Vec<_> = contexts.iter().map(CloudContext::name).collect();
+            error!(name, ?available, "Context lookup failed");
             eyre!(
                 "Context '{}' not found. Available: {}",
                 name,
@@ -112,13 +123,17 @@ pub fn find_by_name(contexts: &[CloudContext], name: &str) -> Result<CloudContex
 }
 
 pub fn reconcile_contexts() -> Result<Vec<CloudContext>> {
+    debug!("Starting context reconciliation");
     let mut contexts = load_contexts();
     let discovered_configs = discover_gcloud_configs();
+    debug!(count = discovered_configs.len(), "Discovered gcloud configurations");
 
+    let mut new_count = 0;
     for config in discovered_configs {
         if !contexts.iter().any(|ctx| match ctx {
             CloudContext::Gcp(existing) => existing.display_name == config.name,
         }) {
+            info!(name = %config.name, project = %config.core.project, "Adding newly discovered GCP context");
             contexts.push(CloudContext::Gcp(GcpContext {
                 display_name: config.name,
                 project_id: config.core.project,
@@ -127,10 +142,16 @@ pub fn reconcile_contexts() -> Result<Vec<CloudContext>> {
                 zone: config.compute.zone,
                 auth: AuthMethod::ApplicationDefault,
             }));
+            new_count += 1;
         }
     }
 
-    save_contexts(&contexts)?;
+    if new_count > 0 {
+        save_contexts(&contexts)?;
+        info!(new_count, total = contexts.len(), "Reconciliation complete with new contexts");
+    } else {
+        debug!("Reconciliation complete, no new contexts found");
+    }
 
     Ok(contexts)
 }

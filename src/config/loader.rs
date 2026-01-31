@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use color_eyre::Result;
-
+use tracing::{debug, warn};
 use crate::config::AppConfig;
 
 const CONFIG_DIR: &str = "lazycloud";
@@ -18,12 +18,12 @@ pub fn config_path() -> Option<PathBuf> {
 
 pub fn load() -> Result<AppConfig> {
     let Some(path) = config_path() else {
-        log::debug!("No config directory found, using defaults");
+        debug!("No config directory found, using defaults");
         return Ok(AppConfig::default());
     };
 
     if !path.exists() {
-        log::debug!(
+        debug!(
             "Config file not found at {}, using defaults",
             path.display()
         );
@@ -32,13 +32,13 @@ pub fn load() -> Result<AppConfig> {
 
     let content = fs::read_to_string(&path)?;
     let config: AppConfig = toml::from_str(&content)?;
-    log::debug!("Loaded config from {}", path.display());
+    debug!("Loaded config from {}", path.display());
     Ok(config)
 }
 
 pub fn save(config: &AppConfig) -> Result<()> {
     let Some(dir) = config_dir() else {
-        log::warn!("Could not determine config directory");
+        warn!("Could not determine config directory");
         return Ok(());
     };
 
@@ -49,7 +49,7 @@ pub fn save(config: &AppConfig) -> Result<()> {
     let path = dir.join(CONFIG_FILE);
     let content = toml::to_string_pretty(config)?;
     fs::write(&path, content)?;
-    log::debug!("Saved config to {}", path.display());
+    debug!("Saved config to {}", path.display());
     Ok(())
 }
 

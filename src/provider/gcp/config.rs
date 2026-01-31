@@ -1,6 +1,7 @@
 use std::fs;
 
 use serde::Deserialize;
+use tracing::{debug, error, info};
 
 /// A discovered GCP context from gcloud CLI configuration.
 #[derive(Deserialize)]
@@ -31,16 +32,33 @@ pub struct GcloudComputeConfig {
 pub fn discover_gcloud_configs() -> Vec<GcloudConfig> {
     let mut contexts = Vec::new();
 
+    #[cfg(target_os = "macos")]
     let config_dir = match dirs::home_dir() {
         Some(dir) => dir.join(".config").join("gcloud").join("configurations"),
-        None => return contexts,
+        None => {
+            error!("Could not determine home directory for gcloud config");
+            return contexts;
+        }
     };
 
+    #[cfg(not(target_os = "macos"))]
+    let config_dir = match dirs::config_dir() {
+        Some(dir) => dir.join("gcloud").join("configurations"),
+        None => {
+            error!("Could not determine config directory for gcloud config");
+            return contexts;
+        }
+    };
+
+    debug!(path = %config_dir.display(), "Searching for gcloud configurations");
+
     if !config_dir.exists() {
+        debug!(path = %config_dir.display(), "gcloud configurations directory does not exist");
         return contexts;
     }
 
-    let Ok(entries) = fs::read_dir(config_dir) else {
+    let Ok(entries) = fs::read_dir(&config_dir) else {
+        error!(path = %config_dir.display(), "Failed to read gcloud configurations directory");
         return contexts;
     };
 
@@ -57,18 +75,23 @@ pub fn discover_gcloud_configs() -> Vec<GcloudConfig> {
 
         let config_name = file_name.trim_start_matches("config_").to_string();
 
-        let Ok(content) = fs::read_to_string(&path) else {
-            continue;
-        };
-
-        let Ok(mut config) = serini::from_str::<GcloudConfig>(&content) else {
-            continue;
-        };
-
-        config.name = config_name;
-
-        contexts.push(config);
+        match fs::read_to_string(&path) {
+            Ok(content) => match serini::from_str::<GcloudConfig>(&content) {
+                Ok(mut config) => {
+                    config.name = config_name;
+                    debug!(name = %config.name, "Discovered gcloud config");
+                    contexts.push(config);
+                }
+                Err(err) => {
+                    error!(path = %path.display(), %err, "Failed to parse gcloud config file");
+                }
+            },
+            Err(err) => {
+                error!(path = %path.display(), %err, "Failed to read gcloud config file");
+            }
+        }
     }
 
+    info!(count = contexts.len(), "GCP configuration discovery complete");
     contexts
 }
