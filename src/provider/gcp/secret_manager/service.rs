@@ -112,7 +112,7 @@ impl SecretManager {
 
     // === Public helpers for feature slices ===
 
-    pub(super) fn get_client(&self) -> color_eyre::Result<SecretManagerClient> {
+    pub(super) fn get_client(&self) -> Result<SecretManagerClient> {
         self.client
             .clone()
             .ok_or_else(|| color_eyre::eyre::eyre!("Secret Manager client not initialized"))
@@ -236,7 +236,7 @@ impl SecretManager {
         self.screen_stack.last_mut()
     }
 
-    fn process_message(&mut self, msg: SecretManagerMsg) -> color_eyre::Result<ServiceMsg> {
+    fn process_message(&mut self, msg: SecretManagerMsg) -> Result<ServiceMsg> {
         match msg {
             // === Lifecycle ===
             SecretManagerMsg::Initialize => {
@@ -323,7 +323,7 @@ impl Service for SecretManager {
         EventResult::Ignored
     }
 
-    fn update(&mut self) -> color_eyre::Result<ServiceMsg> {
+    fn update(&mut self) -> Result<ServiceMsg> {
         let mut commands: Vec<Box<dyn Command>> = Vec::new();
 
         while let Ok(msg) = self.msg_rx.try_recv() {
