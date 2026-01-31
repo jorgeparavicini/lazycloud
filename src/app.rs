@@ -10,7 +10,7 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::cli::Args;
-use crate::commands::{Command, CommandEnv};
+use crate::commands::Command;
 use crate::config::{AppConfig, GlobalAction, KeyResolver, save_last_context, save_theme};
 use crate::context::{CloudContext, ContextSelectorView, load_contexts};
 use crate::registry::{ServiceId, ServiceRegistry};
@@ -18,20 +18,8 @@ use crate::service::{Service, ServiceMsg, ServiceSelectorView};
 use crate::theme::{ThemeEvent, ThemeInfo, ThemeSelectorView};
 use crate::tui::{Event, Tui};
 use crate::ui::{
-    CommandId,
-    CommandPanel,
-    Component,
-    ErrorDialog,
-    ErrorDialogEvent,
-    EventResult,
-    HelpEvent,
-    HelpOverlay,
-    KeybindingSection,
-    Screen,
-    StatusBar,
-    Toast,
-    ToastManager,
-    ToastType,
+    CommandId, CommandPanel, Component, ErrorDialog, ErrorDialogEvent, EventResult, HelpEvent,
+    HelpOverlay, KeybindingSection, Screen, StatusBar, Toast, ToastManager, ToastType,
 };
 use crate::{Theme, context};
 
@@ -89,7 +77,6 @@ pub struct App {
     status_bar: StatusBar,
     command_tracker: CommandPanel,
     toast_manager: ToastManager,
-    cmd_env: CommandEnv,
     should_quit: bool,
     should_suspend: bool,
     active_context: Option<CloudContext>,
@@ -110,8 +97,6 @@ impl App {
     ) -> Result<Self> {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
 
-        let cmd_env = CommandEnv::new(msg_tx.clone());
-
         Ok(Self {
             state: AppState::SelectingContext(ContextSelectorView::new(resolver.clone())?),
             theme,
@@ -119,7 +104,6 @@ impl App {
             status_bar: StatusBar::new(resolver.clone()),
             command_tracker: CommandPanel::new(),
             toast_manager: ToastManager::new(),
-            cmd_env,
             should_quit: false,
             should_suspend: false,
             active_context: None,
@@ -239,9 +223,8 @@ impl App {
         for cmd in commands {
             let id = self.command_tracker.start(cmd.name());
             let msg_tx = self.msg_tx.clone();
-            let cmd_env = self.cmd_env.clone();
             tokio::spawn(async move {
-                let success = match cmd.execute(cmd_env).await {
+                let success = match cmd.execute(msg_tx.clone()).await {
                     Ok(()) => true,
                     Err(e) => {
                         let _ = msg_tx.send(AppMessage::DisplayError(e.to_string()));

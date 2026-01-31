@@ -10,9 +10,9 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Cell, Paragraph};
 use tokio::sync::mpsc::UnboundedSender;
-
+use crate::app::AppMessage;
 use crate::Theme;
-use crate::commands::{Command, CommandEnv, CopyToClipboardCmd};
+use crate::commands::{Command, CopyToClipboardCmd};
 use crate::config::{KeyResolver, SearchAction, SecretsAction};
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
@@ -707,7 +707,7 @@ impl Modal for DeleteSecretDialog {
 
 // Flat message dispatcher — splitting reduces readability
 #[allow(clippy::too_many_lines)]
-pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> color_eyre::Result<ServiceMsg> {
+pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<ServiceMsg> {
     let resolver = state.get_resolver();
 
     match msg {
@@ -929,7 +929,7 @@ impl Command for FetchSecretsCmd {
         "Loading secrets".to_string()
     }
 
-    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
+    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
         let secrets = self.client.list_secrets().await?;
         self.tx.send(SecretsMsg::Loaded(secrets).into())?;
         Ok(())
@@ -949,7 +949,7 @@ impl Command for CreateSecretCmd {
         format!("Creating '{}'", self.name)
     }
 
-    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
+    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
         let secret = if let Some(payload) = self.payload {
             self.client
                 .create_secret_with_payload(&self.name, payload.as_bytes())
@@ -974,7 +974,7 @@ impl Command for DeleteSecretCmd {
         format!("Deleting '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
+    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
         self.client.delete_secret(&self.secret.name).await?;
         self.tx.send(SecretsMsg::Deleted(self.secret.name).into())?;
         Ok(())
@@ -994,7 +994,7 @@ impl Command for UpdateLabelsCmd {
         format!("Updating labels on '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
+    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
         let secret = self
             .client
             .update_labels(&self.secret.name, self.labels)
@@ -1016,7 +1016,7 @@ impl Command for FetchIamPolicyCmd {
         format!("Loading IAM for '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
+    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
         let policy = self.client.get_iam_policy(&self.secret.name).await?;
         self.tx.send(
             SecretsMsg::IamPolicyLoaded {
@@ -1041,7 +1041,7 @@ impl Command for FetchSecretMetadataCmd {
         format!("Loading metadata for '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
+    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
         let secret = self.client.get_secret(&self.secret.name).await?;
         let replication = secret.replication.clone();
         self.tx.send(
@@ -1067,7 +1067,7 @@ impl Command for LoadPayloadCmd {
         format!("Loading payload for '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
+    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
         let payload = self.client.access_latest_version(&self.secret.name).await?;
         self.tx.send(
             SecretsMsg::PayloadLoaded {

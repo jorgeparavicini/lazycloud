@@ -1,25 +1,26 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use crossterm::event::KeyEvent;
-use ratatui::Frame;
-use ratatui::layout::Rect;
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
-
-use crate::Theme;
-use crate::commands::{Command, CommandEnv};
+use crate::app::AppMessage;
+use crate::commands::Command;
 use crate::config::{GlobalAction, KeyResolver};
 use crate::context::{CloudContext, GcpContext};
-use crate::provider::Provider;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::payload::{PayloadMsg, SecretPayload};
 use crate::provider::gcp::secret_manager::secrets::{Secret, SecretsMsg};
 use crate::provider::gcp::secret_manager::versions::{SecretVersion, VersionsMsg};
 use crate::provider::gcp::secret_manager::{payload, secrets, versions};
+use crate::provider::Provider;
 use crate::registry::ServiceProvider;
 use crate::service::{Service, ServiceMsg};
 use crate::ui::{Component, EventResult, EventResultExt, Keybinding, Modal, Screen, Spinner};
+use crate::Theme;
+use async_trait::async_trait;
+use color_eyre::Result;
+use crossterm::event::KeyEvent;
+use ratatui::layout::Rect;
+use ratatui::Frame;
+use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 // === Messages ===
 
@@ -382,7 +383,7 @@ impl Command for InitClientCmd {
         format!("Connecting to {}", self.context.display_name)
     }
 
-    async fn execute(self: Box<Self>, _env: CommandEnv) -> color_eyre::Result<()> {
+    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
         let client = SecretManagerClient::new(&self.context).await?;
         self.tx.send(SecretManagerMsg::ClientInitialized(client))?;
         Ok(())

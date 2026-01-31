@@ -7,9 +7,9 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::widgets::Cell;
 use tokio::sync::mpsc::UnboundedSender;
-
+use crate::app::AppMessage;
 use crate::Theme;
-use crate::commands::{Command, CommandEnv};
+use crate::commands::Command;
 use crate::config::{KeyResolver, SearchAction, VersionsAction};
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
@@ -19,20 +19,8 @@ use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::search::Matcher;
 use crate::service::ServiceMsg;
 use crate::ui::{
-    ColumnDef,
-    Component,
-    ConfirmDialog,
-    ConfirmEvent,
-    EventResult,
-    Keybinding,
-    Modal,
-    Result,
-    Screen,
-    Table,
-    TableEvent,
-    TableRow,
-    TextInput,
-    TextInputEvent,
+    ColumnDef, Component, ConfirmDialog, ConfirmEvent, EventResult, Keybinding, Modal, Result,
+    Screen, Table, TableEvent, TableRow, TextInput, TextInputEvent,
 };
 
 // === Models ===
@@ -490,7 +478,7 @@ impl Command for FetchVersionsCmd {
         format!("Loading '{}' versions", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
+    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
         let versions = self.client.list_versions(&self.secret.name).await?;
         self.tx.send(
             VersionsMsg::Loaded {
@@ -516,7 +504,7 @@ impl Command for AddVersionCmd {
         format!("Adding version to '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
+    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
         self.client
             .add_secret_version(&self.secret.name, self.payload.as_bytes())
             .await?;
@@ -546,7 +534,7 @@ impl Command for DisableVersionCmd {
         )
     }
 
-    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
+    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
         self.client
             .disable_version(&self.secret.name, &self.version.version_id)
             .await?;
@@ -576,7 +564,7 @@ impl Command for EnableVersionCmd {
         )
     }
 
-    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
+    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
         self.client
             .enable_version(&self.secret.name, &self.version.version_id)
             .await?;
@@ -606,7 +594,7 @@ impl Command for DestroyVersionCmd {
         )
     }
 
-    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
+    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
         self.client
             .destroy_version(&self.secret.name, &self.version.version_id)
             .await?;

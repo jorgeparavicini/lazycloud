@@ -1,23 +1,23 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use crossterm::event::KeyEvent;
-use ratatui::Frame;
-use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
-use ratatui::widgets::{Block, Borders, Paragraph};
-use tokio::sync::mpsc::UnboundedSender;
-
-use crate::Theme;
-use crate::commands::{Command, CommandEnv, CopyToClipboardCmd};
+use crate::app::AppMessage;
+use crate::commands::{Command, CopyToClipboardCmd};
 use crate::config::{KeyResolver, PayloadAction};
-use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::secrets::Secret;
 use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::versions::SecretVersion;
+use crate::provider::gcp::secret_manager::SecretManager;
 use crate::service::ServiceMsg;
 use crate::ui::{EventResult, Keybinding, Result, Screen};
+use crate::Theme;
+use async_trait::async_trait;
+use crossterm::event::KeyEvent;
+use ratatui::layout::Rect;
+use ratatui::style::{Modifier, Style};
+use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::Frame;
+use tokio::sync::mpsc::UnboundedSender;
 
 // === Models ===
 
@@ -219,7 +219,7 @@ impl Command for FetchPayloadCmd {
         )
     }
 
-    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
+    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
         let payload = self
             .client
             .access_version(&self.secret.name, &self.version.version_id)
@@ -248,7 +248,7 @@ impl Command for FetchLatestPayloadCmd {
         format!("Loading '{}' (latest)", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, _env: CommandEnv) -> Result<()> {
+    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
         let payload = self.client.access_latest_version(&self.secret.name).await?;
         self.tx.send(
             PayloadMsg::Loaded {
