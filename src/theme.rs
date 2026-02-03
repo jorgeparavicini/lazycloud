@@ -112,6 +112,58 @@ impl Theme {
         Self::from_catppuccin(&PALETTE.macchiato)
     }
 
+    /// Ember theme - transparent background with orange accents (k9s-inspired).
+    #[must_use]
+    pub const fn ember() -> Self {
+        // Orange/amber accent colors inspired by k9s
+        let orange = Color::Rgb(255, 153, 0); // Primary orange #FF9900
+        let orange_light = Color::Rgb(255, 179, 71); // Lighter orange #FFB347
+        let orange_dark = Color::Rgb(204, 102, 0); // Darker orange #CC6600
+        let amber = Color::Rgb(255, 191, 0); // Amber/gold #FFBF00
+        let coral = Color::Rgb(255, 127, 80); // Coral #FF7F50
+        let rust = Color::Rgb(183, 65, 14); // Rust #B7410E
+
+        Self {
+            // Transparent backgrounds - use terminal default
+            base: Color::Reset,
+            mantle: Color::Reset,
+            crust: Color::Reset,
+
+            // Surface colors - dark with subtle warmth, keeps text readable
+            surface0: Color::Rgb(40, 40, 40),
+            surface1: Color::Rgb(55, 50, 45), // Selection background - subtle warm tint
+            surface2: Color::Rgb(70, 65, 60),
+
+            // Overlay colors
+            overlay0: Color::Rgb(120, 120, 120),
+            overlay1: Color::Rgb(140, 140, 140),
+            overlay2: Color::Rgb(160, 160, 160),
+
+            // Text colors - bright for visibility
+            text: Color::Rgb(230, 230, 230),
+            subtext0: Color::Rgb(180, 180, 180),
+            subtext1: Color::Rgb(200, 200, 200),
+
+            // Accent colors - orange/ember palette
+            rosewater: orange_light,
+            flamingo: coral,
+            pink: Color::Rgb(255, 154, 162), // Soft pink
+            mauve: orange,                   // Primary accent
+            red: Color::Rgb(255, 85, 85),    // Bright red
+            maroon: rust,
+            peach: orange_light,
+            yellow: amber,
+            green: Color::Rgb(152, 195, 121),    // Muted green
+            teal: Color::Rgb(86, 182, 194),      // Teal
+            sky: Color::Rgb(137, 220, 235),      // Sky blue
+            sapphire: Color::Rgb(116, 199, 236), // Sapphire
+            blue: Color::Rgb(137, 180, 250),     // Soft blue
+            lavender: orange_dark,               // Secondary accent
+
+            border_type: BorderType::Rounded,
+        }
+    }
+
     // Base colors
     #[must_use]
     pub const fn base(&self) -> Color {
@@ -340,6 +392,7 @@ impl std::fmt::Display for ThemeInfo {
 /// Returns a list of all available built-in themes.
 pub fn available_themes() -> Vec<ThemeInfo> {
     vec![
+        ThemeInfo::new("Ember", Theme::ember()),
         ThemeInfo::new("Catppuccin Mocha", Theme::catppuccin_mocha()),
         ThemeInfo::new("Catppuccin Macchiato", Theme::catppuccin_macchiato()),
         ThemeInfo::new("Catppuccin Frappé", Theme::catppuccin_frappe()),

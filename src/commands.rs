@@ -6,11 +6,12 @@
 
 mod clipboard;
 
-use crate::app::AppMessage;
 use async_trait::async_trait;
 pub use clipboard::CopyToClipboardCmd;
 use color_eyre::Result;
 use tokio::sync::mpsc::UnboundedSender;
+
+use crate::app::AppMessage;
 
 /// Async commands that perform side effects.
 ///

@@ -7,8 +7,9 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::widgets::Cell;
 use tokio::sync::mpsc::UnboundedSender;
-use crate::app::AppMessage;
+
 use crate::Theme;
+use crate::app::AppMessage;
 use crate::commands::Command;
 use crate::config::{KeyResolver, SearchAction, VersionsAction};
 use crate::provider::gcp::secret_manager::SecretManager;
@@ -19,8 +20,20 @@ use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::search::Matcher;
 use crate::service::ServiceMsg;
 use crate::ui::{
-    ColumnDef, Component, ConfirmDialog, ConfirmEvent, EventResult, Keybinding, Modal, Result,
-    Screen, Table, TableEvent, TableRow, TextInput, TextInputEvent,
+    ColumnDef,
+    Component,
+    ConfirmDialog,
+    ConfirmEvent,
+    EventResult,
+    Keybinding,
+    Modal,
+    Result,
+    Screen,
+    Table,
+    TableEvent,
+    TableRow,
+    TextInput,
+    TextInputEvent,
 };
 
 // === Models ===

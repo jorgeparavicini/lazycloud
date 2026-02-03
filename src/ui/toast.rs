@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 
 use super::{Component, EventResult, Result};
 use crate::Theme;
@@ -109,15 +109,13 @@ impl Component for ToastManager {
 
             let (border_color, icon) = match toast.kind {
                 ToastType::Success => (theme.green(), "✓"),
-                ToastType::Info => (theme.blue(), "ℹ"),
+                ToastType::Info => (theme.mauve(), "ℹ"),
             };
-
-            frame.render_widget(Clear, toast_area);
 
             let block = Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(border_color))
-                .style(Style::default().bg(theme.surface0()));
+                .border_type(BorderType::Plain)
+                .border_style(Style::default().fg(border_color));
 
             let inner = block.inner(toast_area);
             frame.render_widget(block, toast_area);

@@ -4,7 +4,8 @@ use clap::Parser;
 use color_eyre::Result;
 use tracing::info;
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 use crate::app::App;
 use crate::config::KeyResolver;
@@ -40,7 +41,7 @@ async fn main() -> Result<()> {
     let mut registry = ServiceRegistry::new();
     provider::register_all(&mut registry);
 
-    let mut app = App::new(registry, config, resolver, theme)?;
+    let mut app = App::new(registry, config, resolver, theme);
     app.apply_cli_args(&args)?;
     app.run().await?;
 

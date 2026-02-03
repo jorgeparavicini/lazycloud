@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use color_eyre::Result;
 use tracing::{debug, warn};
+
 use crate::config::AppConfig;
 
 const CONFIG_DIR: &str = "lazycloud";

@@ -1,16 +1,18 @@
 use std::sync::Arc;
 
 use color_eyre::eyre::{Result, eyre};
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent};
 use google_cloud_auth::credentials::Credentials;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
-use ratatui::widgets::Cell;
+use ratatui::style::{Modifier, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, BorderType, Borders, Cell, Clear, List, ListItem, ListState};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info};
 
 use crate::Theme;
-use crate::config::{KeyResolver, config_dir};
+use crate::config::{KeyResolver, NavAction, config_dir};
 use crate::provider::Provider;
 use crate::provider::gcp::discover_gcloud_configs;
 use crate::search::Matcher;
@@ -75,85 +77,130 @@ impl std::fmt::Display for CloudContext {
     }
 }
 
-pub fn load_contexts() -> Vec<CloudContext> {
-    if let Some(config_dir) = config_dir() {
-        let path = config_dir.join(CONTEXTS_FILE);
-        match std::fs::read_to_string(&path) {
-            Ok(data) => match serde_json::from_str::<Vec<CloudContext>>(&data) {
-                Ok(contexts) => {
-                    info!(path = %path.display(), count = contexts.len(), "Loaded contexts");
-                    return contexts;
+pub struct ContextManager {
+    contexts: Vec<CloudContext>,
+}
+
+impl ContextManager {
+    /// Create a new manager and load saved contexts.
+    /// If no saved contexts exist, auto-discovers from the different providers.
+    pub fn new() -> Self {
+        let mut contexts = Self::load_contexts();
+
+        if contexts.is_empty() {
+            debug!("No saved contexts found, discovering from gcloud");
+            contexts = Self::discover_all();
+            if !contexts.is_empty() {
+                let manager = Self { contexts };
+                if let Err(err) = manager.save_contexts() {
+                    error!(%err, "Failed to save discovered contexts");
                 }
-                Err(err) => error!(path = %path.display(), %err, "Failed to parse contexts file"),
-            },
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                debug!(path = %path.display(), "Contexts file not found");
+                return manager;
             }
-            Err(err) => error!(path = %path.display(), %err, "Failed to read contexts file"),
         }
+
+        Self { contexts }
     }
-    Vec::new()
-}
 
-pub fn save_contexts(contexts: &[CloudContext]) -> Result<()> {
-    if let Some(config_dir) = config_dir() {
-        std::fs::create_dir_all(&config_dir)?;
-        let path = config_dir.join(CONTEXTS_FILE);
-        let data = serde_json::to_string_pretty(contexts)?;
-        std::fs::write(&path, data)?;
-        info!(path = %path.display(), count = contexts.len(), "Saved contexts");
+    /// Discover contexts from gcloud that aren't saved yet.
+    pub fn discover_new(&self) -> Vec<CloudContext> {
+        let discovered = Self::discover_all();
+        discovered
+            .into_iter()
+            .filter(|ctx| {
+                !self
+                    .contexts
+                    .iter()
+                    .any(|existing| existing.name() == ctx.name())
+            })
+            .collect()
     }
-    Ok(())
-}
 
-pub fn find_by_name(contexts: &[CloudContext], name: &str) -> Result<CloudContext> {
-    contexts
-        .iter()
-        .find(|c| c.name().eq_ignore_ascii_case(name))
-        .cloned()
-        .ok_or_else(|| {
-            let available: Vec<_> = contexts.iter().map(CloudContext::name).collect();
-            error!(name, ?available, "Context lookup failed");
-            eyre!(
-                "Context '{}' not found. Available: {}",
-                name,
-                available.join(", ")
-            )
-        })
-}
+    /// Find a context by name (case-insensitive).
+    pub fn find_by_name(&self, name: &str) -> Result<CloudContext> {
+        self.contexts
+            .iter()
+            .find(|c| c.name().eq_ignore_ascii_case(name))
+            .cloned()
+            .ok_or_else(|| {
+                let available: Vec<_> = self.contexts.iter().map(CloudContext::name).collect();
+                error!(name, ?available, "Context lookup failed");
+                eyre!(
+                    "Context '{}' not found. Available: {}",
+                    name,
+                    available.join(", ")
+                )
+            })
+    }
 
-pub fn reconcile_contexts() -> Result<Vec<CloudContext>> {
-    debug!("Starting context reconciliation");
-    let mut contexts = load_contexts();
-    let discovered_configs = discover_gcloud_configs();
-    debug!(count = discovered_configs.len(), "Discovered gcloud configurations");
+    /// Get all saved contexts.
+    pub fn get_all(&self) -> Vec<CloudContext> {
+        self.contexts.clone()
+    }
 
-    let mut new_count = 0;
-    for config in discovered_configs {
-        if !contexts.iter().any(|ctx| match ctx {
-            CloudContext::Gcp(existing) => existing.display_name == config.name,
-        }) {
-            info!(name = %config.name, project = %config.core.project, "Adding newly discovered GCP context");
-            contexts.push(CloudContext::Gcp(GcpContext {
-                display_name: config.name,
-                project_id: config.core.project,
-                account: config.core.account,
-                region: config.compute.region,
-                zone: config.compute.zone,
-                auth: AuthMethod::ApplicationDefault,
-            }));
-            new_count += 1;
+    /// Get contexts filtered by provider.
+    pub fn get_by_provider(&self, provider: Provider) -> Vec<CloudContext> {
+        self.contexts
+            .iter()
+            .filter(|c| c.provider() == provider)
+            .cloned()
+            .collect()
+    }
+
+    /// Add new contexts and save to disk.
+    pub fn add_contexts(&mut self, contexts: Vec<CloudContext>) -> Result<()> {
+        self.contexts.extend(contexts);
+        self.save_contexts()
+    }
+
+    fn load_contexts() -> Vec<CloudContext> {
+        if let Some(config_dir) = config_dir() {
+            let path = config_dir.join(CONTEXTS_FILE);
+            match std::fs::read_to_string(&path) {
+                Ok(data) => match serde_json::from_str::<Vec<CloudContext>>(&data) {
+                    Ok(contexts) => {
+                        info!(path = %path.display(), count = contexts.len(), "Loaded contexts");
+                        return contexts;
+                    }
+                    Err(err) => {
+                        error!(path = %path.display(), %err, "Failed to parse contexts file");
+                    }
+                },
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                    debug!(path = %path.display(), "Contexts file not found");
+                }
+                Err(err) => error!(path = %path.display(), %err, "Failed to read contexts file"),
+            }
         }
+        Vec::new()
     }
 
-    if new_count > 0 {
-        save_contexts(&contexts)?;
-        info!(new_count, total = contexts.len(), "Reconciliation complete with new contexts");
-    } else {
-        debug!("Reconciliation complete, no new contexts found");
+    fn save_contexts(&self) -> Result<()> {
+        if let Some(config_dir) = config_dir() {
+            std::fs::create_dir_all(&config_dir)?;
+            let path = config_dir.join(CONTEXTS_FILE);
+            let data = serde_json::to_string_pretty(&self.contexts)?;
+            std::fs::write(&path, data)?;
+            info!(path = %path.display(), count = self.contexts.len(), "Saved contexts");
+        }
+        Ok(())
     }
 
-    Ok(contexts)
+    fn discover_all() -> Vec<CloudContext> {
+        discover_gcloud_configs()
+            .into_iter()
+            .map(|config| {
+                CloudContext::Gcp(GcpContext {
+                    display_name: config.name,
+                    project_id: config.core.project,
+                    account: config.core.account,
+                    region: config.compute.region,
+                    zone: config.compute.zone,
+                    auth: AuthMethod::ApplicationDefault,
+                })
+            })
+            .collect()
+    }
 }
 
 // === UI ===
@@ -204,16 +251,18 @@ impl TableRow for CloudContext {
     }
 }
 
+pub enum ContextSelectorEvent {
+    Selected(CloudContext),
+    Refresh,
+}
+
 pub struct ContextSelectorView {
     table: Table<CloudContext>,
 }
 
 impl ContextSelectorView {
-    pub fn new(resolver: Arc<KeyResolver>) -> Result<Self> {
-        Ok(Self::with_contexts(reconcile_contexts()?, resolver))
-    }
-
-    pub fn with_contexts(contexts: Vec<CloudContext>, resolver: Arc<KeyResolver>) -> Self {
+    /// Create with provided contexts.
+    pub fn new(contexts: Vec<CloudContext>, resolver: Arc<KeyResolver>) -> Self {
         Self {
             table: Table::new(contexts, resolver).with_title(" Contexts "),
         }
@@ -221,12 +270,18 @@ impl ContextSelectorView {
 }
 
 impl Screen for ContextSelectorView {
-    type Output = CloudContext;
+    type Output = ContextSelectorEvent;
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
+        if key.code == KeyCode::Char('r') {
+            return Ok(ContextSelectorEvent::Refresh.into());
+        }
+
         let result = self.table.handle_key(key)?;
         Ok(match result {
-            EventResult::Event(TableEvent::Activated(context)) => context.into(),
+            EventResult::Event(TableEvent::Activated(context)) => {
+                ContextSelectorEvent::Selected(context).into()
+            }
             EventResult::Consumed | EventResult::Event(_) => EventResult::Consumed,
             EventResult::Ignored => EventResult::Ignored,
         })
@@ -234,5 +289,205 @@ impl Screen for ContextSelectorView {
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         self.table.render(frame, area, theme);
+    }
+}
+
+// === Context Merge Popup ===
+
+pub enum ContextMergeEvent {
+    Import(Vec<CloudContext>),
+    Skip,
+}
+
+struct SelectableContext {
+    context: CloudContext,
+    selected: bool,
+}
+
+pub struct ContextMergePopup {
+    items: Vec<SelectableContext>,
+    state: ListState,
+    resolver: Arc<KeyResolver>,
+}
+
+impl ContextMergePopup {
+    pub fn new(contexts: Vec<CloudContext>, resolver: Arc<KeyResolver>) -> Self {
+        let items: Vec<SelectableContext> = contexts
+            .into_iter()
+            .map(|context| SelectableContext {
+                context,
+                selected: true, // Default to selected
+            })
+            .collect();
+
+        let mut state = ListState::default();
+        if !items.is_empty() {
+            state.select(Some(0));
+        }
+
+        Self {
+            items,
+            state,
+            resolver,
+        }
+    }
+
+    fn toggle_current(&mut self) {
+        if let Some(idx) = self.state.selected()
+            && let Some(item) = self.items.get_mut(idx)
+        {
+            item.selected = !item.selected;
+        }
+    }
+
+    fn select_all(&mut self) {
+        for item in &mut self.items {
+            item.selected = true;
+        }
+    }
+
+    fn select_none(&mut self) {
+        for item in &mut self.items {
+            item.selected = false;
+        }
+    }
+
+    fn get_selected_contexts(&self) -> Vec<CloudContext> {
+        self.items
+            .iter()
+            .filter(|item| item.selected)
+            .map(|item| item.context.clone())
+            .collect()
+    }
+
+    const fn move_up(&mut self) {
+        if self.items.is_empty() {
+            return;
+        }
+        let i = match self.state.selected() {
+            Some(i) => i.saturating_sub(1),
+            None => 0,
+        };
+        self.state.select(Some(i));
+    }
+
+    const fn move_down(&mut self) {
+        if self.items.is_empty() {
+            return;
+        }
+        let i = match self.state.selected() {
+            Some(i) => {
+                if i >= self.items.len() - 1 {
+                    i
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.state.select(Some(i));
+    }
+}
+
+impl Component for ContextMergePopup {
+    type Output = ContextMergeEvent;
+
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
+        match key.code {
+            KeyCode::Esc => return Ok(ContextMergeEvent::Skip.into()),
+            KeyCode::Enter => {
+                let selected = self.get_selected_contexts();
+                return Ok(ContextMergeEvent::Import(selected).into());
+            }
+            KeyCode::Char(' ') => self.toggle_current(),
+            KeyCode::Char('a') => self.select_all(),
+            KeyCode::Char('n') => self.select_none(),
+            _ => {
+                if self.resolver.matches_nav(&key, NavAction::Up) {
+                    self.move_up();
+                } else if self.resolver.matches_nav(&key, NavAction::Down) {
+                    self.move_down();
+                }
+            }
+        }
+        Ok(EventResult::Consumed)
+    }
+
+    fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+        let popup_area = area.centered(Constraint::Percentage(70), Constraint::Percentage(60));
+
+        frame.render_widget(Clear, popup_area);
+
+        let title_style = Style::default()
+            .fg(theme.mauve())
+            .add_modifier(Modifier::BOLD);
+
+        let block = Block::default()
+            .title(" Import New Contexts ")
+            .title_style(title_style)
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(theme.border()))
+            .style(Style::default().bg(theme.base()));
+
+        let items: Vec<ListItem> = self
+            .items
+            .iter()
+            .map(|item| {
+                let checkbox = if item.selected { "[x]" } else { "[ ]" };
+                let name = item.context.name();
+                let project = match &item.context {
+                    CloudContext::Gcp(ctx) => &ctx.project_id,
+                };
+                ListItem::new(Line::from(vec![
+                    Span::styled(
+                        format!("{checkbox} "),
+                        Style::default().fg(if item.selected {
+                            theme.green()
+                        } else {
+                            theme.overlay1()
+                        }),
+                    ),
+                    Span::styled(name.to_string(), Style::default().fg(theme.text())),
+                    Span::styled(
+                        format!(" ({project})"),
+                        Style::default().fg(theme.subtext0()),
+                    ),
+                ]))
+            })
+            .collect();
+
+        let list = List::new(items)
+            .block(block)
+            .highlight_style(
+                Style::default()
+                    .bg(theme.selection_bg())
+                    .fg(theme.lavender())
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol("▶ ");
+
+        frame.render_stateful_widget(list, popup_area, &mut self.state);
+
+        // Render hint at bottom
+        let hint_area = Rect::new(
+            popup_area.x + 2,
+            popup_area.y + popup_area.height.saturating_sub(2),
+            popup_area.width.saturating_sub(4),
+            1,
+        );
+        let hint = Line::from(vec![
+            Span::styled("Space", Style::default().fg(theme.mauve())),
+            Span::styled(" toggle  ", Style::default().fg(theme.subtext0())),
+            Span::styled("a", Style::default().fg(theme.mauve())),
+            Span::styled(" all  ", Style::default().fg(theme.subtext0())),
+            Span::styled("n", Style::default().fg(theme.mauve())),
+            Span::styled(" none  ", Style::default().fg(theme.subtext0())),
+            Span::styled("Enter", Style::default().fg(theme.mauve())),
+            Span::styled(" import  ", Style::default().fg(theme.subtext0())),
+            Span::styled("Esc", Style::default().fg(theme.mauve())),
+            Span::styled(" skip", Style::default().fg(theme.subtext0())),
+        ]);
+        frame.render_widget(hint, hint_area);
     }
 }

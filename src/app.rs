@@ -2,26 +2,45 @@ use std::sync::Arc;
 
 use color_eyre::Result;
 use color_eyre::eyre::eyre;
-use tracing::{debug, error, warn};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, Paragraph};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tracing::{debug, error, warn};
 
+use crate::Theme;
 use crate::cli::Args;
 use crate::commands::Command;
 use crate::config::{AppConfig, GlobalAction, KeyResolver, save_last_context, save_theme};
-use crate::context::{CloudContext, ContextSelectorView, load_contexts};
+use crate::context::{
+    CloudContext,
+    ContextManager,
+    ContextMergeEvent,
+    ContextMergePopup,
+    ContextSelectorEvent,
+    ContextSelectorView,
+};
 use crate::registry::{ServiceId, ServiceRegistry};
 use crate::service::{Service, ServiceMsg, ServiceSelectorView};
 use crate::theme::{ThemeEvent, ThemeInfo, ThemeSelectorView};
 use crate::tui::{Event, Tui};
 use crate::ui::{
-    CommandId, CommandPanel, Component, ErrorDialog, ErrorDialogEvent, EventResult, HelpEvent,
-    HelpOverlay, KeybindingSection, Screen, StatusBar, Toast, ToastManager, ToastType,
+    CommandId,
+    CommandPanel,
+    Component,
+    ErrorDialog,
+    ErrorDialogEvent,
+    EventResult,
+    HelpEvent,
+    HelpOverlay,
+    KeybindingSection,
+    Screen,
+    StatusBar,
+    Toast,
+    ToastManager,
+    ToastType,
 };
-use crate::{Theme, context};
 
 #[derive(Debug, Clone)]
 pub enum AppMessage {
@@ -52,6 +71,9 @@ pub enum AppMessage {
     SelectService(ServiceId),
     SelectTheme(ThemeInfo),
     GoBack,
+
+    RefreshContexts,
+    ImportContexts(Vec<CloudContext>),
 }
 
 /// Application state - what the user is currently doing.
@@ -68,9 +90,11 @@ enum ActivePopup {
     Help(HelpOverlay),
     ThemeSelector(ThemeSelectorView),
     Error(ErrorDialog),
+    ContextMerge(ContextMergePopup),
 }
 
 pub struct App {
+    context_manager: ContextManager,
     state: AppState,
     theme: Theme,
     popup: Option<ActivePopup>,
@@ -94,11 +118,14 @@ impl App {
         config: Arc<AppConfig>,
         resolver: Arc<KeyResolver>,
         theme: Theme,
-    ) -> Result<Self> {
+    ) -> Self {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
+        let context_manager = ContextManager::new();
+        let contexts = context_manager.get_all();
 
-        Ok(Self {
-            state: AppState::SelectingContext(ContextSelectorView::new(resolver.clone())?),
+        Self {
+            context_manager,
+            state: AppState::SelectingContext(ContextSelectorView::new(contexts, resolver.clone())),
             theme,
             popup: None,
             status_bar: StatusBar::new(resolver.clone()),
@@ -113,7 +140,7 @@ impl App {
             config,
             resolver,
             pending_service: None,
-        })
+        }
     }
 
     /// Initialize app state based on CLI args.
@@ -124,17 +151,15 @@ impl App {
     /// - Neither provided: normal flow (context selection)
     ///
     pub fn apply_cli_args(&mut self, args: &Args) -> Result<()> {
-        let contexts = load_contexts();
-
         match (&args.context, &args.service) {
             (Some(ctx_name), Some(svc_name)) => {
-                let context = context::find_by_name(&contexts, ctx_name)?;
+                let context = self.context_manager.find_by_name(ctx_name)?;
                 let service_id = self.registry.find_service_by_name(&context, svc_name)?;
                 self.start_service(&context, &service_id);
             }
 
             (Some(ctx_name), None) => {
-                let context = context::find_by_name(&contexts, ctx_name)?;
+                let context = self.context_manager.find_by_name(ctx_name)?;
                 self.go_to_service_selection(&context);
             }
 
@@ -143,7 +168,7 @@ impl App {
 
                 // Try last context if compatible
                 if let Some(ctx_name) = &self.config.last_context
-                    && let Ok(context) = context::find_by_name(&contexts, ctx_name)
+                    && let Ok(context) = self.context_manager.find_by_name(ctx_name)
                     && context.provider() == provider
                 {
                     let service_id = self.registry.find_service_by_name(&context, svc_name)?;
@@ -152,10 +177,7 @@ impl App {
                 }
 
                 // Last context incompatible or missing: show filtered context selector
-                let filtered: Vec<_> = contexts
-                    .into_iter()
-                    .filter(|c| c.provider() == provider)
-                    .collect();
+                let filtered = self.context_manager.get_by_provider(provider);
 
                 if filtered.is_empty() {
                     return Err(eyre!("No {} contexts found", provider.display_name()));
@@ -180,10 +202,8 @@ impl App {
     }
 
     fn go_to_filtered_context_selection(&mut self, contexts: Vec<CloudContext>) {
-        self.state = AppState::SelectingContext(ContextSelectorView::with_contexts(
-            contexts,
-            self.resolver.clone(),
-        ));
+        self.state =
+            AppState::SelectingContext(ContextSelectorView::new(contexts, self.resolver.clone()));
     }
 
     // App is single-threaded; making dyn Service Send would cascade through the entire trait hierarchy
@@ -256,8 +276,9 @@ impl App {
     fn go_to_context_selection(&mut self) {
         self.active_context = None;
         self.status_bar.clear_context();
+        let contexts = self.context_manager.get_all();
         self.state =
-            AppState::SelectingContext(ContextSelectorView::new(self.resolver.clone()).unwrap());
+            AppState::SelectingContext(ContextSelectorView::new(contexts, self.resolver.clone()));
     }
 
     /// Transition to service selection.
@@ -356,6 +377,15 @@ impl App {
                     self.msg_tx.send(AppMessage::ClosePopup)?;
                 }
             }
+            ActivePopup::ContextMerge(merge) => match merge.handle_key(key) {
+                Ok(EventResult::Event(ContextMergeEvent::Import(contexts))) => {
+                    self.msg_tx.send(AppMessage::ImportContexts(contexts))?;
+                }
+                Ok(EventResult::Event(ContextMergeEvent::Skip)) => {
+                    self.msg_tx.send(AppMessage::ClosePopup)?;
+                }
+                _ => {}
+            },
         }
         Ok(())
     }
@@ -393,11 +423,11 @@ impl App {
         if self.popup.is_some() {
             if let Event::Key(key) = event {
                 self.handle_popup_event(*key)?;
+                return Ok(());
             }
-            return Ok(());
+            // Fall through to handle global events (Render, Resize, Quit, etc.)
         }
 
-        // Handle tick separately - always goes to service, commands tracker, and toast manager
         if matches!(event, Event::Tick) {
             self.command_tracker.handle_tick();
             self.toast_manager.handle_tick();
@@ -407,13 +437,16 @@ impl App {
             return Ok(());
         }
 
-        // Route input event based on current state
         let handled = match &mut self.state {
             AppState::SelectingContext(selector) => {
                 if let Event::Key(key) = event {
                     match selector.handle_key(*key) {
-                        Ok(EventResult::Event(context)) => {
+                        Ok(EventResult::Event(ContextSelectorEvent::Selected(context))) => {
                             self.msg_tx.send(AppMessage::SelectContext(context))?;
+                            return Ok(());
+                        }
+                        Ok(EventResult::Event(ContextSelectorEvent::Refresh)) => {
+                            self.msg_tx.send(AppMessage::RefreshContexts)?;
                             return Ok(());
                         }
                         Ok(EventResult::Consumed) => true,
@@ -549,6 +582,38 @@ impl App {
             AppMessage::GoBack => {
                 self.go_back();
             }
+            AppMessage::RefreshContexts => {
+                let new_contexts = self.context_manager.discover_new();
+                if new_contexts.is_empty() {
+                    self.toast_manager
+                        .show(Toast::info("No new contexts found"));
+                } else {
+                    self.popup = Some(ActivePopup::ContextMerge(ContextMergePopup::new(
+                        new_contexts,
+                        self.resolver.clone(),
+                    )));
+                }
+            }
+            AppMessage::ImportContexts(new_contexts) => {
+                let count = new_contexts.len();
+                if let Err(e) = self.context_manager.add_contexts(new_contexts) {
+                    error!("Failed to import contexts: {e}");
+                    self.toast_manager
+                        .show(Toast::info("Failed to import contexts"));
+                } else {
+                    let contexts = self.context_manager.get_all();
+                    self.state = AppState::SelectingContext(ContextSelectorView::new(
+                        contexts,
+                        self.resolver.clone(),
+                    ));
+                    self.toast_manager.show(Toast::success(format!(
+                        "Imported {} context{}",
+                        count,
+                        if count == 1 { "" } else { "s" }
+                    )));
+                }
+                self.popup = None;
+            }
         }
 
         Ok(())
@@ -638,6 +703,9 @@ impl App {
                     }
                     ActivePopup::Error(dialog) => {
                         dialog.render(frame, frame.area(), &self.theme);
+                    }
+                    ActivePopup::ContextMerge(merge) => {
+                        merge.render(frame, frame.area(), &self.theme);
                     }
                 }
             }

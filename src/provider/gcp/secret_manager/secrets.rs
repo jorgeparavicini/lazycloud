@@ -10,8 +10,9 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Cell, Paragraph};
 use tokio::sync::mpsc::UnboundedSender;
-use crate::app::AppMessage;
+
 use crate::Theme;
+use crate::app::AppMessage;
 use crate::commands::{Command, CopyToClipboardCmd};
 use crate::config::{KeyResolver, SearchAction, SecretsAction};
 use crate::provider::gcp::secret_manager::SecretManager;

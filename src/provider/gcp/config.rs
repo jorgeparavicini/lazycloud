@@ -92,6 +92,9 @@ pub fn discover_gcloud_configs() -> Vec<GcloudConfig> {
         }
     }
 
-    info!(count = contexts.len(), "GCP configuration discovery complete");
+    info!(
+        count = contexts.len(),
+        "GCP configuration discovery complete"
+    );
     contexts
 }

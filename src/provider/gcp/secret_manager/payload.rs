@@ -1,23 +1,24 @@
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use crossterm::event::KeyEvent;
+use ratatui::Frame;
+use ratatui::layout::Rect;
+use ratatui::style::{Modifier, Style};
+use ratatui::widgets::{Block, Borders, Paragraph};
+use tokio::sync::mpsc::UnboundedSender;
+
+use crate::Theme;
 use crate::app::AppMessage;
 use crate::commands::{Command, CopyToClipboardCmd};
 use crate::config::{KeyResolver, PayloadAction};
+use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::secrets::Secret;
 use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::versions::SecretVersion;
-use crate::provider::gcp::secret_manager::SecretManager;
 use crate::service::ServiceMsg;
 use crate::ui::{EventResult, Keybinding, Result, Screen};
-use crate::Theme;
-use async_trait::async_trait;
-use crossterm::event::KeyEvent;
-use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
-use ratatui::widgets::{Block, Borders, Paragraph};
-use ratatui::Frame;
-use tokio::sync::mpsc::UnboundedSender;
 
 // === Models ===
 
