@@ -1,6 +1,4 @@
 use arboard::Clipboard;
-#[cfg(target_os = "linux")]
-use arboard::SetExtLinux;
 use async_trait::async_trait;
 use color_eyre::Result;
 use tokio::sync::mpsc::UnboundedSender;
@@ -33,7 +31,7 @@ impl Command for CopyToClipboardCmd {
     async fn execute(self: Box<Self>, action_tx: UnboundedSender<AppMessage>) -> Result<()> {
         let mut clipboard = Clipboard::new()?;
         #[cfg(target_os = "linux")]
-        clipboard.set().wait().text(self.text)?;
+        clipboard.set().text(self.text)?;
 
         #[cfg(not(target_os = "linux"))]
         clipboard.set_text(self.text)?;
