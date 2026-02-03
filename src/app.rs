@@ -1,43 +1,31 @@
+mod events;
+mod messages;
+mod navigation;
+mod render;
+
 use std::sync::Arc;
 
 use color_eyre::Result;
 use color_eyre::eyre::eyre;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Modifier, Style};
-use ratatui::widgets::{Block, Paragraph};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tracing::{debug, error, warn};
 
 use crate::Theme;
 use crate::cli::Args;
 use crate::commands::Command;
-use crate::config::{AppConfig, GlobalAction, KeyResolver, save_last_context, save_theme};
-use crate::context::{
-    CloudContext,
-    ContextManager,
-    ContextMergeEvent,
-    ContextMergePopup,
-    ContextSelectorEvent,
-    ContextSelectorView,
-};
-use crate::registry::{ServiceId, ServiceRegistry};
+use crate::config::{AppConfig, KeyResolver};
+use crate::context::{CloudContext, ContextManager, ContextMergePopup, ContextSelectorView};
+use crate::registry::ServiceRegistry;
 use crate::service::{Service, ServiceMsg, ServiceSelectorView};
-use crate::theme::{ThemeEvent, ThemeInfo, ThemeSelectorView};
-use crate::tui::{Event, Tui};
+use crate::theme::ThemeSelectorView;
+use crate::tui::Tui;
 use crate::ui::{
     CommandId,
     CommandPanel,
-    Component,
     ErrorDialog,
-    ErrorDialogEvent,
-    EventResult,
-    HelpEvent,
     HelpOverlay,
     KeybindingSection,
-    Screen,
     StatusBar,
-    Toast,
     ToastManager,
     ToastType,
 };
@@ -68,8 +56,8 @@ pub enum AppMessage {
     },
 
     SelectContext(CloudContext),
-    SelectService(ServiceId),
-    SelectTheme(ThemeInfo),
+    SelectService(crate::registry::ServiceId),
+    SelectTheme(crate::theme::ThemeInfo),
     GoBack,
 
     RefreshContexts,
@@ -192,20 +180,6 @@ impl App {
         Ok(())
     }
 
-    fn start_service(&mut self, context: &CloudContext, service_id: &ServiceId) {
-        self.active_context = Some(context.clone());
-        self.status_bar.set_active_context(context.clone());
-        if let Some(provider) = self.registry.get(service_id) {
-            let service = provider.create_service(context, self.resolver.clone());
-            self.go_to_active_service(service);
-        }
-    }
-
-    fn go_to_filtered_context_selection(&mut self, contexts: Vec<CloudContext>) {
-        self.state =
-            AppState::SelectingContext(ContextSelectorView::new(contexts, self.resolver.clone()));
-    }
-
     // App is single-threaded; making dyn Service Send would cascade through the entire trait hierarchy
     #[allow(clippy::future_not_send)]
     pub async fn run(&mut self) -> Result<()> {
@@ -272,62 +246,6 @@ impl App {
         }
     }
 
-    /// Transition to context selection.
-    fn go_to_context_selection(&mut self) {
-        self.active_context = None;
-        self.status_bar.clear_context();
-        let contexts = self.context_manager.get_all();
-        self.state =
-            AppState::SelectingContext(ContextSelectorView::new(contexts, self.resolver.clone()));
-    }
-
-    /// Transition to service selection.
-    fn go_to_service_selection(&mut self, context: &CloudContext) {
-        self.active_context = Some(context.clone());
-        self.status_bar.set_active_context(context.clone());
-        self.state = AppState::SelectingService(ServiceSelectorView::new(
-            &self.registry,
-            context,
-            self.resolver.clone(),
-        ));
-    }
-
-    /// Transition to active service.
-    fn go_to_active_service(&mut self, mut service: Box<dyn Service>) {
-        // Save last context for -s flag
-        if let Some(ctx) = &self.active_context {
-            let _ = save_last_context(ctx.name());
-        }
-
-        // Initialize the service (queues startup message)
-        service.init();
-        self.state = AppState::ActiveService(service);
-
-        // Immediately process the startup message
-        if let AppState::ActiveService(service) = &mut self.state {
-            let result = service.update();
-            self.process_update_result(result);
-        }
-    }
-
-    /// Handle going back one state.
-    fn go_back(&mut self) {
-        match &mut self.state {
-            AppState::SelectingContext(_) => {}
-            AppState::SelectingService(_) => {
-                self.go_to_context_selection();
-            }
-            AppState::ActiveService(service) => {
-                service.destroy();
-                if let Some(ref ctx) = self.active_context.clone() {
-                    self.go_to_service_selection(ctx);
-                } else {
-                    self.go_to_context_selection();
-                }
-            }
-        }
-    }
-
     fn open_help_overlay(&mut self) {
         let local = match &self.state {
             AppState::ActiveService(service) => service.keybindings(),
@@ -345,395 +263,5 @@ impl App {
             KeybindingSection::new(&local_title, local),
             KeybindingSection::new("Global", self.status_bar.global_keybindings()),
         ])));
-    }
-
-    fn handle_popup_event(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
-        let Some(ref mut popup) = self.popup else {
-            return Ok(());
-        };
-        match popup {
-            ActivePopup::Help(help) => {
-                if matches!(
-                    help.handle_key(key),
-                    Ok(EventResult::Event(HelpEvent::Close))
-                ) {
-                    self.msg_tx.send(AppMessage::ClosePopup)?;
-                }
-            }
-            ActivePopup::ThemeSelector(selector) => match selector.handle_key(key) {
-                Ok(EventResult::Event(ThemeEvent::Selected(theme_info))) => {
-                    self.msg_tx.send(AppMessage::SelectTheme(theme_info))?;
-                }
-                Ok(EventResult::Event(ThemeEvent::Cancelled)) => {
-                    self.msg_tx.send(AppMessage::ClosePopup)?;
-                }
-                _ => {}
-            },
-            ActivePopup::Error(dialog) => {
-                if matches!(
-                    dialog.handle_key(key),
-                    Ok(EventResult::Event(ErrorDialogEvent::Dismissed))
-                ) {
-                    self.msg_tx.send(AppMessage::ClosePopup)?;
-                }
-            }
-            ActivePopup::ContextMerge(merge) => match merge.handle_key(key) {
-                Ok(EventResult::Event(ContextMergeEvent::Import(contexts))) => {
-                    self.msg_tx.send(AppMessage::ImportContexts(contexts))?;
-                }
-                Ok(EventResult::Event(ContextMergeEvent::Skip)) => {
-                    self.msg_tx.send(AppMessage::ClosePopup)?;
-                }
-                _ => {}
-            },
-        }
-        Ok(())
-    }
-
-    fn handle_global_event(&self, event: &Event) -> Result<()> {
-        match event {
-            Event::Quit => self.msg_tx.send(AppMessage::Quit)?,
-            Event::Render => self.msg_tx.send(AppMessage::Render)?,
-            Event::Resize(width, height) => {
-                self.msg_tx.send(AppMessage::Resize(*width, *height))?;
-            }
-            Event::Key(key) => {
-                if self.resolver.matches_global(key, GlobalAction::Quit) {
-                    self.msg_tx.send(AppMessage::Quit)?;
-                } else if self.resolver.matches_global(key, GlobalAction::Help) {
-                    self.msg_tx.send(AppMessage::DisplayHelp)?;
-                } else if self.resolver.matches_global(key, GlobalAction::Theme) {
-                    self.msg_tx.send(AppMessage::DisplayThemeSelector)?;
-                } else if self
-                    .resolver
-                    .matches_global(key, GlobalAction::CommandsToggle)
-                {
-                    self.msg_tx.send(AppMessage::ToggleCommandStatus)?;
-                } else if self.resolver.matches_global(key, GlobalAction::Back) {
-                    self.msg_tx.send(AppMessage::GoBack)?;
-                }
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-
-    fn handle_event(&mut self, event: &Event) -> Result<()> {
-        // Popup intercepts all key events when visible
-        if self.popup.is_some() {
-            if let Event::Key(key) = event {
-                self.handle_popup_event(*key)?;
-                return Ok(());
-            }
-            // Fall through to handle global events (Render, Resize, Quit, etc.)
-        }
-
-        if matches!(event, Event::Tick) {
-            self.command_tracker.handle_tick();
-            self.toast_manager.handle_tick();
-            if let AppState::ActiveService(service) = &mut self.state {
-                service.handle_tick();
-            }
-            return Ok(());
-        }
-
-        let handled = match &mut self.state {
-            AppState::SelectingContext(selector) => {
-                if let Event::Key(key) = event {
-                    match selector.handle_key(*key) {
-                        Ok(EventResult::Event(ContextSelectorEvent::Selected(context))) => {
-                            self.msg_tx.send(AppMessage::SelectContext(context))?;
-                            return Ok(());
-                        }
-                        Ok(EventResult::Event(ContextSelectorEvent::Refresh)) => {
-                            self.msg_tx.send(AppMessage::RefreshContexts)?;
-                            return Ok(());
-                        }
-                        Ok(EventResult::Consumed) => true,
-                        Ok(EventResult::Ignored) | Err(_) => false,
-                    }
-                } else {
-                    false
-                }
-            }
-            AppState::SelectingService(selector) => {
-                if let Event::Key(key) = event {
-                    match selector.handle_key(*key) {
-                        Ok(EventResult::Event(service_id)) => {
-                            self.msg_tx.send(AppMessage::SelectService(service_id))?;
-                            return Ok(());
-                        }
-                        Ok(EventResult::Consumed) => true,
-                        Ok(EventResult::Ignored) | Err(_) => false,
-                    }
-                } else {
-                    false
-                }
-            }
-            AppState::ActiveService(service) => {
-                if let Event::Key(key) = event {
-                    let result = service.handle_key(*key);
-                    if result.is_consumed() {
-                        let msg = service.update();
-                        self.process_update_result(msg);
-                    }
-                    result.is_consumed()
-                } else {
-                    false
-                }
-            }
-        };
-
-        if !handled {
-            self.handle_global_event(event)?;
-        }
-
-        Ok(())
-    }
-
-    fn handle_message(&mut self, tui: &mut Tui, msg: AppMessage) -> Result<()> {
-        if !matches!(
-            msg,
-            AppMessage::Tick | AppMessage::Render | AppMessage::CommandCompleted { .. }
-        ) {
-            debug!("Handling message: {msg:?}");
-        }
-
-        match msg {
-            AppMessage::Tick => {
-                // Handled in handle_event
-            }
-            AppMessage::Quit => self.should_quit = true,
-            AppMessage::Suspend => self.should_suspend = true,
-            AppMessage::Resume => self.should_suspend = false,
-            AppMessage::ClearScreen => tui.clear()?,
-            AppMessage::Resize(width, height) => {
-                tui.resize(Rect::new(0, 0, width, height))?;
-                self.render(tui)?;
-            }
-            AppMessage::Render => self.render(tui)?,
-            AppMessage::DisplayError(err) => {
-                error!("Error: {err}");
-                self.popup = Some(ActivePopup::Error(ErrorDialog::new(
-                    err,
-                    self.resolver.clone(),
-                )));
-            }
-            AppMessage::DisplayHelp => self.open_help_overlay(),
-            AppMessage::DisplayThemeSelector => {
-                self.popup = Some(ActivePopup::ThemeSelector(ThemeSelectorView::new(
-                    self.resolver.clone(),
-                )));
-            }
-            AppMessage::ClosePopup => {
-                self.popup = None;
-            }
-            AppMessage::SelectTheme(theme_info) => {
-                // Persist theme to config file
-                if let Err(e) = save_theme(theme_info.name) {
-                    warn!("Failed to persist theme: {e}");
-                }
-                self.theme = theme_info.theme;
-                self.popup = None;
-            }
-            AppMessage::CommandCompleted { id, success } => {
-                // Mark commands as complete in tracker
-                self.command_tracker.complete(id, success);
-                // A command finished, tell service to process its messages
-                if let AppState::ActiveService(service) = &mut self.state {
-                    let result = service.update();
-                    self.process_update_result(result);
-                }
-                // Render after commands completion
-                self.render(tui)?;
-            }
-            AppMessage::ToggleCommandStatus => {
-                self.command_tracker.toggle_expanded();
-            }
-            AppMessage::ShowToast {
-                message,
-                toast_type,
-            } => {
-                let toast = match toast_type {
-                    ToastType::Success => Toast::success(message),
-                    ToastType::Info => Toast::info(message),
-                };
-                self.toast_manager.show(toast);
-            }
-            AppMessage::SelectContext(context) => {
-                // Check for pending service from CLI args
-                if let Some(svc_name) = self.pending_service.take()
-                    && let Ok(service_id) = self.registry.find_service_by_name(&context, &svc_name)
-                {
-                    self.start_service(&context, &service_id);
-                    return Ok(());
-                }
-
-                self.go_to_service_selection(&context);
-            }
-            AppMessage::SelectService(service_id) => {
-                if let Some(ctx) = &self.active_context
-                    && let Some(provider) = self.registry.get(&service_id)
-                {
-                    let service = provider.create_service(ctx, self.resolver.clone());
-                    self.go_to_active_service(service);
-                }
-            }
-            AppMessage::GoBack => {
-                self.go_back();
-            }
-            AppMessage::RefreshContexts => {
-                let new_contexts = self.context_manager.discover_new();
-                if new_contexts.is_empty() {
-                    self.toast_manager
-                        .show(Toast::info("No new contexts found"));
-                } else {
-                    self.popup = Some(ActivePopup::ContextMerge(ContextMergePopup::new(
-                        new_contexts,
-                        self.resolver.clone(),
-                    )));
-                }
-            }
-            AppMessage::ImportContexts(new_contexts) => {
-                let count = new_contexts.len();
-                if let Err(e) = self.context_manager.add_contexts(new_contexts) {
-                    error!("Failed to import contexts: {e}");
-                    self.toast_manager
-                        .show(Toast::info("Failed to import contexts"));
-                } else {
-                    let contexts = self.context_manager.get_all();
-                    self.state = AppState::SelectingContext(ContextSelectorView::new(
-                        contexts,
-                        self.resolver.clone(),
-                    ));
-                    self.toast_manager.show(Toast::success(format!(
-                        "Imported {} context{}",
-                        count,
-                        if count == 1 { "" } else { "s" }
-                    )));
-                }
-                self.popup = None;
-            }
-        }
-
-        Ok(())
-    }
-
-    fn render(&mut self, tui: &mut Tui) -> Result<()> {
-        tui.draw(|frame| {
-            // Fill background with theme base color
-            frame.render_widget(
-                Block::default().style(Style::default().bg(self.theme.base())),
-                frame.area(),
-            );
-
-            // Get keybindings for status bar
-            let local_keybindings = match &self.state {
-                AppState::ActiveService(service) => service.keybindings(),
-                _ => vec![],
-            };
-
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Length(9), // Status bar (logo + keybindings + context)
-                    Constraint::Min(0),    // Main content
-                    Constraint::Length(1), // Breadcrumbs
-                ])
-                .split(frame.area());
-
-            // Render status bar with keybinding hints
-            self.status_bar.render_with_keybindings(
-                frame,
-                chunks[0],
-                &self.theme,
-                &local_keybindings,
-            );
-
-            // Render current state
-            match &mut self.state {
-                AppState::SelectingContext(selector) => {
-                    selector.render(frame, chunks[1], &self.theme);
-                }
-                AppState::SelectingService(selector) => {
-                    selector.render(frame, chunks[1], &self.theme);
-                }
-                AppState::ActiveService(service) => {
-                    service.render(frame, chunks[1], &self.theme);
-                }
-            }
-
-            // Render breadcrumbs (left) and inline commands status (right)
-            let breadcrumbs = self.build_breadcrumbs();
-            let bc_text = breadcrumbs.join(" > ");
-
-            // First render inline commands status to get its width
-            let cmd_width = self
-                .command_tracker
-                .render_inline(frame, chunks[2], &self.theme);
-
-            // Render breadcrumbs in remaining space
-            let bc_area = Rect::new(
-                chunks[2].x,
-                chunks[2].y,
-                chunks[2].width.saturating_sub(cmd_width + 2),
-                chunks[2].height,
-            );
-            let bc_widget = Paragraph::new(bc_text).style(
-                Style::default()
-                    .fg(self.theme.overlay1())
-                    .add_modifier(Modifier::ITALIC),
-            );
-            frame.render_widget(bc_widget, bc_area);
-
-            // Render expanded commands panel (overlay on main content)
-            self.command_tracker.render(frame, chunks[1], &self.theme);
-
-            // Render toasts (bottom right of main content)
-            self.toast_manager.render(frame, chunks[1], &self.theme);
-
-            // Render popup overlay on top
-            if let Some(ref mut popup) = self.popup {
-                match popup {
-                    ActivePopup::Help(help) => {
-                        help.render(frame, frame.area(), &self.theme);
-                    }
-                    ActivePopup::ThemeSelector(selector) => {
-                        selector.render(frame, frame.area(), &self.theme);
-                    }
-                    ActivePopup::Error(dialog) => {
-                        dialog.render(frame, frame.area(), &self.theme);
-                    }
-                    ActivePopup::ContextMerge(merge) => {
-                        merge.render(frame, frame.area(), &self.theme);
-                    }
-                }
-            }
-        })?;
-        Ok(())
-    }
-
-    fn build_breadcrumbs(&self) -> Vec<String> {
-        match &self.state {
-            AppState::SelectingContext(_) => {
-                vec!["Select Context".to_string()]
-            }
-            AppState::SelectingService(_) => {
-                let mut bc = vec![];
-                if let Some(ctx) = &self.active_context {
-                    bc.push(ctx.provider().display_name().to_string());
-                }
-                bc.push("Select Service".to_string());
-                bc
-            }
-            AppState::ActiveService(service) => {
-                let mut bc = vec![];
-                if let Some(ctx) = &self.active_context {
-                    bc.push(ctx.provider().display_name().to_string());
-                }
-                bc.extend(service.breadcrumbs());
-                bc
-            }
-        }
     }
 }
