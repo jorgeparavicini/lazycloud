@@ -9,6 +9,7 @@ pub struct GcloudConfig {
     #[serde(default)]
     pub name: String,
     pub core: GcloudCoreConfig,
+    #[serde(default)]
     pub compute: GcloudComputeConfig,
 }
 
@@ -18,7 +19,7 @@ pub struct GcloudCoreConfig {
     pub project: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 pub struct GcloudComputeConfig {
     pub zone: Option<String>,
     pub region: Option<String>,
