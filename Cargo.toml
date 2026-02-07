@@ -38,6 +38,30 @@ tracing = "0.1.44"
 tracing-appender = "0.2.4"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 
+[workspace.metadata.dist]
+cargo-dist-version = "0.30.3"
+create-release = false
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "x86_64-unknown-linux-musl",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-apple-darwin",
+  "aarch64-apple-darwin",
+  "x86_64-pc-windows-msvc",
+]
+installers = ["shell", "powershell", "homebrew"]
+unix-archive = ".tar.gz"
+windows-archive = ".zip"
+ci = ["github"]
+auto-includes = true
+tap = "jorgeparavicini/homebrew-tap"
+publish-jobs = ["homebrew"]
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+
 [lints.rust]
 warnings = { level = "warn", priority = -1 }
 

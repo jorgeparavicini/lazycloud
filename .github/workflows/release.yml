@@ -13,7 +13,8 @@ permissions:
   pull-requests: write
 
 jobs:
-  release-plz:
+  release-pr:
+    name: Create Release PR
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +27,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: release-pr
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
       - uses: release-plz/release-plz-action@v0.5
         with:
           command: release
