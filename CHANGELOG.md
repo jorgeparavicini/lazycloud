@@ -12,8 +12,8 @@ All notable changes to this project will be documented in this file.
 
 - Fix markdown errors (e4057e6)
 - Remove redundant empty line from changelog] (5ae1684)
-- Chngelog formatting (ffd45fa)
-- Some more changelog formattibg (134d6b1)
+- Changelog formatting (ffd45fa)
+- Some more changelog formatting (134d6b1)
 
 ## [v0.1.1] - 2026-02-16
 
