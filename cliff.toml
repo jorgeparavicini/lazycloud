@@ -1,5 +1,9 @@
 [changelog]
-header = ""
+header = """
+# Changelog
+All notable changes to this project will be documented in this file.
+
+"""
 body = """
 {% for group, commits in commits | group_by(attribute="group") %}
 ### {{ group | upper_first }}
