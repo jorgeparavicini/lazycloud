@@ -202,15 +202,16 @@ impl Component for TextInput {
             .add_modifier(Modifier::BOLD);
         let placeholder_style = Style::default().fg(theme.overlay0());
 
-        let line = if self.value.is_empty() && self.placeholder.is_some() {
-            // Show placeholder with cursor at start
-            Line::from(vec![
-                Span::styled(" ", cursor_style),
-                Span::styled(
-                    self.placeholder.as_ref().unwrap().clone(),
-                    placeholder_style,
-                ),
-            ])
+        let line = if self.value.is_empty() {
+            self.placeholder.as_ref().map_or_else(
+                || Line::from(Span::styled(" ", cursor_style)),
+                |placeholder| {
+                    Line::from(vec![
+                        Span::styled(" ", cursor_style),
+                        Span::styled(placeholder.clone(), placeholder_style),
+                    ])
+                },
+            )
         } else {
             Line::from(vec![
                 Span::styled(before_cursor.to_string(), input_style),
