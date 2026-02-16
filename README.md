@@ -37,8 +37,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://github.com/jorgeparavicini/la
 
 ### Pre-built binaries
 
-Download pre-built binaries from the
-[GitHub Releases](https://github.com/jorgeparavicini/lazycloud/releases) page.
+Download pre-built binaries from the [GitHub Releases](https://github.com/jorgeparavicini/lazycloud/releases) page.
 
 ## Usage
 

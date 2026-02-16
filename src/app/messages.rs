@@ -10,6 +10,7 @@ use crate::tui::Tui;
 use crate::ui::{ErrorDialog, Toast};
 
 impl App {
+    #[allow(clippy::too_many_lines)]
     pub(super) fn handle_message(&mut self, tui: &mut Tui, msg: AppMessage) -> Result<()> {
         if !matches!(
             msg,

@@ -43,12 +43,10 @@ pub fn discover_gcloud_configs() -> Vec<GcloudConfig> {
     };
 
     #[cfg(not(target_os = "macos"))]
-    let config_dir = match dirs::config_dir() {
-        Some(dir) => dir.join("gcloud").join("configurations"),
-        None => {
-            error!("Could not determine config directory for gcloud config");
-            return contexts;
-        }
+    let Some(config_dir) = dirs::config_dir().map(|dir| dir.join("gcloud").join("configurations"))
+    else {
+        error!("Could not determine config directory for gcloud config");
+        return contexts;
     };
 
     debug!(path = %config_dir.display(), "Searching for gcloud configurations");

@@ -4,3 +4,4 @@ git_tag_enable = true
 git_release_enable = true
 publish = true
 pr_name = "chore: release v{{ version }}"
+git_release_draft = true
