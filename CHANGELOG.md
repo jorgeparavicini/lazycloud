@@ -1,3 +1,5 @@
+## [v0.1.1] - 2026-02-16
+
 ### Features
 
 - Add cargo dist (360047c)
