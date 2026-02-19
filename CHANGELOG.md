@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.3] - 2026-02-19
+
+### Miscellaneous
+
+- Fix markdown lints (8d1590f)
+- Fix final markdown lint (2d1d71d)
+- Fix changelog typos (a7fca15)
+- Fix clippy warnings (952be32)
+- Convert to dist configuration to dist workspace (70f0fea)
+
 ## [0.1.2] - 2026-02-16
 
 ### Bug Fixes
