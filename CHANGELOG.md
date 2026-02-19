@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.4] - 2026-02-19
+
+### Miscellaneous
+
+- Cleanup dist workspace (a7303fc)
+- Make release plz trigger cargo dist (9a13d1c)
+
 ## [0.1.3] - 2026-02-19
 
 ### Miscellaneous
