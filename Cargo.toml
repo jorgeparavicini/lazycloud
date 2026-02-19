@@ -39,40 +39,6 @@ tracing = "0.1.44"
 tracing-appender = "0.2.4"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 
-# Config for 'dist'
-[workspace.metadata.dist]
-# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
-cargo-dist-version = "0.30.3"
-# Whether dist should create a Github Release or use an existing draft
-create-release = false
-# Target platforms to build apps for (Rust target-triple syntax)
-targets = [
-  "aarch64-apple-darwin",
-  "aarch64-unknown-linux-gnu",
-  "x86_64-apple-darwin",
-  "x86_64-unknown-linux-gnu",
-  "x86_64-unknown-linux-musl",
-  "x86_64-pc-windows-msvc",
-]
-# The installers to generate for each app
-installers = ["shell", "powershell", "homebrew"]
-# The archive format to use for non-windows builds (defaults .tar.xz)
-unix-archive = ".tar.gz"
-# The archive format to use for windows builds (defaults .zip)
-windows-archive = ".zip"
-# CI backends to support
-ci = "github"
-# Whether to auto-include files like READMEs, LICENSEs, and CHANGELOGs (default true)
-auto-includes = true
-# A GitHub repo to push Homebrew formulas to
-tap = "jorgeparavicini/homebrew-tap"
-# Publish jobs to run in CI
-publish-jobs = ["homebrew"]
-# Path that installers should place binaries in
-install-path = "CARGO_HOME"
-# Whether to install an updater program
-install-updater = false
-
 [profile.release]
 strip = true
 lto = true
