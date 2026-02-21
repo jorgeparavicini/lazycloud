@@ -3,7 +3,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
+use ratatui::widgets::{Clear, Paragraph};
 
 use crate::Theme;
 use crate::ui::{Component, EventResult, Result};
@@ -88,12 +88,10 @@ impl Component for HelpOverlay {
         frame.render_widget(Clear, popup_area);
 
         // Build keybinding lines with sections
-        let key_style = Style::default()
-            .fg(theme.peach())
-            .add_modifier(Modifier::BOLD);
+        let key_style = theme.key_style();
         let desc_style = Style::default().fg(theme.text());
         let section_style = Style::default()
-            .fg(theme.subtext0())
+            .fg(theme.text_muted())
             .add_modifier(Modifier::BOLD);
 
         let mut lines: Vec<Line> = Vec::new();
@@ -118,17 +116,7 @@ impl Component for HelpOverlay {
             }
         }
 
-        let block = Block::default()
-            .title(" Help (press ? or Esc to close) ")
-            .title_style(
-                Style::default()
-                    .fg(theme.mauve())
-                    .add_modifier(Modifier::BOLD),
-            )
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(theme.lavender()))
-            .style(Style::default().bg(theme.base()));
+        let block = theme.popup_block(" Help (press ? or Esc to close) ");
 
         let paragraph = Paragraph::new(lines).block(block);
 

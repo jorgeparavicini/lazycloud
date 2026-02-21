@@ -5,7 +5,7 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
+use ratatui::widgets::{Clear, Paragraph};
 use throbber_widgets_tui::{BRAILLE_SIX, Throbber, ThrobberState, WhichUse};
 
 use crate::Theme;
@@ -133,11 +133,11 @@ impl CommandPanel {
         let throbber = Throbber::default()
             .throbber_set(BRAILLE_SIX)
             .use_type(WhichUse::Spin)
-            .throbber_style(Style::default().fg(theme.lavender()));
+            .throbber_style(Style::default().fg(theme.highlight()));
         frame.render_stateful_widget(throbber, spinner_area, &mut self.throbber_state);
 
         // Render text
-        let text = Paragraph::new(status).style(Style::default().fg(theme.subtext0()));
+        let text = Paragraph::new(status).style(Style::default().fg(theme.text_muted()));
         frame.render_widget(text, text_area);
 
         width
@@ -153,11 +153,11 @@ impl CommandPanel {
         let running_time_col = 10;
 
         lines.push(Line::from(vec![
-            Span::styled("⚡ ", Style::default().fg(theme.yellow())),
+            Span::styled("⚡ ", Style::default().fg(theme.warning())),
             Span::styled(
                 "RUNNING",
                 Style::default()
-                    .fg(theme.yellow())
+                    .fg(theme.warning())
                     .add_modifier(Modifier::BOLD),
             ),
         ]));
@@ -183,7 +183,7 @@ impl CommandPanel {
 
             lines.push(Line::from(vec![
                 Span::raw("  "),
-                Span::styled(progress_char, Style::default().fg(theme.peach())),
+                Span::styled(progress_char, Style::default().fg(theme.accent())),
                 Span::raw(" "),
                 Span::styled(name, Style::default().fg(theme.text())),
                 Span::raw(" ".repeat(padding)),
@@ -208,11 +208,11 @@ impl CommandPanel {
         let history_time_col = 18;
 
         lines.push(Line::from(vec![
-            Span::styled("📋 ", Style::default().fg(theme.subtext0())),
+            Span::styled("📋 ", Style::default().fg(theme.text_muted())),
             Span::styled(
                 "RECENT",
                 Style::default()
-                    .fg(theme.subtext0())
+                    .fg(theme.text_muted())
                     .add_modifier(Modifier::BOLD),
             ),
         ]));
@@ -223,9 +223,9 @@ impl CommandPanel {
 
         for cmd in self.history.iter().take(5) {
             let (icon, color) = if cmd.success {
-                ("✓", theme.green())
+                ("✓", theme.success())
             } else {
-                ("✗", theme.red())
+                ("✗", theme.error())
             };
 
             let duration_str = format_duration(cmd.duration);
@@ -240,7 +240,7 @@ impl CommandPanel {
                 Span::raw("  "),
                 Span::styled(icon, Style::default().fg(color)),
                 Span::raw(" "),
-                Span::styled(name, Style::default().fg(theme.subtext1())),
+                Span::styled(name, Style::default().fg(theme.text_dim())),
                 Span::raw(" ".repeat(padding)),
                 Span::styled(
                     time_display,
@@ -300,17 +300,11 @@ impl CommandPanel {
             )
         };
 
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
+        let block = theme.block()
             .border_style(Style::default().fg(theme.surface2()))
             .title(title)
-            .title_style(
-                Style::default()
-                    .fg(theme.mauve())
-                    .add_modifier(Modifier::BOLD),
-            )
-            .style(Style::default().bg(theme.mantle()));
+            .title_style(theme.title_style())
+            .style(Style::default().bg(theme.bg_dim()));
 
         let inner = block.inner(widget_area);
         frame.render_widget(block, widget_area);

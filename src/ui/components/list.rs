@@ -3,7 +3,6 @@ use std::sync::Arc;
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::prelude::{Modifier, Style};
 use ratatui::widgets::{List as RatatuiList, ListItem, ListState};
 
 use crate::Theme;
@@ -119,12 +118,7 @@ impl<T: ListRow + Clone> Component for List<T> {
         let items: Vec<ListItem> = self.items.iter().map(|i| i.render_row(theme)).collect();
 
         let list = RatatuiList::new(items)
-            .highlight_style(
-                Style::default()
-                    .bg(theme.selection_bg())
-                    .fg(theme.lavender())
-                    .add_modifier(Modifier::BOLD),
-            )
+            .highlight_style(theme.highlight_style())
             .highlight_symbol("▶ ");
 
         frame.render_stateful_widget(list, area, &mut self.state);

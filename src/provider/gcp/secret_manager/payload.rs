@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::style::Style;
+use ratatui::widgets::Paragraph;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::Theme;
@@ -119,16 +119,9 @@ impl Screen for PayloadScreen {
         let p = Paragraph::new(self.payload.data.as_str())
             .style(Style::default().fg(theme.text()))
             .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_type(theme.border_type)
-                    .border_style(Style::default().fg(theme.border()))
+                theme.block()
                     .title(title)
-                    .title_style(
-                        Style::default()
-                            .fg(theme.mauve())
-                            .add_modifier(Modifier::BOLD),
-                    ),
+                    .title_style(theme.title_style()),
             );
 
         frame.render_widget(p, area);

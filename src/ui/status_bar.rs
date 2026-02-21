@@ -4,7 +4,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
+use ratatui::widgets::Paragraph;
 
 use crate::Theme;
 use crate::config::{GlobalAction, KeyResolver, NavAction};
@@ -51,10 +51,7 @@ impl StatusBar {
         local_keybindings: &[Keybinding],
     ) {
         // Draw outer block
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(theme.surface1()));
+        let block = theme.block();
 
         let inner_area = block.inner(area);
         frame.render_widget(block, area);
@@ -92,7 +89,7 @@ impl StatusBar {
                     Line::from(Span::styled(
                         truncate_str(&gcp.display_name, w),
                         Style::default()
-                            .fg(theme.lavender())
+                            .fg(theme.highlight())
                             .add_modifier(Modifier::BOLD),
                     )),
                     Line::from(""),
@@ -101,7 +98,7 @@ impl StatusBar {
                         "GCP",
                         w,
                         label_style,
-                        Style::default().fg(theme.blue()),
+                        Style::default().fg(theme.primary()),
                     ),
                     status_line("project", &gcp.project_id, w, label_style, value_style),
                     status_line("account", &gcp.account, w, label_style, value_style),
@@ -168,12 +165,12 @@ impl StatusBar {
             let line = Line::from(vec![
                 Span::styled(
                     format!("{:>width$}", kb.key, width = max_key_w),
-                    Style::default().fg(theme.peach()),
+                    Style::default().fg(theme.accent()),
                 ),
                 Span::styled(" │ ", Style::default().fg(theme.surface2())),
                 Span::styled(
                     kb.description.clone(),
-                    Style::default().fg(theme.subtext0()),
+                    Style::default().fg(theme.text_muted()),
                 ),
             ]);
             columns[col_idx].push(line);
@@ -202,7 +199,7 @@ impl StatusBar {
                 Line::from(Span::styled(
                     *line,
                     Style::default()
-                        .fg(theme.mauve())
+                        .fg(theme.secondary())
                         .add_modifier(Modifier::BOLD),
                 ))
             })

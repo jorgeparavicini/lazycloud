@@ -12,7 +12,7 @@ impl App {
         tui.draw(|frame| {
             // Fill background with theme base color
             frame.render_widget(
-                Block::default().style(Style::default().bg(self.theme.base())),
+                Block::default().style(Style::default().bg(self.theme.bg())),
                 frame.area(),
             );
 

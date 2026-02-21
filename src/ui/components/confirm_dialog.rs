@@ -5,7 +5,7 @@ use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
+use ratatui::widgets::{Clear, Paragraph};
 
 use crate::Theme;
 use crate::config::{DialogAction, KeyResolver};
@@ -89,15 +89,13 @@ impl Component for ConfirmDialog {
 
         // Choose colors based on style
         let (title_color, border_color, confirm_color) = match self.style {
-            ConfirmStyle::Normal => (theme.mauve(), theme.lavender(), theme.green()),
-            ConfirmStyle::Danger => (theme.red(), theme.red(), theme.red()),
+            ConfirmStyle::Normal => (theme.secondary(), theme.highlight(), theme.success()),
+            ConfirmStyle::Danger => (theme.error(), theme.error(), theme.error()),
         };
 
         // Build the content
         let message_style = Style::default().fg(theme.text());
-        let key_style = Style::default()
-            .fg(theme.peach())
-            .add_modifier(Modifier::BOLD);
+        let key_style = theme.key_style();
         let confirm_style = Style::default()
             .fg(confirm_color)
             .add_modifier(Modifier::BOLD);
@@ -121,17 +119,13 @@ impl Component for ConfirmDialog {
         ];
 
         let title = format!(" {} ", self.title);
-        let block = Block::default()
-            .title(title)
+        let block = theme.popup_block(&title)
             .title_style(
                 Style::default()
                     .fg(title_color)
                     .add_modifier(Modifier::BOLD),
             )
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(border_color))
-            .style(Style::default().bg(theme.base()));
+            .border_style(Style::default().fg(border_color));
 
         let paragraph = Paragraph::new(lines)
             .block(block)

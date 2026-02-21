@@ -8,7 +8,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Cell, Paragraph};
+use ratatui::widgets::{Cell, Paragraph};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::Theme;
@@ -525,10 +525,10 @@ impl Screen for ReplicationScreen {
         let title = format!(" {} - Replication ", self.secret.name);
 
         let label_style = Style::default()
-            .fg(theme.subtext0())
+            .fg(theme.text_muted())
             .add_modifier(Modifier::BOLD);
         let value_style = Style::default().fg(theme.text());
-        let location_style = Style::default().fg(theme.green());
+        let location_style = Style::default().fg(theme.success());
 
         let lines = match &self.replication {
             ReplicationConfig::Automatic => {
@@ -574,17 +574,10 @@ impl Screen for ReplicationScreen {
             }
         };
 
-        let block = Block::default()
+        let block = theme.block()
             .title(title)
-            .title_style(
-                Style::default()
-                    .fg(theme.mauve())
-                    .add_modifier(Modifier::BOLD),
-            )
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(theme.surface1()))
-            .style(Style::default().bg(theme.base()));
+            .title_style(theme.title_style())
+            .style(Style::default().bg(theme.bg()));
 
         let paragraph = Paragraph::new(lines).block(block);
 

@@ -5,9 +5,6 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::prelude::{Modifier, Style};
 use ratatui::widgets::{
-    Block,
-    BorderType,
-    Borders,
     Cell,
     Paragraph,
     Row,
@@ -318,25 +315,13 @@ impl<T: TableRow + Clone> Component for Table<T> {
 
         let mut table = RatatuiTable::new(rows, widths)
             .header(header)
-            .row_highlight_style(
-                Style::default()
-                    .bg(theme.selection_bg())
-                    .fg(theme.lavender())
-                    .add_modifier(Modifier::BOLD),
-            )
+            .row_highlight_style(theme.highlight_style())
             .highlight_symbol("▶ ");
 
         if let Some(title) = &self.title {
-            let block = Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(theme.border()))
+            let block = theme.block()
                 .title(title.as_str())
-                .title_style(
-                    Style::default()
-                        .fg(theme.mauve())
-                        .add_modifier(Modifier::BOLD),
-                );
+                .title_style(theme.title_style());
             table = table.block(block);
         }
 
@@ -351,9 +336,9 @@ impl<T: TableRow + Clone> Component for Table<T> {
             };
 
             let search_style = if self.searching {
-                Style::default().fg(theme.yellow())
+                Style::default().fg(theme.warning())
             } else {
-                Style::default().fg(theme.subtext0())
+                Style::default().fg(theme.text_muted())
             };
 
             let search_bar = Paragraph::new(search_text).style(search_style);

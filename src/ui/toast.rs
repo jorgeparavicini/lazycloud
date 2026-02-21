@@ -108,8 +108,8 @@ impl Component for ToastManager {
             let toast_area = Rect::new(x, y, toast_width, toast_height);
 
             let (border_color, icon) = match toast.kind {
-                ToastType::Success => (theme.green(), "✓"),
-                ToastType::Info => (theme.mauve(), "ℹ"),
+                ToastType::Success => (theme.success(), "✓"),
+                ToastType::Info => (theme.secondary(), "ℹ"),
             };
 
             let block = Block::default()

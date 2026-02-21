@@ -5,9 +5,9 @@ use crossterm::event::{KeyCode, KeyEvent};
 use google_cloud_auth::credentials::Credentials;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Cell, Clear, List, ListItem, ListState};
+use ratatui::widgets::{Cell, Clear, List, ListItem, ListState};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info};
 
@@ -418,17 +418,8 @@ impl Component for ContextMergePopup {
 
         frame.render_widget(Clear, popup_area);
 
-        let title_style = Style::default()
-            .fg(theme.mauve())
-            .add_modifier(Modifier::BOLD);
-
-        let block = Block::default()
-            .title(" Import New Contexts ")
-            .title_style(title_style)
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(theme.border()))
-            .style(Style::default().bg(theme.base()));
+        let block = theme.popup_block(" Import New Contexts ")
+            .border_style(Style::default().fg(theme.border()));
 
         let items: Vec<ListItem> = self
             .items
@@ -443,7 +434,7 @@ impl Component for ContextMergePopup {
                     Span::styled(
                         format!("{checkbox} "),
                         Style::default().fg(if item.selected {
-                            theme.green()
+                            theme.success()
                         } else {
                             theme.overlay1()
                         }),
@@ -451,7 +442,7 @@ impl Component for ContextMergePopup {
                     Span::styled(name.to_string(), Style::default().fg(theme.text())),
                     Span::styled(
                         format!(" ({project})"),
-                        Style::default().fg(theme.subtext0()),
+                        Style::default().fg(theme.text_muted()),
                     ),
                 ]))
             })
@@ -459,12 +450,7 @@ impl Component for ContextMergePopup {
 
         let list = List::new(items)
             .block(block)
-            .highlight_style(
-                Style::default()
-                    .bg(theme.selection_bg())
-                    .fg(theme.lavender())
-                    .add_modifier(Modifier::BOLD),
-            )
+            .highlight_style(theme.highlight_style())
             .highlight_symbol("▶ ");
 
         frame.render_stateful_widget(list, popup_area, &mut self.state);
@@ -477,16 +463,16 @@ impl Component for ContextMergePopup {
             1,
         );
         let hint = Line::from(vec![
-            Span::styled("Space", Style::default().fg(theme.mauve())),
-            Span::styled(" toggle  ", Style::default().fg(theme.subtext0())),
-            Span::styled("a", Style::default().fg(theme.mauve())),
-            Span::styled(" all  ", Style::default().fg(theme.subtext0())),
-            Span::styled("n", Style::default().fg(theme.mauve())),
-            Span::styled(" none  ", Style::default().fg(theme.subtext0())),
-            Span::styled("Enter", Style::default().fg(theme.mauve())),
-            Span::styled(" import  ", Style::default().fg(theme.subtext0())),
-            Span::styled("Esc", Style::default().fg(theme.mauve())),
-            Span::styled(" skip", Style::default().fg(theme.subtext0())),
+            Span::styled("Space", Style::default().fg(theme.secondary())),
+            Span::styled(" toggle  ", Style::default().fg(theme.text_muted())),
+            Span::styled("a", Style::default().fg(theme.secondary())),
+            Span::styled(" all  ", Style::default().fg(theme.text_muted())),
+            Span::styled("n", Style::default().fg(theme.secondary())),
+            Span::styled(" none  ", Style::default().fg(theme.text_muted())),
+            Span::styled("Enter", Style::default().fg(theme.secondary())),
+            Span::styled(" import  ", Style::default().fg(theme.text_muted())),
+            Span::styled("Esc", Style::default().fg(theme.secondary())),
+            Span::styled(" skip", Style::default().fg(theme.text_muted())),
         ]);
         frame.render_widget(hint, hint_area);
     }

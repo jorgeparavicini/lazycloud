@@ -42,8 +42,8 @@ impl Component for Spinner {
         let mut throbber = Throbber::default()
             .throbber_set(BRAILLE_SIX)
             .use_type(Spin)
-            .throbber_style(Style::default().fg(theme.lavender()))
-            .style(Style::default().fg(theme.subtext1()));
+            .throbber_style(Style::default().fg(theme.highlight()))
+            .style(Style::default().fg(theme.text_dim()));
 
         // The throbber itself uses 1-character width
         let mut width = 1u16;

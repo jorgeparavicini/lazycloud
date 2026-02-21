@@ -5,7 +5,7 @@ use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
+use ratatui::widgets::{Clear, Paragraph, Wrap};
 
 use crate::Theme;
 use crate::config::{DialogAction, KeyResolver};
@@ -44,9 +44,6 @@ impl Component for ErrorDialog {
 
         frame.render_widget(Clear, popup_area);
 
-        let title_style = Style::default()
-            .fg(theme.red())
-            .add_modifier(Modifier::BOLD);
         let message_style = Style::default().fg(theme.text());
         let hint_style = Style::default().fg(theme.overlay1());
 
@@ -57,13 +54,13 @@ impl Component for ErrorDialog {
             Line::from(Span::styled("Press Enter or Esc to dismiss", hint_style)),
         ];
 
-        let block = Block::default()
-            .title(" Error ")
-            .title_style(title_style)
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(theme.red()))
-            .style(Style::default().bg(theme.base()));
+        let block = theme.popup_block(" Error ")
+            .title_style(
+                Style::default()
+                    .fg(theme.error())
+                    .add_modifier(Modifier::BOLD),
+            )
+            .border_style(Style::default().fg(theme.error()));
 
         let paragraph = Paragraph::new(lines)
             .block(block)

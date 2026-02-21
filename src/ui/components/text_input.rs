@@ -3,7 +3,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
+use ratatui::widgets::{Clear, Paragraph};
 
 use crate::Theme;
 use crate::ui::{Component, EventResult, Result};
@@ -197,7 +197,7 @@ impl Component for TextInput {
 
         let input_style = Style::default().fg(theme.text());
         let cursor_style = Style::default()
-            .fg(theme.base())
+            .fg(theme.bg())
             .bg(theme.text())
             .add_modifier(Modifier::BOLD);
         let placeholder_style = Style::default().fg(theme.overlay0());
@@ -221,17 +221,7 @@ impl Component for TextInput {
         };
 
         let title = format!(" {} (Enter to confirm, Esc to cancel) ", self.label);
-        let block = Block::default()
-            .title(title)
-            .title_style(
-                Style::default()
-                    .fg(theme.mauve())
-                    .add_modifier(Modifier::BOLD),
-            )
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(theme.lavender()))
-            .style(Style::default().bg(theme.base()));
+        let block = theme.popup_block(&title);
 
         let paragraph = Paragraph::new(line).block(block);
 
