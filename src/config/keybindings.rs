@@ -158,7 +158,6 @@ impl Default for DialogKeybindings {
             confirm: KeyBinding::multiple(vec![
                 Key::new(KeyCode::Char('y')),
                 Key::new(KeyCode::Char('Y')),
-                Key::new(KeyCode::Enter),
             ]),
             cancel: KeyBinding::multiple(vec![
                 Key::new(KeyCode::Char('n')),

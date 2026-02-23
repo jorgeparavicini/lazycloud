@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use crossterm::event::KeyEvent;
+use google_cloud_secretmanager_v1::model;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Modifier, Style};
@@ -16,29 +17,17 @@ use crate::app::AppMessage;
 use crate::commands::{Command, CopyToClipboardCmd};
 use crate::config::{KeyResolver, SearchAction, SecretsAction};
 use crate::provider::gcp::secret_manager::SecretManager;
-use crate::provider::gcp::secret_manager::client::SecretManagerClient;
+use crate::provider::gcp::secret_manager::client::{ClientError, SecretManagerClient};
 use crate::provider::gcp::secret_manager::payload::PayloadMsg;
 use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
 use crate::provider::gcp::secret_manager::versions::VersionsMsg;
 use crate::search::Matcher;
 use crate::service::ServiceMsg;
 use crate::ui::{
-    ColumnDef,
-    Component,
-    ConfirmDialog,
-    ConfirmEvent,
-    EventResult,
-    Keybinding,
-    Modal,
-    Result,
-    Screen,
-    Table,
-    TableEvent,
-    TableRow,
-    TextInput,
-    TextInputEvent,
+    ColumnDef, Component, ConfirmDialog, ConfirmEvent, EventResult, Keybinding, Modal, Result,
+    Screen, Table, TableEvent, TableRow, TextInput, TextInputEvent,
 };
-
+use crate::utility::format_timestamp;
 // === Models ===
 
 /// A secret managed by GCP.
@@ -49,6 +38,39 @@ pub struct Secret {
     pub created_at: String,
     pub expire_time: Option<String>,
     pub labels: HashMap<String, String>,
+}
+
+impl Secret {
+    pub fn from_proto(secret_id: &str, proto: model::Secret) -> Self {
+        let replication = if let Some(replication) = &proto.replication
+            && let Some(replication) = &replication.replication
+        {
+            match replication {
+                model::replication::Replication::UserManaged(user_managed) => {
+                    let locations = user_managed
+                        .replicas
+                        .iter()
+                        .map(|r| r.location.clone())
+                        .collect();
+                    ReplicationConfig::UserManaged { locations }
+                }
+                _ => ReplicationConfig::Automatic,
+            }
+        } else {
+            ReplicationConfig::Automatic
+        };
+
+        Self {
+            name: secret_id.to_string(),
+            replication,
+            created_at: proto
+                .create_time
+                .as_ref()
+                .map_or_else(|| "Unknown".to_string(), |t| format_timestamp(t.seconds())),
+            expire_time: proto.expire_time().map(|t| format_timestamp(t.seconds())),
+            labels: proto.labels,
+        }
+    }
 }
 
 impl Display for Secret {
@@ -574,7 +596,8 @@ impl Screen for ReplicationScreen {
             }
         };
 
-        let block = theme.block()
+        let block = theme
+            .block()
             .title(title)
             .title_style(theme.title_style())
             .style(Style::default().bg(theme.bg()));
@@ -924,9 +947,17 @@ impl Command for FetchSecretsCmd {
     }
 
     async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
-        let secrets = self.client.list_secrets().await?;
-        self.tx.send(SecretsMsg::Loaded(secrets).into())?;
-        Ok(())
+        match self.client.list_secrets().await {
+            Ok(secrets) => {
+                self.tx.send(SecretsMsg::Loaded(secrets).into())?;
+                Ok(())
+            }
+            Err(ClientError::ApiDisabled) => {
+                self.tx.send(SecretManagerMsg::ApiDisabled)?;
+                Ok(())
+            }
+            Err(e) => Err(e.into()),
+        }
     }
 }
 

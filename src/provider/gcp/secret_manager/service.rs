@@ -4,24 +4,29 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use color_eyre::Result;
 use crossterm::event::KeyEvent;
+use google_cloud_api_serviceusage_v1::client::ServiceUsage;
+use google_cloud_lro::Poller;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
-
+use tracing::{error, info};
 use crate::Theme;
 use crate::app::AppMessage;
 use crate::commands::Command;
 use crate::config::{GlobalAction, KeyResolver};
 use crate::context::{CloudContext, GcpContext};
 use crate::provider::Provider;
-use crate::provider::gcp::secret_manager::client::SecretManagerClient;
+use crate::provider::gcp::secret_manager::client::{ClientError, SecretManagerClient};
 use crate::provider::gcp::secret_manager::payload::{PayloadMsg, SecretPayload};
 use crate::provider::gcp::secret_manager::secrets::{Secret, SecretsMsg};
 use crate::provider::gcp::secret_manager::versions::{SecretVersion, VersionsMsg};
 use crate::provider::gcp::secret_manager::{payload, secrets, versions};
 use crate::registry::ServiceProvider;
 use crate::service::{Service, ServiceMsg};
-use crate::ui::{Component, EventResult, EventResultExt, Keybinding, Modal, Screen, Spinner};
+use crate::ui::{
+    Component, ConfirmDialog, ConfirmEvent, EventResult, EventResultExt, Keybinding, Modal, Screen,
+    Spinner,
+};
 
 // === Messages ===
 
@@ -29,6 +34,10 @@ use crate::ui::{Component, EventResult, EventResultExt, Keybinding, Modal, Scree
 pub enum SecretManagerMsg {
     Initialize,
     ClientInitialized(SecretManagerClient),
+
+    ApiDisabled,
+    EnableApi,
+    ApiEnabled,
 
     NavigateBack,
     DialogCancelled,
@@ -255,6 +264,28 @@ impl SecretManager {
                 Ok(ServiceMsg::Idle)
             }
 
+            // === API Enable Flow ===
+            SecretManagerMsg::ApiDisabled => {
+                self.hide_loading_spinner();
+                self.display_overlay(EnableApiDialog::new(self.get_resolver()));
+                Ok(ServiceMsg::Idle)
+            }
+
+            SecretManagerMsg::EnableApi => {
+                self.close_overlay();
+                self.display_loading_spinner("Enabling Secret Manager API...");
+                Ok(EnableApiCmd {
+                    context: self.context.clone(),
+                    tx: self.msg_tx.clone(),
+                }
+                .into())
+            }
+
+            SecretManagerMsg::ApiEnabled => {
+                self.queue(SecretManagerMsg::Initialize);
+                Ok(ServiceMsg::Idle)
+            }
+
             // === Navigation ===
             SecretManagerMsg::NavigateBack => {
                 if self.pop_view() {
@@ -266,6 +297,10 @@ impl SecretManager {
 
             SecretManagerMsg::DialogCancelled => {
                 self.close_overlay();
+                // If there's nothing to show (e.g. API dialog before secrets loaded), close
+                if self.screen_stack.is_empty() {
+                    return Ok(ServiceMsg::Close);
+                }
                 Ok(ServiceMsg::Idle)
             }
 
@@ -371,7 +406,78 @@ impl Service for SecretManager {
     }
 }
 
+// === Dialogs ===
+
+struct EnableApiDialog {
+    dialog: ConfirmDialog,
+}
+
+impl EnableApiDialog {
+    fn new(resolver: Arc<KeyResolver>) -> Self {
+        let dialog = ConfirmDialog::new(
+            "The Secret Manager API is not enabled for this project. Would you like to enable it?",
+            resolver,
+        )
+        .with_title("API Not Enabled")
+        .with_confirm_text("Enable");
+        Self { dialog }
+    }
+}
+
+impl Modal for EnableApiDialog {
+    type Output = SecretManagerMsg;
+
+    fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
+        Ok(match self.dialog.handle_key(key)? {
+            EventResult::Event(ConfirmEvent::Confirmed) => SecretManagerMsg::EnableApi.into(),
+            EventResult::Event(ConfirmEvent::Cancelled) => {
+                SecretManagerMsg::DialogCancelled.into()
+            }
+            _ => EventResult::Consumed,
+        })
+    }
+
+    fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
+        self.dialog.render(frame, area, theme);
+    }
+}
+
 // === Commands ===
+
+struct EnableApiCmd {
+    context: GcpContext,
+    tx: UnboundedSender<SecretManagerMsg>,
+}
+
+#[async_trait]
+impl Command for EnableApiCmd {
+    fn name(&self) -> String {
+        "Enabling Secret Manager API".to_string()
+    }
+
+    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+        let credentials = self.context.create_credentials()?;
+        let client = ServiceUsage::builder()
+            .with_credentials(credentials)
+            .build()
+            .await?;
+
+        let service_name = format!(
+            "projects/{}/services/secretmanager.googleapis.com",
+            self.context.project_id
+        );
+
+        client
+            .enable_service()
+            .set_name(service_name)
+            .poller()
+            .until_done()
+            .await?;
+
+        self.tx.send(SecretManagerMsg::ApiEnabled)?;
+        Ok(())
+    }
+}
 
 struct InitClientCmd {
     context: GcpContext,
@@ -385,8 +491,20 @@ impl Command for InitClientCmd {
     }
 
     async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
-        let client = SecretManagerClient::new(&self.context).await?;
-        self.tx.send(SecretManagerMsg::ClientInitialized(client))?;
-        Ok(())
+        match SecretManagerClient::new(&self.context).await {
+            Ok(client) => {
+                info!("Successfully initialized Secret Manager client");
+                self.tx.send(SecretManagerMsg::ClientInitialized(client))?;
+                Ok(())
+            }
+            Err(ClientError::ApiDisabled) => {
+                self.tx.send(SecretManagerMsg::ApiDisabled)?;
+                Ok(())
+            }
+            Err(e) => {
+                error!("Failed to initialize Secret Manager client: {e}");
+                Err(e.into())
+            }
+        }
     }
 }

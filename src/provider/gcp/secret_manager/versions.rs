@@ -3,39 +3,27 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use crossterm::event::KeyEvent;
-use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::widgets::Cell;
+use ratatui::Frame;
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::Theme;
 use crate::app::AppMessage;
 use crate::commands::Command;
 use crate::config::{KeyResolver, SearchAction, VersionsAction};
-use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::payload::PayloadMsg;
 use crate::provider::gcp::secret_manager::secrets::Secret;
 use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
+use crate::provider::gcp::secret_manager::SecretManager;
 use crate::search::Matcher;
 use crate::service::ServiceMsg;
 use crate::ui::{
-    ColumnDef,
-    Component,
-    ConfirmDialog,
-    ConfirmEvent,
-    EventResult,
-    Keybinding,
-    Modal,
-    Result,
-    Screen,
-    Table,
-    TableEvent,
-    TableRow,
-    TextInput,
-    TextInputEvent,
+    ColumnDef, Component, ConfirmDialog, ConfirmEvent, EventResult, Keybinding, Modal, Result,
+    Screen, Table, TableEvent, TableRow, TextInput, TextInputEvent,
 };
-
+use crate::utility::format_timestamp;
+use crate::Theme;
 // === Models ===
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,6 +31,22 @@ pub struct SecretVersion {
     pub version_id: String,
     pub state: String,
     pub created_at: String,
+}
+
+impl SecretVersion {
+    pub fn from_proto(
+        version_id: &str,
+        proto: &google_cloud_secretmanager_v1::model::SecretVersion,
+    ) -> Self {
+        Self {
+            version_id: version_id.to_string(),
+            state: format!("{:?}", proto.state),
+            created_at: proto.create_time.as_ref().map_or_else(
+                || "Unknown".to_string(),
+                |t| format_timestamp(t.seconds()),
+            ),
+        }
+    }
 }
 
 impl Display for SecretVersion {

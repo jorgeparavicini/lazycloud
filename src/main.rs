@@ -23,6 +23,7 @@ pub mod service;
 mod theme;
 pub mod tui;
 mod ui;
+pub mod utility;
 
 pub use theme::Theme;
 
