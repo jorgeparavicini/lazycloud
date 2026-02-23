@@ -49,12 +49,29 @@ impl Component for ErrorDialog {
 
         let lines = vec![
             Line::from(""),
+            Line::from(Span::styled(
+                "An unexpected error occurred",
+                Style::default()
+                    .fg(theme.error())
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
             Line::from(Span::styled(&self.message, message_style)),
+            Line::from(""),
+            Line::from(Span::styled(
+                "Please report this issue to the developers",
+                hint_style,
+            )),
+            Line::from(Span::styled(
+                "The current service will be terminated",
+                hint_style,
+            )),
             Line::from(""),
             Line::from(Span::styled("Press Enter or Esc to dismiss", hint_style)),
         ];
 
-        let block = theme.popup_block(" Error ")
+        let block = theme
+            .popup_block(" Error ")
             .title_style(
                 Style::default()
                     .fg(theme.error())

@@ -35,6 +35,7 @@ impl App {
                     dialog.handle_key(key),
                     Ok(EventResult::Event(ErrorDialogEvent::Dismissed))
                 ) {
+                    self.msg_tx.send(AppMessage::GoBack)?;
                     self.msg_tx.send(AppMessage::ClosePopup)?;
                 }
             }
