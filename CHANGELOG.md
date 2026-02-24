@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.5] - 2026-02-23
+
+### Features
+
+- Consolidate theme definitions (26d9915)
+- Treat errors as fatal and close service (17e39fa)
+- Allow enabling service api (bb36cf4)
+
 ## [0.1.4] - 2026-02-19
 
 ### Miscellaneous
