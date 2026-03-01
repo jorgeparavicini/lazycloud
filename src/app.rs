@@ -98,6 +98,7 @@ pub struct App {
     config: Arc<AppConfig>,
     resolver: Arc<KeyResolver>,
     pending_service: Option<String>,
+    pending_editor: Option<String>,
 }
 
 impl App {
@@ -128,6 +129,7 @@ impl App {
             config,
             resolver,
             pending_service: None,
+            pending_editor: None,
         }
     }
 
@@ -198,6 +200,29 @@ impl App {
                 }
             }
 
+            if let Some(content) = self.pending_editor.take() {
+                tui.exit()?;
+                let result = edit::edit(&content);
+                tui.enter()?;
+                tui.clear()?;
+
+                if let AppState::ActiveService(service) = &mut self.state {
+                    let edited = match result {
+                        Ok(new) if new != content => Some(new),
+                        Ok(_) => None,
+                        Err(e) => {
+                            let _ = self.msg_tx.send(AppMessage::DisplayError(
+                                format!("Failed to open editor: {e}"),
+                            ));
+                            None
+                        }
+                    };
+                    service.handle_editor_result(edited);
+                    let svc_result = service.update();
+                    self.process_update_result(svc_result);
+                }
+            }
+
             if self.should_suspend {
                 tui.suspend()?;
                 self.msg_tx.send(AppMessage::Resume)?;
@@ -239,6 +264,9 @@ impl App {
             }
             Ok(ServiceMsg::Close) => {
                 let _ = self.msg_tx.send(AppMessage::GoBack);
+            }
+            Ok(ServiceMsg::EditExternal { content }) => {
+                self.pending_editor = Some(content);
             }
             Err(err) => {
                 let _ = self.msg_tx.send(AppMessage::DisplayError(err.to_string()));

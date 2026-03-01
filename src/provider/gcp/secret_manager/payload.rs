@@ -45,6 +45,17 @@ pub enum PayloadMsg {
         data: String,
         description: String,
     },
+    Edit {
+        secret: Secret,
+        data: String,
+    },
+    SaveEdit {
+        secret: Secret,
+        new_data: String,
+    },
+    EditSaved {
+        secret: Secret,
+    },
 }
 
 impl From<PayloadMsg> for SecretManagerMsg {
@@ -106,6 +117,13 @@ impl Screen for PayloadScreen {
             }
             .into());
         }
+        if self.resolver.matches_payload(&key, PayloadAction::Edit) && !self.payload.is_binary {
+            return Ok(PayloadMsg::Edit {
+                secret: self.secret.clone(),
+                data: self.payload.data.clone(),
+            }
+            .into());
+        }
         Ok(EventResult::Ignored)
     }
 
@@ -128,13 +146,15 @@ impl Screen for PayloadScreen {
     }
 
     fn keybindings(&self) -> Vec<Keybinding> {
-        vec![
+        let mut bindings = vec![
             Keybinding::hint(self.resolver.display_payload(PayloadAction::Copy), "Copy"),
-            Keybinding::new(
-                self.resolver.display_payload(PayloadAction::Reload),
-                "Reload",
-            ),
-        ]
+            Keybinding::hint(self.resolver.display_payload(PayloadAction::Edit), "Edit"),
+        ];
+        bindings.push(Keybinding::new(
+            self.resolver.display_payload(PayloadAction::Reload),
+            "Reload",
+        ));
+        bindings
     }
 }
 
@@ -192,6 +212,38 @@ pub(super) fn update(state: &mut SecretManager, msg: PayloadMsg) -> Result<Servi
         PayloadMsg::Copy { data, description } => {
             Ok(CopyToClipboardCmd::new(data, description).into())
         }
+
+        PayloadMsg::Edit { secret, data } => {
+            state.set_editing_secret(secret);
+            Ok(ServiceMsg::EditExternal { content: data })
+        }
+
+        PayloadMsg::SaveEdit { secret, new_data } => {
+            state.display_loading_spinner("Saving new version...");
+            state.invalidate_payload_cache(&secret);
+            state.invalidate_versions_cache(&secret);
+
+            Ok(SaveEditCmd {
+                secret,
+                new_data,
+                client: state.get_client()?,
+                tx: state.get_msg_sender(),
+            }
+            .into())
+        }
+
+        PayloadMsg::EditSaved { secret } => {
+            state.hide_loading_spinner();
+            state.pop_view();
+            state.queue(
+                PayloadMsg::Load {
+                    secret,
+                    version: None,
+                }
+                .into(),
+            );
+            Ok(ServiceMsg::Idle)
+        }
     }
 }
 
@@ -223,6 +275,37 @@ impl Command for FetchPayloadCmd {
                 secret: self.secret,
                 version: Some(self.version),
                 payload,
+            }
+            .into(),
+        )?;
+        Ok(())
+    }
+}
+
+struct SaveEditCmd {
+    client: SecretManagerClient,
+    secret: Secret,
+    new_data: String,
+    tx: UnboundedSender<SecretManagerMsg>,
+}
+
+#[async_trait]
+impl Command for SaveEditCmd {
+    fn name(&self) -> String {
+        format!("Saving edit to '{}'", self.secret.name)
+    }
+
+    async fn execute(self: Box<Self>, action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+        self.client
+            .add_secret_version(&self.secret.name, self.new_data.as_bytes())
+            .await?;
+        let _ = action_tx.send(AppMessage::ShowToast {
+            message: format!("New version created for '{}'", self.secret.name),
+            toast_type: crate::ui::ToastType::Success,
+        });
+        self.tx.send(
+            PayloadMsg::EditSaved {
+                secret: self.secret,
             }
             .into(),
         )?;

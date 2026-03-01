@@ -56,6 +56,7 @@ pub struct VersionListKeybindings {
 pub struct PayloadKeybindings {
     pub copy: KeyBinding,
     pub reload: KeyBinding,
+    pub edit: KeyBinding,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -148,6 +149,7 @@ impl Default for PayloadKeybindings {
         Self {
             copy: Key::new(KeyCode::Char('y')).into(),
             reload: Key::new(KeyCode::Char('r')).into(),
+            edit: Key::new(KeyCode::Char('e')).into(),
         }
     }
 }

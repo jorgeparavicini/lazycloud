@@ -95,6 +95,7 @@ pub struct SecretManager {
     /// Key: "`secret_name/version_id`"
     cached_payloads: HashMap<String, SecretPayload>,
     resolver: Arc<KeyResolver>,
+    editing_secret: Option<Secret>,
 }
 
 impl SecretManager {
@@ -113,6 +114,7 @@ impl SecretManager {
             cached_versions: HashMap::new(),
             cached_payloads: HashMap::new(),
             resolver,
+            editing_secret: None,
         }
     }
 
@@ -234,6 +236,17 @@ impl SecretManager {
     fn payload_cache_key(secret: &Secret, version: Option<&SecretVersion>) -> String {
         let version_id = version.map_or("latest", |v| v.version_id.as_str());
         format!("{}/{}", secret.name, version_id)
+    }
+
+    pub(super) fn invalidate_payload_cache(&mut self, secret: &Secret) {
+        let prefix = format!("{}/", secret.name);
+        self.cached_payloads.retain(|k, _| !k.starts_with(&prefix));
+    }
+
+    // === Editor support ===
+
+    pub(super) fn set_editing_secret(&mut self, secret: Secret) {
+        self.editing_secret = Some(secret);
     }
 
     // === Message processing ===
@@ -367,6 +380,7 @@ impl Service for SecretManager {
                 ServiceMsg::Idle => {}
                 ServiceMsg::Run(cmds) => commands.extend(cmds),
                 ServiceMsg::Close => return Ok(ServiceMsg::Close),
+                msg @ ServiceMsg::EditExternal { .. } => return Ok(msg),
             }
         }
 
@@ -374,6 +388,20 @@ impl Service for SecretManager {
             Ok(ServiceMsg::Idle)
         } else {
             Ok(ServiceMsg::Run(commands))
+        }
+    }
+
+    fn handle_editor_result(&mut self, new_content: Option<String>) {
+        if let Some(secret) = self.editing_secret.take()
+            && let Some(new_data) = new_content
+        {
+            self.queue(
+                PayloadMsg::SaveEdit {
+                    secret,
+                    new_data,
+                }
+                .into(),
+            );
         }
     }
 

@@ -151,6 +151,7 @@ impl KeyResolver {
         match action {
             PayloadAction::Copy => kb.copy.matches(event),
             PayloadAction::Reload => kb.reload.matches(event),
+            PayloadAction::Edit => kb.edit.matches(event),
         }
     }
 
@@ -159,6 +160,7 @@ impl KeyResolver {
         match action {
             PayloadAction::Copy => kb.copy.display(),
             PayloadAction::Reload => kb.reload.display(),
+            PayloadAction::Edit => kb.edit.display(),
         }
     }
 

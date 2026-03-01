@@ -51,6 +51,7 @@ pub enum VersionsAction {
 pub enum PayloadAction {
     Copy,
     Reload,
+    Edit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

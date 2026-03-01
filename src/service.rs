@@ -1,3 +1,4 @@
+use std::arch::x86_64::__cpuid;
 use std::sync::Arc;
 
 use color_eyre::Result;
@@ -21,6 +22,8 @@ pub enum ServiceMsg {
     Run(Vec<Box<dyn Command>>),
     /// Close this service (go back to service selection)
     Close,
+    /// Suspend the TUI and open an external editor with the given content
+    EditExternal { content: String },
 }
 
 impl<T: Command> From<T> for ServiceMsg {
@@ -60,6 +63,12 @@ pub trait Service {
     /// Returns an error if message processing fails.
     /// In this case, the App will display the error and the service might be in an invalid state.
     fn update(&mut self) -> Result<ServiceMsg>;
+
+    /// Called after an external editor session completes.
+    /// `new_content` is `Some(content)` if the user changed the content, `None` if unchanged or editor failed.
+    fn handle_editor_result(&mut self, new_content: Option<String>) {
+        _ = new_content;
+    }
 
     /// Render the service to the frame.
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme);
