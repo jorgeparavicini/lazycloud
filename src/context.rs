@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use color_eyre::eyre::{Result, eyre};
 use crossterm::event::{KeyCode, KeyEvent};
 use google_cloud_auth::credentials::Credentials;
@@ -12,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info};
 
 use crate::Theme;
-use crate::config::{KeyResolver, NavAction, config_dir};
+use crate::config::config_dir;
 use crate::provider::Provider;
 use crate::provider::gcp::discover_gcloud_configs;
 use crate::search::Matcher;
@@ -262,9 +260,9 @@ pub struct ContextSelectorView {
 
 impl ContextSelectorView {
     /// Create with provided contexts.
-    pub fn new(contexts: Vec<CloudContext>, resolver: Arc<KeyResolver>) -> Self {
+    pub fn new(contexts: Vec<CloudContext>) -> Self {
         Self {
-            table: Table::new(contexts, resolver).with_title(" Contexts "),
+            table: Table::new(contexts).with_title(" Contexts "),
         }
     }
 }
@@ -307,11 +305,10 @@ struct SelectableContext {
 pub struct ContextMergePopup {
     items: Vec<SelectableContext>,
     state: ListState,
-    resolver: Arc<KeyResolver>,
 }
 
 impl ContextMergePopup {
-    pub fn new(contexts: Vec<CloudContext>, resolver: Arc<KeyResolver>) -> Self {
+    pub fn new(contexts: Vec<CloudContext>) -> Self {
         let items: Vec<SelectableContext> = contexts
             .into_iter()
             .map(|context| SelectableContext {
@@ -328,7 +325,6 @@ impl ContextMergePopup {
         Self {
             items,
             state,
-            resolver,
         }
     }
 
@@ -403,9 +399,9 @@ impl Component for ContextMergePopup {
             KeyCode::Char('a') => self.select_all(),
             KeyCode::Char('n') => self.select_none(),
             _ => {
-                if self.resolver.matches_nav(&key, NavAction::Up) {
+                if matches!(key.code, KeyCode::Char('k') | KeyCode::Up) {
                     self.move_up();
-                } else if self.resolver.matches_nav(&key, NavAction::Down) {
+                } else if matches!(key.code, KeyCode::Char('j') | KeyCode::Down) {
                     self.move_down();
                 }
             }

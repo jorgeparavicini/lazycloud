@@ -1,7 +1,7 @@
 use color_eyre::Result;
+use crossterm::event::KeyCode;
 
 use super::{ActivePopup, App, AppMessage, AppState};
-use crate::config::GlobalAction;
 use crate::context::{ContextMergeEvent, ContextSelectorEvent};
 use crate::theme::ThemeEvent;
 use crate::tui::Event;
@@ -60,18 +60,15 @@ impl App {
                 self.msg_tx.send(AppMessage::Resize(*width, *height))?;
             }
             Event::Key(key) => {
-                if self.resolver.matches_global(key, GlobalAction::Quit) {
+                if key.code == KeyCode::Char('q') {
                     self.msg_tx.send(AppMessage::Quit)?;
-                } else if self.resolver.matches_global(key, GlobalAction::Help) {
+                } else if key.code == KeyCode::Char('?') {
                     self.msg_tx.send(AppMessage::DisplayHelp)?;
-                } else if self.resolver.matches_global(key, GlobalAction::Theme) {
+                } else if key.code == KeyCode::Char('t') {
                     self.msg_tx.send(AppMessage::DisplayThemeSelector)?;
-                } else if self
-                    .resolver
-                    .matches_global(key, GlobalAction::CommandsToggle)
-                {
+                } else if key.code == KeyCode::Char('c') {
                     self.msg_tx.send(AppMessage::ToggleCommandStatus)?;
-                } else if self.resolver.matches_global(key, GlobalAction::Back) {
+                } else if key.code == KeyCode::Esc {
                     self.msg_tx.send(AppMessage::GoBack)?;
                 }
             }

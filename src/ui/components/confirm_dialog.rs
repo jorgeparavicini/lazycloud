@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Rect};
@@ -8,7 +6,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Clear, Paragraph};
 
 use crate::Theme;
-use crate::config::{DialogAction, KeyResolver};
 use crate::ui::{Component, EventResult, Result};
 
 pub enum ConfirmEvent {
@@ -47,11 +44,10 @@ pub struct ConfirmDialog {
     cancel_text: String,
     style: ConfirmStyle,
     focus: Focus,
-    resolver: Arc<KeyResolver>,
 }
 
 impl ConfirmDialog {
-    pub fn new(message: impl Into<String>, resolver: Arc<KeyResolver>) -> Self {
+    pub fn new(message: impl Into<String>) -> Self {
         Self {
             title: "Confirm".to_string(),
             message: message.into(),
@@ -59,7 +55,6 @@ impl ConfirmDialog {
             cancel_text: "No".to_string(),
             style: ConfirmStyle::Normal,
             focus: Focus::Confirm,
-            resolver,
         }
     }
 
@@ -105,10 +100,10 @@ impl Component for ConfirmDialog {
         }
 
         // Direct hotkeys
-        if self.resolver.matches_dialog(&key, DialogAction::Confirm) {
+        if matches!(key.code, KeyCode::Char('y' | 'Y')) {
             return Ok(ConfirmEvent::Confirmed.into());
         }
-        if self.resolver.matches_dialog(&key, DialogAction::Cancel) {
+        if matches!(key.code, KeyCode::Char('n' | 'N') | KeyCode::Esc) {
             return Ok(ConfirmEvent::Cancelled.into());
         }
         // Consume all other keys to prevent propagation

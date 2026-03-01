@@ -1,13 +1,6 @@
-pub mod actions;
-pub mod key;
-pub mod keybindings;
 pub mod loader;
-pub mod resolver;
 
-pub use actions::*;
-use keybindings::KeybindingsConfig;
 pub use loader::{config_dir, load, save_last_context, save_theme};
-pub use resolver::KeyResolver;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,8 +20,6 @@ impl Default for ThemeConfig {
 pub struct AppConfig {
     #[serde(default)]
     pub theme: ThemeConfig,
-    #[serde(default)]
-    pub keybindings: KeybindingsConfig,
     #[serde(default)]
     pub last_context: Option<String>,
 }

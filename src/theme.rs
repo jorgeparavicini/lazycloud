@@ -385,14 +385,11 @@ pub fn theme_name(theme: &Theme) -> Option<&'static str> {
 
 // === Theme Selector View ===
 
-use std::sync::Arc;
-
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::widgets::{Clear, ListItem};
 
-use crate::config::KeyResolver;
 use crate::ui::{Component, EventResult, List, ListEvent, ListRow, Result};
 
 impl ListRow for ThemeInfo {
@@ -411,10 +408,10 @@ pub struct ThemeSelectorView {
 }
 
 impl ThemeSelectorView {
-    pub fn new(resolver: Arc<KeyResolver>) -> Self {
+    pub fn new() -> Self {
         let themes = available_themes();
         Self {
-            list: List::new(themes, resolver),
+            list: List::new(themes),
         }
     }
 }

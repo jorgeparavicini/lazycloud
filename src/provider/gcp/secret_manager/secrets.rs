@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::sync::Arc;
 
 use async_trait::async_trait;
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent};
 use google_cloud_secretmanager_v1::model;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
@@ -15,7 +14,6 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::Theme;
 use crate::app::AppMessage;
 use crate::commands::{Command, CopyToClipboardCmd};
-use crate::config::{KeyResolver, SearchAction, SecretsAction};
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::{ClientError, SecretManagerClient};
 use crate::provider::gcp::secret_manager::payload::PayloadMsg;
@@ -300,14 +298,12 @@ impl From<SecretsMsg> for EventResult<SecretManagerMsg> {
 
 pub struct SecretListScreen {
     table: Table<Secret>,
-    resolver: Arc<KeyResolver>,
 }
 
 impl SecretListScreen {
-    pub fn new(secrets: Vec<Secret>, resolver: Arc<KeyResolver>) -> Self {
+    pub fn new(secrets: Vec<Secret>) -> Self {
         Self {
-            table: Table::new(secrets, resolver.clone()).with_title(" Secrets "),
-            resolver,
+            table: Table::new(secrets).with_title(" Secrets "),
         }
     }
 }
@@ -325,40 +321,38 @@ impl Screen for SecretListScreen {
             return Ok(EventResult::Consumed);
         }
 
-        if self.resolver.matches_secrets(&key, SecretsAction::Reload) {
+        if key.code == KeyCode::Char('r') {
             return Ok(SecretsMsg::Load.into());
         }
-        if self.resolver.matches_secrets(&key, SecretsAction::New) {
+        if key.code == KeyCode::Char('n') {
             return Ok(SecretsMsg::StartCreation.into());
         }
-        if self.resolver.matches_secrets(&key, SecretsAction::Copy)
+        if key.code == KeyCode::Char('y')
             && let Some(secret) = self.table.selected_item()
         {
             return Ok(SecretsMsg::CopyPayload(secret.clone()).into());
         }
-        if self.resolver.matches_secrets(&key, SecretsAction::Delete)
+        if matches!(key.code, KeyCode::Char('d') | KeyCode::Delete)
             && let Some(secret) = self.table.selected_item()
         {
             return Ok(SecretsMsg::ConfirmDelete(secret.clone()).into());
         }
-        if self.resolver.matches_secrets(&key, SecretsAction::Versions)
+        if key.code == KeyCode::Char('v')
             && let Some(secret) = self.table.selected_item()
         {
             return Ok(SecretsMsg::ViewVersions(secret.clone()).into());
         }
-        if self.resolver.matches_secrets(&key, SecretsAction::Labels)
+        if key.code == KeyCode::Char('l')
             && let Some(secret) = self.table.selected_item()
         {
             return Ok(SecretsMsg::ViewLabels(secret.clone()).into());
         }
-        if self.resolver.matches_secrets(&key, SecretsAction::Iam)
+        if key.code == KeyCode::Char('i')
             && let Some(secret) = self.table.selected_item()
         {
             return Ok(SecretsMsg::ViewIamPolicy(secret.clone()).into());
         }
-        if self
-            .resolver
-            .matches_secrets(&key, SecretsAction::Replication)
+        if key.code == KeyCode::Char('R')
             && let Some(secret) = self.table.selected_item()
         {
             return Ok(SecretsMsg::ViewReplicationInfo(secret.clone()).into());
@@ -373,34 +367,16 @@ impl Screen for SecretListScreen {
 
     fn keybindings(&self) -> Vec<Keybinding> {
         vec![
-            Keybinding::hint(
-                self.resolver.display_secrets(SecretsAction::ViewPayload),
-                "Payload",
-            ),
-            Keybinding::hint(self.resolver.display_secrets(SecretsAction::Copy), "Copy"),
-            Keybinding::hint(
-                self.resolver.display_secrets(SecretsAction::Versions),
-                "Versions",
-            ),
-            Keybinding::hint(self.resolver.display_secrets(SecretsAction::New), "New"),
-            Keybinding::hint(
-                self.resolver.display_secrets(SecretsAction::Delete),
-                "Delete",
-            ),
-            Keybinding::hint(self.resolver.display_search(SearchAction::Toggle), "Search"),
-            Keybinding::new(
-                self.resolver.display_secrets(SecretsAction::Labels),
-                "Labels",
-            ),
-            Keybinding::new(self.resolver.display_secrets(SecretsAction::Iam), "IAM"),
-            Keybinding::new(
-                self.resolver.display_secrets(SecretsAction::Replication),
-                "Replication",
-            ),
-            Keybinding::new(
-                self.resolver.display_secrets(SecretsAction::Reload),
-                "Reload",
-            ),
+            Keybinding::hint("Enter", "Payload"),
+            Keybinding::hint("y", "Copy"),
+            Keybinding::hint("v", "Versions"),
+            Keybinding::hint("n", "New"),
+            Keybinding::hint("d", "Delete"),
+            Keybinding::hint("/", "Search"),
+            Keybinding::new("l", "Labels"),
+            Keybinding::new("i", "IAM"),
+            Keybinding::new("R", "Replication"),
+            Keybinding::new("r", "Reload"),
         ]
     }
 }
@@ -408,11 +384,10 @@ impl Screen for SecretListScreen {
 pub struct LabelsScreen {
     secret: Secret,
     table: Table<LabelEntry>,
-    resolver: Arc<KeyResolver>,
 }
 
 impl LabelsScreen {
-    pub fn new(secret: Secret, resolver: Arc<KeyResolver>) -> Self {
+    pub fn new(secret: Secret) -> Self {
         let labels: Vec<LabelEntry> = secret
             .labels
             .iter()
@@ -425,8 +400,7 @@ impl LabelsScreen {
         let title = format!(" {} - Labels ", secret.name);
         Self {
             secret,
-            table: Table::new(labels, resolver.clone()).with_title(title),
-            resolver,
+            table: Table::new(labels).with_title(title),
         }
     }
 }
@@ -443,7 +417,7 @@ impl Screen for LabelsScreen {
             return Ok(EventResult::Consumed);
         }
 
-        if self.resolver.matches_secrets(&key, SecretsAction::Reload) {
+        if key.code == KeyCode::Char('r') {
             return Ok(SecretsMsg::ViewLabels(self.secret.clone()).into());
         }
 
@@ -456,11 +430,8 @@ impl Screen for LabelsScreen {
 
     fn keybindings(&self) -> Vec<Keybinding> {
         vec![
-            Keybinding::hint(self.resolver.display_search(SearchAction::Toggle), "Search"),
-            Keybinding::new(
-                self.resolver.display_secrets(SecretsAction::Reload),
-                "Reload",
-            ),
+            Keybinding::hint("/", "Search"),
+            Keybinding::new("r", "Reload"),
         ]
     }
 }
@@ -468,16 +439,14 @@ impl Screen for LabelsScreen {
 pub struct IamPolicyScreen {
     secret: Secret,
     table: Table<IamBinding>,
-    resolver: Arc<KeyResolver>,
 }
 
 impl IamPolicyScreen {
-    pub fn new(secret: Secret, policy: IamPolicy, resolver: Arc<KeyResolver>) -> Self {
+    pub fn new(secret: Secret, policy: IamPolicy) -> Self {
         let title = format!(" {} - IAM Policy ", secret.name);
         Self {
             secret,
-            table: Table::new(policy.bindings, resolver.clone()).with_title(title),
-            resolver,
+            table: Table::new(policy.bindings).with_title(title),
         }
     }
 }
@@ -491,7 +460,7 @@ impl Screen for IamPolicyScreen {
             return Ok(EventResult::Consumed);
         }
 
-        if self.resolver.matches_secrets(&key, SecretsAction::Reload) {
+        if key.code == KeyCode::Char('r') {
             return Ok(SecretsMsg::ViewIamPolicy(self.secret.clone()).into());
         }
 
@@ -504,11 +473,8 @@ impl Screen for IamPolicyScreen {
 
     fn keybindings(&self) -> Vec<Keybinding> {
         vec![
-            Keybinding::hint(self.resolver.display_search(SearchAction::Toggle), "Search"),
-            Keybinding::new(
-                self.resolver.display_secrets(SecretsAction::Reload),
-                "Reload",
-            ),
+            Keybinding::hint("/", "Search"),
+            Keybinding::new("r", "Reload"),
         ]
     }
 }
@@ -516,19 +482,16 @@ impl Screen for IamPolicyScreen {
 pub struct ReplicationScreen {
     secret: Secret,
     replication: ReplicationConfig,
-    resolver: Arc<KeyResolver>,
 }
 
 impl ReplicationScreen {
     pub const fn new(
         secret: Secret,
         replication: ReplicationConfig,
-        resolver: Arc<KeyResolver>,
     ) -> Self {
         Self {
             secret,
             replication,
-            resolver,
         }
     }
 }
@@ -537,7 +500,7 @@ impl Screen for ReplicationScreen {
     type Output = SecretManagerMsg;
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
-        if self.resolver.matches_secrets(&key, SecretsAction::Reload) {
+        if key.code == KeyCode::Char('r') {
             return Ok(SecretsMsg::ViewReplicationInfo(self.secret.clone()).into());
         }
         Ok(EventResult::Ignored)
@@ -608,10 +571,7 @@ impl Screen for ReplicationScreen {
     }
 
     fn keybindings(&self) -> Vec<Keybinding> {
-        vec![Keybinding::new(
-            self.resolver.display_secrets(SecretsAction::Reload),
-            "Reload",
-        )]
+        vec![Keybinding::new("r", "Reload")]
     }
 }
 
@@ -685,13 +645,12 @@ pub struct DeleteSecretDialog {
 }
 
 impl DeleteSecretDialog {
-    pub fn new(secret: Secret, resolver: Arc<KeyResolver>) -> Self {
+    pub fn new(secret: Secret) -> Self {
         let dialog = ConfirmDialog::new(
             format!(
                 "Are you sure you want to delete the secret \"{}\"?",
                 secret.name
             ),
-            resolver,
         )
         .with_title("Delete Secret")
         .with_confirm_text("Delete")
@@ -725,12 +684,10 @@ impl Modal for DeleteSecretDialog {
 // Flat message dispatcher — splitting reduces readability
 #[allow(clippy::too_many_lines)]
 pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<ServiceMsg> {
-    let resolver = state.get_resolver();
-
     match msg {
         SecretsMsg::Load => {
             if let Some(secrets) = state.get_cached_secrets() {
-                state.push_view(SecretListScreen::new(secrets, resolver));
+                state.push_view(SecretListScreen::new(secrets));
                 return Ok(ServiceMsg::Idle);
             }
 
@@ -746,7 +703,7 @@ pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<Servi
         SecretsMsg::Loaded(secrets) => {
             state.hide_loading_spinner();
             state.cache_secrets(&secrets);
-            state.push_view(SecretListScreen::new(secrets, resolver));
+            state.push_view(SecretListScreen::new(secrets));
             Ok(ServiceMsg::Idle)
         }
 
@@ -775,7 +732,7 @@ pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<Servi
         }
 
         SecretsMsg::ConfirmDelete(secret) => {
-            state.display_overlay(DeleteSecretDialog::new(secret, resolver));
+            state.display_overlay(DeleteSecretDialog::new(secret));
             Ok(ServiceMsg::Idle)
         }
 
@@ -815,7 +772,7 @@ pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<Servi
         }
 
         SecretsMsg::ViewLabels(secret) => {
-            state.push_view(LabelsScreen::new(secret, resolver));
+            state.push_view(LabelsScreen::new(secret));
             Ok(ServiceMsg::Idle)
         }
 
@@ -835,7 +792,7 @@ pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<Servi
             state.hide_loading_spinner();
             state.invalidate_secrets_cache();
             state.pop_view();
-            state.push_view(LabelsScreen::new(secret, resolver));
+            state.push_view(LabelsScreen::new(secret));
             Ok(ServiceMsg::Idle)
         }
 
@@ -852,7 +809,7 @@ pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<Servi
 
         SecretsMsg::IamPolicyLoaded { secret, policy } => {
             state.hide_loading_spinner();
-            state.push_view(IamPolicyScreen::new(secret, policy, resolver));
+            state.push_view(IamPolicyScreen::new(secret, policy));
             Ok(ServiceMsg::Idle)
         }
 
@@ -872,7 +829,7 @@ pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<Servi
             replication,
         } => {
             state.hide_loading_spinner();
-            state.push_view(ReplicationScreen::new(secret, replication, resolver));
+            state.push_view(ReplicationScreen::new(secret, replication));
             Ok(ServiceMsg::Idle)
         }
 

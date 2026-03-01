@@ -1,6 +1,4 @@
-use std::sync::Arc;
-
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Rect};
 use ratatui::style::{Modifier, Style};
@@ -8,7 +6,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Clear, Paragraph, Wrap};
 
 use crate::Theme;
-use crate::config::{DialogAction, KeyResolver};
 use crate::ui::{Component, EventResult, Result};
 
 pub enum ErrorDialogEvent {
@@ -17,14 +14,12 @@ pub enum ErrorDialogEvent {
 
 pub struct ErrorDialog {
     message: String,
-    resolver: Arc<KeyResolver>,
 }
 
 impl ErrorDialog {
-    pub fn new(message: impl Into<String>, resolver: Arc<KeyResolver>) -> Self {
+    pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
-            resolver,
         }
     }
 }
@@ -33,7 +28,7 @@ impl Component for ErrorDialog {
     type Output = ErrorDialogEvent;
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
-        if self.resolver.matches_dialog(&key, DialogAction::Dismiss) {
+        if matches!(key.code, KeyCode::Enter | KeyCode::Esc | KeyCode::Char('q')) {
             return Ok(ErrorDialogEvent::Dismissed.into());
         }
         Ok(EventResult::Consumed)

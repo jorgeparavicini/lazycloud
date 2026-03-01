@@ -1,9 +1,8 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use color_eyre::Result;
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent};
 use google_cloud_api_serviceusage_v1::client::ServiceUsage;
 use google_cloud_lro::Poller;
 use ratatui::Frame;
@@ -13,7 +12,6 @@ use tracing::{error, info};
 use crate::Theme;
 use crate::app::AppMessage;
 use crate::commands::Command;
-use crate::config::{GlobalAction, KeyResolver};
 use crate::context::{CloudContext, GcpContext};
 use crate::provider::Provider;
 use crate::provider::gcp::secret_manager::client::{ClientError, SecretManagerClient};
@@ -72,9 +70,9 @@ impl ServiceProvider for SecretManagerProvider {
         None
     }
 
-    fn create_service(&self, ctx: &CloudContext, resolver: Arc<KeyResolver>) -> Box<dyn Service> {
+    fn create_service(&self, ctx: &CloudContext) -> Box<dyn Service> {
         let CloudContext::Gcp(gcp_ctx) = ctx;
-        Box::new(SecretManager::new(gcp_ctx.clone(), resolver))
+        Box::new(SecretManager::new(gcp_ctx.clone()))
     }
 }
 
@@ -94,12 +92,11 @@ pub struct SecretManager {
     cached_versions: HashMap<String, Vec<SecretVersion>>,
     /// Key: "`secret_name/version_id`"
     cached_payloads: HashMap<String, SecretPayload>,
-    resolver: Arc<KeyResolver>,
     editing_secret: Option<Secret>,
 }
 
 impl SecretManager {
-    pub fn new(ctx: GcpContext, resolver: Arc<KeyResolver>) -> Self {
+    pub fn new(ctx: GcpContext) -> Self {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
         Self {
             context: ctx,
@@ -113,13 +110,8 @@ impl SecretManager {
             cached_secrets: None,
             cached_versions: HashMap::new(),
             cached_payloads: HashMap::new(),
-            resolver,
             editing_secret: None,
         }
-    }
-
-    pub(super) fn get_resolver(&self) -> Arc<KeyResolver> {
-        self.resolver.clone()
     }
 
     // === Public helpers for feature slices ===
@@ -280,7 +272,7 @@ impl SecretManager {
             // === API Enable Flow ===
             SecretManagerMsg::ApiDisabled => {
                 self.hide_loading_spinner();
-                self.display_overlay(EnableApiDialog::new(self.get_resolver()));
+                self.display_overlay(EnableApiDialog::new());
                 Ok(ServiceMsg::Idle)
             }
 
@@ -364,7 +356,7 @@ impl Service for SecretManager {
         }
 
         // Global navigation
-        if self.resolver.matches_global(&key, GlobalAction::Back) {
+        if key.code == KeyCode::Esc {
             self.queue(SecretManagerMsg::NavigateBack);
             return EventResult::Consumed;
         }
@@ -441,10 +433,9 @@ struct EnableApiDialog {
 }
 
 impl EnableApiDialog {
-    fn new(resolver: Arc<KeyResolver>) -> Self {
+    fn new() -> Self {
         let dialog = ConfirmDialog::new(
             "The Secret Manager API is not enabled for this project. Would you like to enable it?",
-            resolver,
         )
         .with_title("API Not Enabled")
         .with_confirm_text("Enable");

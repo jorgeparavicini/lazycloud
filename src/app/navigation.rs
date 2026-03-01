@@ -9,14 +9,14 @@ impl App {
         self.active_context = Some(context.clone());
         self.status_bar.set_active_context(context.clone());
         if let Some(provider) = self.registry.get(service_id) {
-            let service = provider.create_service(context, self.resolver.clone());
+            let service = provider.create_service(context);
             self.go_to_active_service(service);
         }
     }
 
     pub(super) fn go_to_filtered_context_selection(&mut self, contexts: Vec<CloudContext>) {
         self.state =
-            AppState::SelectingContext(ContextSelectorView::new(contexts, self.resolver.clone()));
+            AppState::SelectingContext(ContextSelectorView::new(contexts));
     }
 
     /// Transition to context selection.
@@ -25,7 +25,7 @@ impl App {
         self.status_bar.clear_context();
         let contexts = self.context_manager.get_all();
         self.state =
-            AppState::SelectingContext(ContextSelectorView::new(contexts, self.resolver.clone()));
+            AppState::SelectingContext(ContextSelectorView::new(contexts));
     }
 
     /// Transition to service selection.
@@ -35,7 +35,6 @@ impl App {
         self.state = AppState::SelectingService(ServiceSelectorView::new(
             &self.registry,
             context,
-            self.resolver.clone(),
         ));
     }
 

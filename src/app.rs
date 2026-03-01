@@ -13,7 +13,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use crate::Theme;
 use crate::cli::Args;
 use crate::commands::Command;
-use crate::config::{AppConfig, KeyResolver};
+use crate::config::AppConfig;
 use crate::context::{CloudContext, ContextManager, ContextMergePopup, ContextSelectorView};
 use crate::registry::ServiceRegistry;
 use crate::service::{Service, ServiceMsg, ServiceSelectorView};
@@ -96,7 +96,6 @@ pub struct App {
     msg_tx: UnboundedSender<AppMessage>,
     msg_rx: UnboundedReceiver<AppMessage>,
     config: Arc<AppConfig>,
-    resolver: Arc<KeyResolver>,
     pending_service: Option<String>,
     pending_editor: Option<String>,
 }
@@ -105,7 +104,6 @@ impl App {
     pub fn new(
         registry: ServiceRegistry,
         config: Arc<AppConfig>,
-        resolver: Arc<KeyResolver>,
         theme: Theme,
     ) -> Self {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
@@ -114,10 +112,10 @@ impl App {
 
         Self {
             context_manager,
-            state: AppState::SelectingContext(ContextSelectorView::new(contexts, resolver.clone())),
+            state: AppState::SelectingContext(ContextSelectorView::new(contexts)),
             theme,
             popup: None,
-            status_bar: StatusBar::new(resolver.clone()),
+            status_bar: StatusBar::new(),
             command_tracker: CommandPanel::new(),
             toast_manager: ToastManager::new(),
             should_quit: false,
@@ -127,7 +125,6 @@ impl App {
             msg_tx,
             msg_rx,
             config,
-            resolver,
             pending_service: None,
             pending_editor: None,
         }

@@ -34,16 +34,11 @@ impl App {
             AppMessage::Render => self.render(tui)?,
             AppMessage::DisplayError(err) => {
                 error!("Error: {err}");
-                self.popup = Some(ActivePopup::Error(ErrorDialog::new(
-                    err,
-                    self.resolver.clone(),
-                )));
+                self.popup = Some(ActivePopup::Error(ErrorDialog::new(err)));
             }
             AppMessage::DisplayHelp => self.open_help_overlay(),
             AppMessage::DisplayThemeSelector => {
-                self.popup = Some(ActivePopup::ThemeSelector(ThemeSelectorView::new(
-                    self.resolver.clone(),
-                )));
+                self.popup = Some(ActivePopup::ThemeSelector(ThemeSelectorView::new()));
             }
             AppMessage::ClosePopup => {
                 self.popup = None;
@@ -95,7 +90,7 @@ impl App {
                 if let Some(ctx) = &self.active_context
                     && let Some(provider) = self.registry.get(&service_id)
                 {
-                    let service = provider.create_service(ctx, self.resolver.clone());
+                    let service = provider.create_service(ctx);
                     self.go_to_active_service(service);
                 }
             }
@@ -110,7 +105,6 @@ impl App {
                 } else {
                     self.popup = Some(ActivePopup::ContextMerge(ContextMergePopup::new(
                         new_contexts,
-                        self.resolver.clone(),
                     )));
                 }
             }
@@ -124,7 +118,6 @@ impl App {
                     let contexts = self.context_manager.get_all();
                     self.state = AppState::SelectingContext(ContextSelectorView::new(
                         contexts,
-                        self.resolver.clone(),
                     ));
                     self.toast_manager.show(Toast::success(format!(
                         "Imported {} context{}",

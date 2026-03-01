@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
@@ -7,7 +5,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::Theme;
-use crate::config::{GlobalAction, KeyResolver, NavAction};
 use crate::context::CloudContext;
 use crate::ui::Keybinding;
 
@@ -24,14 +21,12 @@ const LOGO: &[&str] = &[
 
 pub struct StatusBar {
     active_context: Option<CloudContext>,
-    resolver: Arc<KeyResolver>,
 }
 
 impl StatusBar {
-    pub const fn new(resolver: Arc<KeyResolver>) -> Self {
+    pub const fn new() -> Self {
         Self {
             active_context: None,
-            resolver,
         }
     }
 
@@ -126,7 +121,7 @@ impl StatusBar {
         theme: &Theme,
         local_keybindings: &[Keybinding],
     ) {
-        // Generate global keybindings from resolver
+        // Generate global keybindings
         let global_keybindings = self.global_keybindings();
 
         // Collect all hint keybindings (local first, then global)
@@ -210,25 +205,16 @@ impl StatusBar {
     }
 
     /// Get the global keybindings for use in the help overlay.
+    #[allow(clippy::unused_self)]
     pub fn global_keybindings(&self) -> Vec<Keybinding> {
         vec![
-            Keybinding::hint(self.resolver.display_global(GlobalAction::Help), "Help"),
-            Keybinding::hint(self.resolver.display_global(GlobalAction::Back), "Back"),
-            Keybinding::new(self.resolver.display_global(GlobalAction::Theme), "Theme"),
-            Keybinding::new(self.resolver.display_global(GlobalAction::Quit), "Quit"),
-            Keybinding::new(
-                self.resolver.display_global(GlobalAction::CommandsToggle),
-                "Commands",
-            ),
-            Keybinding::new(self.resolver.display_nav(NavAction::Select), "Select"),
-            Keybinding::new(
-                format!(
-                    "{}/{}",
-                    self.resolver.display_nav(NavAction::Up),
-                    self.resolver.display_nav(NavAction::Down)
-                ),
-                "Navigate",
-            ),
+            Keybinding::hint("?", "Help"),
+            Keybinding::hint("Esc", "Back"),
+            Keybinding::new("t", "Theme"),
+            Keybinding::new("q", "Quit"),
+            Keybinding::new("c", "Commands"),
+            Keybinding::new("Enter", "Select"),
+            Keybinding::new("k/j", "Navigate"),
         ]
     }
 }

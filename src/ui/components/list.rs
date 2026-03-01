@@ -1,12 +1,9 @@
-use std::sync::Arc;
-
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::widgets::{List as RatatuiList, ListItem, ListState};
 
 use crate::Theme;
-use crate::config::{KeyResolver, NavAction};
 use crate::ui::{Component, EventResult, Result};
 
 pub enum ListEvent<T> {
@@ -21,11 +18,10 @@ pub trait ListRow {
 pub struct List<T: ListRow + Clone> {
     items: Vec<T>,
     state: ListState,
-    resolver: Arc<KeyResolver>,
 }
 
 impl<T: ListRow + Clone> List<T> {
-    pub fn new(items: Vec<T>, resolver: Arc<KeyResolver>) -> Self {
+    pub fn new(items: Vec<T>) -> Self {
         let mut state = ListState::default();
         if !items.is_empty() {
             state.select(Some(0));
@@ -33,7 +29,6 @@ impl<T: ListRow + Clone> List<T> {
         Self {
             items,
             state,
-            resolver,
         }
     }
 
@@ -73,23 +68,23 @@ impl<T: ListRow + Clone> Component for List<T> {
     fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         let before = self.state.selected();
 
-        if self.resolver.matches_nav(&key, NavAction::Down) {
+        if matches!(key.code, KeyCode::Char('j') | KeyCode::Down) {
             self.state.select_next();
             return Ok(self.get_change_event(before));
         }
-        if self.resolver.matches_nav(&key, NavAction::Up) {
+        if matches!(key.code, KeyCode::Char('k') | KeyCode::Up) {
             self.state.select_previous();
             return Ok(self.get_change_event(before));
         }
-        if self.resolver.matches_nav(&key, NavAction::Home) {
+        if matches!(key.code, KeyCode::Char('g') | KeyCode::Home) {
             self.state.select_first();
             return Ok(self.get_change_event(before));
         }
-        if self.resolver.matches_nav(&key, NavAction::End) {
+        if matches!(key.code, KeyCode::Char('G') | KeyCode::End) {
             self.state.select_last();
             return Ok(self.get_change_event(before));
         }
-        if self.resolver.matches_nav(&key, NavAction::PageDown) {
+        if key.code == KeyCode::PageDown {
             let step = 5;
             let new_index = match self.state.selected() {
                 Some(i) => usize::min(i + step, self.items.len().saturating_sub(1)),
@@ -98,13 +93,13 @@ impl<T: ListRow + Clone> Component for List<T> {
             self.state.select(Some(new_index));
             return Ok(self.get_change_event(before));
         }
-        if self.resolver.matches_nav(&key, NavAction::PageUp) {
+        if key.code == KeyCode::PageUp {
             let step = 5;
             let new_index = self.state.selected().map_or(0, |i| i.saturating_sub(step));
             self.state.select(Some(new_index));
             return Ok(self.get_change_event(before));
         }
-        if self.resolver.matches_nav(&key, NavAction::Select) {
+        if key.code == KeyCode::Enter {
             if let Some(selected) = self.state.selected() {
                 return Ok(ListEvent::Activated(self.items[selected].clone()).into());
             }

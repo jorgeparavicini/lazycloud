@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use color_eyre::eyre::{Result, eyre};
 
-use crate::config::KeyResolver;
 use crate::context::CloudContext;
 use crate::provider::Provider;
 use crate::service::Service;
@@ -90,7 +89,7 @@ pub trait ServiceProvider: Send + Sync {
     }
 
     /// Create a new service instance.
-    fn create_service(&self, ctx: &CloudContext, resolver: Arc<KeyResolver>) -> Box<dyn Service>;
+    fn create_service(&self, ctx: &CloudContext) -> Box<dyn Service>;
 
     /// Check if this service is available for the given context.
     fn is_available(&self, ctx: &CloudContext) -> bool {
@@ -220,15 +219,12 @@ impl Default for ServiceRegistry {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use crossterm::event::KeyEvent;
     use ratatui::Frame;
     use ratatui::layout::Rect;
 
     use super::*;
     use crate::Theme;
-    use crate::config::KeyResolver;
     use crate::context::{AuthMethod, GcpContext};
     use crate::service::{Service, ServiceMsg};
     use crate::ui::EventResult;
@@ -264,7 +260,6 @@ mod tests {
         fn create_service(
             &self,
             _ctx: &CloudContext,
-            _resolver: Arc<KeyResolver>,
         ) -> Box<dyn Service> {
             Box::new(MockService)
         }

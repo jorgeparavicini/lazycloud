@@ -1,4 +1,3 @@
-use std::arch::x86_64::__cpuid;
 use std::sync::Arc;
 
 use color_eyre::Result;
@@ -9,7 +8,6 @@ use ratatui::widgets::Cell;
 
 use crate::Theme;
 use crate::commands::Command;
-use crate::config::KeyResolver;
 use crate::context::CloudContext;
 use crate::registry::{ServiceId, ServiceProvider, ServiceRegistry};
 use crate::search::Matcher;
@@ -126,7 +124,6 @@ impl ServiceSelectorView {
     pub fn new(
         registry: &Arc<ServiceRegistry>,
         context: &CloudContext,
-        resolver: Arc<KeyResolver>,
     ) -> Self {
         let services: Vec<ServiceItem> = registry
             .available_services(context)
@@ -135,7 +132,7 @@ impl ServiceSelectorView {
             .collect();
 
         Self {
-            table: Table::new(services, resolver).with_title(" Services "),
+            table: Table::new(services).with_title(" Services "),
         }
     }
 }

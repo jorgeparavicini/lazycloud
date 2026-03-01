@@ -1,7 +1,5 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -11,7 +9,6 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::Theme;
 use crate::app::AppMessage;
 use crate::commands::{Command, CopyToClipboardCmd};
-use crate::config::{KeyResolver, PayloadAction};
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::secrets::Secret;
@@ -76,7 +73,6 @@ pub struct PayloadScreen {
     secret: Secret,
     version: Option<SecretVersion>,
     payload: SecretPayload,
-    resolver: Arc<KeyResolver>,
 }
 
 impl PayloadScreen {
@@ -84,13 +80,11 @@ impl PayloadScreen {
         secret: Secret,
         version: Option<SecretVersion>,
         payload: SecretPayload,
-        resolver: Arc<KeyResolver>,
     ) -> Self {
         Self {
             secret,
             version,
             payload,
-            resolver,
         }
     }
 }
@@ -99,14 +93,14 @@ impl Screen for PayloadScreen {
     type Output = SecretManagerMsg;
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
-        if self.resolver.matches_payload(&key, PayloadAction::Reload) {
+        if key.code == KeyCode::Char('r') {
             return Ok(PayloadMsg::Load {
                 secret: self.secret.clone(),
                 version: self.version.clone(),
             }
             .into());
         }
-        if self.resolver.matches_payload(&key, PayloadAction::Copy) {
+        if key.code == KeyCode::Char('y') {
             let description = match &self.version {
                 Some(v) => format!("payload for '{}' (v{})", self.secret.name, v.version_id),
                 None => format!("payload for '{}' (latest)", self.secret.name),
@@ -117,7 +111,7 @@ impl Screen for PayloadScreen {
             }
             .into());
         }
-        if self.resolver.matches_payload(&key, PayloadAction::Edit) && !self.payload.is_binary {
+        if key.code == KeyCode::Char('e') && !self.payload.is_binary {
             return Ok(PayloadMsg::Edit {
                 secret: self.secret.clone(),
                 data: self.payload.data.clone(),
@@ -146,15 +140,11 @@ impl Screen for PayloadScreen {
     }
 
     fn keybindings(&self) -> Vec<Keybinding> {
-        let mut bindings = vec![
-            Keybinding::hint(self.resolver.display_payload(PayloadAction::Copy), "Copy"),
-            Keybinding::hint(self.resolver.display_payload(PayloadAction::Edit), "Edit"),
-        ];
-        bindings.push(Keybinding::new(
-            self.resolver.display_payload(PayloadAction::Reload),
-            "Reload",
-        ));
-        bindings
+        vec![
+            Keybinding::hint("y", "Copy"),
+            Keybinding::hint("e", "Edit"),
+            Keybinding::new("r", "Reload"),
+        ]
     }
 }
 
@@ -165,12 +155,7 @@ pub(super) fn update(state: &mut SecretManager, msg: PayloadMsg) -> Result<Servi
         PayloadMsg::Load { secret, version } => {
             // Use cached payload if available
             if let Some(payload) = state.get_cached_payload(&secret, version.as_ref()) {
-                state.push_view(PayloadScreen::new(
-                    secret,
-                    version,
-                    payload,
-                    state.get_resolver(),
-                ));
+                state.push_view(PayloadScreen::new(secret, version, payload));
                 return Ok(ServiceMsg::Idle);
             }
 
@@ -200,12 +185,7 @@ pub(super) fn update(state: &mut SecretManager, msg: PayloadMsg) -> Result<Servi
         } => {
             state.hide_loading_spinner();
             state.cache_payload(&secret, version.as_ref(), payload.clone());
-            state.push_view(PayloadScreen::new(
-                secret,
-                version,
-                payload,
-                state.get_resolver(),
-            ));
+            state.push_view(PayloadScreen::new(secret, version, payload));
             Ok(ServiceMsg::Idle)
         }
 

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -13,7 +11,6 @@ use ratatui::widgets::{
 };
 
 use crate::Theme;
-use crate::config::{KeyResolver, NavAction, SearchAction};
 use crate::ui::{Component, EventResult, Result};
 
 pub enum TableEvent<T> {
@@ -55,11 +52,10 @@ pub struct Table<T: TableRow + Clone> {
     title: Option<String>,
     searching: bool,
     query: String,
-    resolver: Arc<KeyResolver>,
 }
 
 impl<T: TableRow + Clone> Table<T> {
-    pub fn new(items: Vec<T>, resolver: Arc<KeyResolver>) -> Self {
+    pub fn new(items: Vec<T>) -> Self {
         let filtered_indices: Vec<usize> = (0..items.len()).collect();
         let mut state = TableState::default();
         if !filtered_indices.is_empty() {
@@ -72,7 +68,6 @@ impl<T: TableRow + Clone> Table<T> {
             title: None,
             searching: false,
             query: String::new(),
-            resolver,
         }
     }
 
@@ -162,8 +157,7 @@ impl<T: TableRow + Clone> Table<T> {
     }
 
     fn handle_search_key(&mut self, key: KeyEvent) -> EventResult<TableEvent<T>> {
-        // Check for search exit key (Esc)
-        if self.resolver.matches_search(&key, SearchAction::Exit) {
+        if key.code == KeyCode::Esc {
             // Exit search mode and clear filter
             self.searching = false;
             let had_query = !self.query.is_empty();
@@ -176,8 +170,7 @@ impl<T: TableRow + Clone> Table<T> {
             };
         }
 
-        // Check for select (Enter) to exit search but keep filter
-        if self.resolver.matches_nav(&key, NavAction::Select) {
+        if key.code == KeyCode::Enter {
             self.searching = false;
             return EventResult::Consumed;
         }
@@ -201,24 +194,23 @@ impl<T: TableRow + Clone> Table<T> {
     fn handle_navigation_key(&mut self, key: KeyEvent) -> EventResult<TableEvent<T>> {
         let before = self.state.selected();
 
-        // Check navigation actions using resolver
-        if self.resolver.matches_nav(&key, NavAction::Down) {
+        if matches!(key.code, KeyCode::Char('j') | KeyCode::Down) {
             self.select_next();
             return self.get_change_event(before);
         }
-        if self.resolver.matches_nav(&key, NavAction::Up) {
+        if matches!(key.code, KeyCode::Char('k') | KeyCode::Up) {
             self.select_previous();
             return self.get_change_event(before);
         }
-        if self.resolver.matches_nav(&key, NavAction::Home) {
+        if matches!(key.code, KeyCode::Char('g') | KeyCode::Home) {
             self.select_first();
             return self.get_change_event(before);
         }
-        if self.resolver.matches_nav(&key, NavAction::End) {
+        if matches!(key.code, KeyCode::Char('G') | KeyCode::End) {
             self.select_last();
             return self.get_change_event(before);
         }
-        if self.resolver.matches_nav(&key, NavAction::PageDown) {
+        if key.code == KeyCode::PageDown {
             let step = 10;
             let new_index = match self.state.selected() {
                 Some(i) if !self.filtered_indices.is_empty() => {
@@ -231,7 +223,7 @@ impl<T: TableRow + Clone> Table<T> {
             }
             return self.get_change_event(before);
         }
-        if self.resolver.matches_nav(&key, NavAction::PageUp) {
+        if key.code == KeyCode::PageUp {
             let step = 10;
             let new_index = self.state.selected().map_or(0, |i| i.saturating_sub(step));
             if !self.filtered_indices.is_empty() {
@@ -239,7 +231,7 @@ impl<T: TableRow + Clone> Table<T> {
             }
             return self.get_change_event(before);
         }
-        if self.resolver.matches_nav(&key, NavAction::Select) {
+        if key.code == KeyCode::Enter {
             if let Some(selected) = self.state.selected() {
                 return self
                     .filtered_indices
@@ -250,11 +242,11 @@ impl<T: TableRow + Clone> Table<T> {
             }
             return EventResult::Ignored;
         }
-        if self.resolver.matches_search(&key, SearchAction::Toggle) {
+        if key.code == KeyCode::Char('/') {
             self.searching = true;
             return EventResult::Consumed;
         }
-        if self.resolver.matches_search(&key, SearchAction::Exit) && !self.query.is_empty() {
+        if key.code == KeyCode::Esc && !self.query.is_empty() {
             // Clear filter when not searching
             self.query.clear();
             self.update_filter();
