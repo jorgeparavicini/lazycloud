@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Display;
-
+use std::hash::Hash;
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent};
 use google_cloud_secretmanager_v1::model;
@@ -26,6 +26,9 @@ use crate::ui::{
     Screen, Table, TableEvent, TableRow, TextInput, TextInputEvent,
 };
 use crate::utility::format_timestamp;
+
+const SECRETS_CACHE_KEY: &str = "secrets";
+
 // === Models ===
 
 /// A secret managed by GCP.
@@ -74,6 +77,12 @@ impl Secret {
 impl Display for Secret {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name)
+    }
+}
+
+impl Hash for Secret {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
     }
 }
 
@@ -686,71 +695,71 @@ impl Modal for DeleteSecretDialog {
 pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<ServiceMsg> {
     match msg {
         SecretsMsg::Load => {
-            if let Some(secrets) = state.get_cached_secrets() {
-                state.push_view(SecretListScreen::new(secrets));
+            if let Some(secrets) = state.cache.get::<_, Vec<Secret>>(&SECRETS_CACHE_KEY.to_string()) {
+                state.views.push(SecretListScreen::new(secrets.clone()));
                 return Ok(ServiceMsg::Idle);
             }
 
-            state.display_loading_spinner("Loading secrets...");
+            state.views.set_loading("Loading secrets...");
 
             Ok(FetchSecretsCmd {
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
 
         SecretsMsg::Loaded(secrets) => {
-            state.hide_loading_spinner();
-            state.cache_secrets(&secrets);
-            state.push_view(SecretListScreen::new(secrets));
+            state.views.clear_loading();
+            state.cache.insert(SECRETS_CACHE_KEY, secrets.clone());
+            state.views.push(SecretListScreen::new(secrets));
             Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::StartCreation => {
-            state.display_overlay(CreateSecretWizard::new());
+            state.views.show_modal(CreateSecretWizard::new());
             Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::Create { name, payload } => {
-            state.display_loading_spinner("Creating secret...");
-            state.close_overlay();
+            state.views.set_loading("Creating secret...");
+            state.views.close_modal();
 
             Ok(CreateSecretCmd {
                 name,
                 payload,
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
 
         SecretsMsg::Created(_secret) => {
-            state.invalidate_secrets_cache();
+            state.cache.invalidate::<_, Vec<Secret>>(&SECRETS_CACHE_KEY.to_string());
             state.queue(SecretsMsg::Load.into());
             Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::ConfirmDelete(secret) => {
-            state.display_overlay(DeleteSecretDialog::new(secret));
+            state.views.show_modal(DeleteSecretDialog::new(secret));
             Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::Delete(secret) => {
-            state.display_loading_spinner("Deleting secret...");
-            state.close_overlay();
+            state.views.set_loading("Deleting secret...");
+            state.views.close_modal();
 
             Ok(DeleteSecretCmd {
                 secret,
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
 
         SecretsMsg::Deleted(_name) => {
-            state.invalidate_secrets_cache();
-            state.pop_to_root();
+            state.cache.invalidate::<_, Vec<Secret>>(&SECRETS_CACHE_KEY.to_string());
+            state.views.pop_to_root();
             state.queue(SecretsMsg::Load.into());
             Ok(ServiceMsg::Idle)
         }
@@ -772,54 +781,54 @@ pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<Servi
         }
 
         SecretsMsg::ViewLabels(secret) => {
-            state.push_view(LabelsScreen::new(secret));
+            state.views.push(LabelsScreen::new(secret));
             Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::UpdateLabels { secret, labels } => {
-            state.display_loading_spinner("Updating labels...");
+            state.views.set_loading("Updating labels...");
 
             Ok(UpdateLabelsCmd {
                 secret,
                 labels,
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
 
         SecretsMsg::LabelsUpdated(secret) => {
-            state.hide_loading_spinner();
-            state.invalidate_secrets_cache();
-            state.pop_view();
-            state.push_view(LabelsScreen::new(secret));
+            state.views.clear_loading();
+            state.cache.invalidate::<_, Vec<Secret>>(&SECRETS_CACHE_KEY.to_string());
+            state.views.pop();
+            state.views.push(LabelsScreen::new(secret));
             Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::ViewIamPolicy(secret) => {
-            state.display_loading_spinner("Loading IAM policy...");
+            state.views.set_loading("Loading IAM policy...");
 
             Ok(FetchIamPolicyCmd {
                 secret,
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
 
         SecretsMsg::IamPolicyLoaded { secret, policy } => {
-            state.hide_loading_spinner();
-            state.push_view(IamPolicyScreen::new(secret, policy));
+            state.views.clear_loading();
+            state.views.push(IamPolicyScreen::new(secret, policy));
             Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::ViewReplicationInfo(secret) => {
-            state.display_loading_spinner("Loading replication info...");
+            state.views.set_loading("Loading replication info...");
 
             Ok(FetchSecretMetadataCmd {
                 secret,
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
@@ -828,15 +837,15 @@ pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<Servi
             secret,
             replication,
         } => {
-            state.hide_loading_spinner();
-            state.push_view(ReplicationScreen::new(secret, replication));
+            state.views.clear_loading();
+            state.views.push(ReplicationScreen::new(secret, replication));
             Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::CopyPayload(secret) => Ok(LoadPayloadCmd {
             secret,
             client: state.get_client()?,
-            tx: state.get_msg_sender(),
+            tx: state.clone_sender(),
         }
         .into()),
 

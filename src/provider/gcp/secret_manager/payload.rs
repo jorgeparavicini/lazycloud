@@ -130,11 +130,7 @@ impl Screen for PayloadScreen {
 
         let p = Paragraph::new(self.payload.data.as_str())
             .style(Style::default().fg(theme.text()))
-            .block(
-                theme.block()
-                    .title(title)
-                    .title_style(theme.title_style()),
-            );
+            .block(theme.block().title(title).title_style(theme.title_style()));
 
         frame.render_widget(p, area);
     }
@@ -154,25 +150,28 @@ pub(super) fn update(state: &mut SecretManager, msg: PayloadMsg) -> Result<Servi
     match msg {
         PayloadMsg::Load { secret, version } => {
             // Use cached payload if available
-            if let Some(payload) = state.get_cached_payload(&secret, version.as_ref()) {
-                state.push_view(PayloadScreen::new(secret, version, payload));
+            if let Some(payload) = state
+                .cache
+                .get::<_, SecretPayload>(&get_cache_key(&secret, version.as_ref()))
+            {
+                state.views.push(PayloadScreen::new(secret, version, payload.clone()));
                 return Ok(ServiceMsg::Idle);
             }
 
-            state.display_loading_spinner("Loading payload...");
+            state.views.set_loading("Loading payload...");
 
             match version {
                 Some(v) => Ok(FetchPayloadCmd {
                     secret,
                     version: v,
                     client: state.get_client()?,
-                    tx: state.get_msg_sender(),
+                    tx: state.clone_sender(),
                 }
                 .into()),
                 None => Ok(FetchLatestPayloadCmd {
                     secret,
                     client: state.get_client()?,
-                    tx: state.get_msg_sender(),
+                    tx: state.clone_sender(),
                 }
                 .into()),
             }
@@ -183,9 +182,11 @@ pub(super) fn update(state: &mut SecretManager, msg: PayloadMsg) -> Result<Servi
             version,
             payload,
         } => {
-            state.hide_loading_spinner();
-            state.cache_payload(&secret, version.as_ref(), payload.clone());
-            state.push_view(PayloadScreen::new(secret, version, payload));
+            state.views.clear_loading();
+            state
+                .cache
+                .insert(get_cache_key(&secret, version.as_ref()), payload.clone());
+            state.views.push(PayloadScreen::new(secret, version, payload));
             Ok(ServiceMsg::Idle)
         }
 
@@ -199,22 +200,21 @@ pub(super) fn update(state: &mut SecretManager, msg: PayloadMsg) -> Result<Servi
         }
 
         PayloadMsg::SaveEdit { secret, new_data } => {
-            state.display_loading_spinner("Saving new version...");
-            state.invalidate_payload_cache(&secret);
-            state.invalidate_versions_cache(&secret);
+            state.views.set_loading("Saving new version...");
+            state.cache.invalidate::<_, SecretVersion>(&secret);
 
             Ok(SaveEditCmd {
                 secret,
                 new_data,
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
 
         PayloadMsg::EditSaved { secret } => {
-            state.hide_loading_spinner();
-            state.pop_view();
+            state.views.clear_loading();
+            state.views.pop();
             state.queue(
                 PayloadMsg::Load {
                     secret,
@@ -225,6 +225,13 @@ pub(super) fn update(state: &mut SecretManager, msg: PayloadMsg) -> Result<Servi
             Ok(ServiceMsg::Idle)
         }
     }
+}
+
+fn get_cache_key(secret: &Secret, version: Option<&SecretVersion>) -> String {
+    version.map_or_else(
+        || format!("{}:latest", secret.name),
+        |v| format!("{}:{}", secret.name, v.version_id),
+    )
 }
 
 // === Commands ===

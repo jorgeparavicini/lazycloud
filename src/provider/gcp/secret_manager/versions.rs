@@ -330,43 +330,43 @@ pub(super) fn update(state: &mut SecretManager, msg: VersionsMsg) -> Result<Serv
     match msg {
         VersionsMsg::Load(secret) => {
             // Use cached versions if available
-            if let Some(versions) = state.get_cached_versions(&secret) {
-                state.push_view(VersionListScreen::new(secret, versions));
+            if let Some(versions) = state.cache.get::<_, Vec<SecretVersion>>(&secret) {
+                state.views.push(VersionListScreen::new(secret, versions.clone()));
                 return Ok(ServiceMsg::Idle);
             }
 
-            state.display_loading_spinner("Loading versions...");
+            state.views.set_loading("Loading versions...");
 
             Ok(FetchVersionsCmd {
                 secret,
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
 
         VersionsMsg::Loaded { secret, versions } => {
-            state.hide_loading_spinner();
-            state.cache_versions(&secret, versions.clone());
-            state.push_view(VersionListScreen::new(secret, versions));
+            state.views.clear_loading();
+            state.cache.insert(secret.clone(), versions.clone());
+            state.views.push(VersionListScreen::new(secret, versions));
             Ok(ServiceMsg::Idle)
         }
 
         VersionsMsg::StartCreation(secret) => {
-            state.display_overlay(CreateVersionDialog::new(secret));
+            state.views.show_modal(CreateVersionDialog::new(secret));
             Ok(ServiceMsg::Idle)
         }
 
         VersionsMsg::Create { secret, payload } => {
-            state.display_loading_spinner("Creating version...");
-            state.close_overlay();
-            state.invalidate_versions_cache(&secret);
+            state.views.set_loading("Creating version...");
+            state.views.close_modal();
+            state.cache.invalidate::<Secret, Secret>(&secret);
 
             Ok(AddVersionCmd {
                 secret,
                 payload,
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
@@ -375,52 +375,52 @@ pub(super) fn update(state: &mut SecretManager, msg: VersionsMsg) -> Result<Serv
         | VersionsMsg::Disabled { secret }
         | VersionsMsg::Enabled { secret }
         | VersionsMsg::Destroyed { secret } => {
-            state.pop_view();
+            state.views.pop();
             state.queue(VersionsMsg::Load(secret).into());
             Ok(ServiceMsg::Idle)
         }
 
         VersionsMsg::Disable { secret, version } => {
-            state.display_loading_spinner("Disabling version...");
-            state.invalidate_versions_cache(&secret);
+            state.views.set_loading("Disabling version...");
+            state.cache.invalidate::<Secret, Secret>(&secret);
 
             Ok(DisableVersionCmd {
                 secret,
                 version,
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
 
         VersionsMsg::Enable { secret, version } => {
-            state.display_loading_spinner("Enabling version...");
-            state.invalidate_versions_cache(&secret);
+            state.views.set_loading("Enabling version...");
+            state.cache.invalidate::<Secret, Secret>(&secret);
 
             Ok(EnableVersionCmd {
                 secret,
                 version,
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
 
         VersionsMsg::ConfirmDestroy { secret, version } => {
-            state.display_overlay(DestroyVersionDialog::new(secret, version));
+            state.views.show_modal(DestroyVersionDialog::new(secret, version));
             Ok(ServiceMsg::Idle)
         }
 
         VersionsMsg::Destroy { secret, version } => {
-            state.display_loading_spinner("Destroying version...");
-            state.close_overlay();
-            state.invalidate_versions_cache(&secret);
+            state.views.set_loading("Destroying version...");
+            state.views.close_modal();
+            state.cache.invalidate::<Secret, Secret>(&secret);
 
             Ok(DestroyVersionCmd {
                 secret,
                 version,
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }

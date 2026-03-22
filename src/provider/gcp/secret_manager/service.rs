@@ -1,30 +1,28 @@
-use std::collections::HashMap;
-
+use crate::Theme;
+use crate::app::AppMessage;
+use crate::cache::Cache;
+use crate::commands::Command;
+use crate::context::{CloudContext, GcpContext};
+use crate::event_queue::EventQueue;
+use crate::provider::Provider;
+use crate::provider::gcp::secret_manager::client::{ClientError, SecretManagerClient};
+use crate::provider::gcp::secret_manager::payload::PayloadMsg;
+use crate::provider::gcp::secret_manager::secrets::{Secret, SecretsMsg};
+use crate::provider::gcp::secret_manager::versions::VersionsMsg;
+use crate::provider::gcp::secret_manager::{payload, secrets, versions};
+use crate::registry::ServiceProvider;
+use crate::service::{Service, ServiceMsg};
+use crate::ui::{Component, ConfirmDialog, ConfirmEvent, EventResult, Keybinding, Modal};
+use crate::view_stack::ViewStack;
 use async_trait::async_trait;
 use color_eyre::Result;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::KeyEvent;
 use google_cloud_api_serviceusage_v1::client::ServiceUsage;
 use google_cloud_lro::Poller;
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::UnboundedSender;
 use tracing::{error, info};
-use crate::Theme;
-use crate::app::AppMessage;
-use crate::commands::Command;
-use crate::context::{CloudContext, GcpContext};
-use crate::provider::Provider;
-use crate::provider::gcp::secret_manager::client::{ClientError, SecretManagerClient};
-use crate::provider::gcp::secret_manager::payload::{PayloadMsg, SecretPayload};
-use crate::provider::gcp::secret_manager::secrets::{Secret, SecretsMsg};
-use crate::provider::gcp::secret_manager::versions::{SecretVersion, VersionsMsg};
-use crate::provider::gcp::secret_manager::{payload, secrets, versions};
-use crate::registry::ServiceProvider;
-use crate::service::{Service, ServiceMsg};
-use crate::ui::{
-    Component, ConfirmDialog, ConfirmEvent, EventResult, EventResultExt, Keybinding, Modal, Screen,
-    Spinner,
-};
 
 // === Messages ===
 
@@ -79,42 +77,37 @@ impl ServiceProvider for SecretManagerProvider {
 // === Service ===
 
 pub struct SecretManager {
+    pub(super) views: ViewStack<SecretManagerMsg>,
+    pub(super) cache: Cache,
+    events: EventQueue<SecretManagerMsg>,
     context: GcpContext,
-    spinner: Spinner,
     client: Option<SecretManagerClient>,
-    screen_stack: Vec<Box<dyn Screen<Output = SecretManagerMsg>>>,
-    loading: Option<&'static str>,
-    modal: Option<Box<dyn Modal<Output = SecretManagerMsg>>>,
-    msg_tx: UnboundedSender<SecretManagerMsg>,
-    msg_rx: UnboundedReceiver<SecretManagerMsg>,
-    cached_secrets: Option<Vec<Secret>>,
-    /// Key: secret name
-    cached_versions: HashMap<String, Vec<SecretVersion>>,
-    /// Key: "`secret_name/version_id`"
-    cached_payloads: HashMap<String, SecretPayload>,
     editing_secret: Option<Secret>,
 }
 
 impl SecretManager {
     pub fn new(ctx: GcpContext) -> Self {
-        let (msg_tx, msg_rx) = mpsc::unbounded_channel();
+        let mut views = ViewStack::new();
+        views.set_loading("Initializing...");
         Self {
+            events: EventQueue::new(),
+            views,
+            cache: Cache::new(),
             context: ctx,
-            spinner: Spinner::new(),
             client: None,
-            screen_stack: Vec::new(),
-            loading: Some("Initializing..."),
-            modal: None,
-            msg_tx,
-            msg_rx,
-            cached_secrets: None,
-            cached_versions: HashMap::new(),
-            cached_payloads: HashMap::new(),
             editing_secret: None,
         }
     }
 
     // === Public helpers for feature slices ===
+
+    pub(super) fn queue(&self, msg: SecretManagerMsg) {
+        self.events.send(msg);
+    }
+
+    pub(super) fn clone_sender(&self) -> UnboundedSender<SecretManagerMsg> {
+        self.events.clone_sender()
+    }
 
     pub(super) fn get_client(&self) -> Result<SecretManagerClient> {
         self.client
@@ -122,178 +115,55 @@ impl SecretManager {
             .ok_or_else(|| color_eyre::eyre::eyre!("Secret Manager client not initialized"))
     }
 
-    pub(super) fn get_msg_sender(&self) -> UnboundedSender<SecretManagerMsg> {
-        self.msg_tx.clone()
-    }
-
-    pub(super) fn queue(&self, msg: SecretManagerMsg) {
-        let _ = self.msg_tx.send(msg);
-    }
-
-    // === Screen stack management ===
-
-    pub(super) fn push_view<T: Screen<Output = SecretManagerMsg> + 'static>(&mut self, screen: T) {
-        self.hide_loading_spinner();
-        self.screen_stack.push(Box::new(screen));
-    }
-
-    pub(super) fn pop_view(&mut self) -> bool {
-        if self.screen_stack.len() > 1 {
-            self.screen_stack.pop();
-            true
-        } else {
-            false
-        }
-    }
-
-    pub(super) fn pop_to_root(&mut self) {
-        while self.screen_stack.len() > 1 {
-            self.screen_stack.pop();
-        }
-        self.screen_stack.clear();
-    }
-
-    // === Modal management ===
-
-    pub(super) fn display_overlay<T: Modal<Output = SecretManagerMsg> + 'static>(
-        &mut self,
-        modal: T,
-    ) {
-        self.modal = Some(Box::new(modal));
-    }
-
-    pub(super) fn close_overlay(&mut self) {
-        self.modal = None;
-    }
-
-    // === Loading spinner ===
-
-    pub(super) const fn display_loading_spinner(&mut self, label: &'static str) {
-        self.loading = Some(label);
-    }
-
-    pub(super) const fn hide_loading_spinner(&mut self) {
-        self.loading = None;
-    }
-
-    // === Caching: Secrets ===
-
-    pub(super) fn get_cached_secrets(&self) -> Option<Vec<Secret>> {
-        self.cached_secrets.clone()
-    }
-
-    pub(super) fn cache_secrets(&mut self, secrets: &[Secret]) {
-        self.cached_secrets = Some(secrets.to_vec());
-    }
-
-    pub(super) fn invalidate_secrets_cache(&mut self) {
-        self.cached_secrets = None;
-    }
-
-    // === Caching: Versions ===
-
-    pub(super) fn get_cached_versions(&self, secret: &Secret) -> Option<Vec<SecretVersion>> {
-        self.cached_versions.get(&secret.name).cloned()
-    }
-
-    pub(super) fn cache_versions(&mut self, secret: &Secret, versions: Vec<SecretVersion>) {
-        self.cached_versions.insert(secret.name.clone(), versions);
-    }
-
-    pub(super) fn invalidate_versions_cache(&mut self, secret: &Secret) {
-        self.cached_versions.remove(&secret.name);
-    }
-
-    // === Caching: Payloads ===
-
-    pub(super) fn get_cached_payload(
-        &self,
-        secret: &Secret,
-        version: Option<&SecretVersion>,
-    ) -> Option<SecretPayload> {
-        let cache_key = Self::payload_cache_key(secret, version);
-        self.cached_payloads.get(&cache_key).cloned()
-    }
-
-    pub(super) fn cache_payload(
-        &mut self,
-        secret: &Secret,
-        version: Option<&SecretVersion>,
-        payload: SecretPayload,
-    ) {
-        let cache_key = Self::payload_cache_key(secret, version);
-        self.cached_payloads.insert(cache_key, payload);
-    }
-
-    fn payload_cache_key(secret: &Secret, version: Option<&SecretVersion>) -> String {
-        let version_id = version.map_or("latest", |v| v.version_id.as_str());
-        format!("{}/{}", secret.name, version_id)
-    }
-
-    pub(super) fn invalidate_payload_cache(&mut self, secret: &Secret) {
-        let prefix = format!("{}/", secret.name);
-        self.cached_payloads.retain(|k, _| !k.starts_with(&prefix));
-    }
-
-    // === Editor support ===
-
     pub(super) fn set_editing_secret(&mut self, secret: Secret) {
         self.editing_secret = Some(secret);
     }
 
     // === Message processing ===
 
-    fn current_screen(&self) -> Option<&dyn Screen<Output = SecretManagerMsg>> {
-        self.screen_stack.last().map(|b| &**b)
-    }
-
-    fn current_screen_mut(&mut self) -> Option<&mut Box<dyn Screen<Output = SecretManagerMsg>>> {
-        self.screen_stack.last_mut()
-    }
-
     fn process_message(&mut self, msg: SecretManagerMsg) -> Result<ServiceMsg> {
         match msg {
             // === Lifecycle ===
             SecretManagerMsg::Initialize => {
-                self.loading = Some("Initializing Secret Manager...");
+                self.views.set_loading("Initializing Secret Manager...");
                 Ok(InitClientCmd {
                     context: self.context.clone(),
-                    tx: self.msg_tx.clone(),
+                    tx: self.events.clone_sender(),
                 }
                 .into())
             }
 
             SecretManagerMsg::ClientInitialized(client) => {
                 self.client = Some(client);
-                self.queue(SecretsMsg::Load.into());
+                self.events.send(SecretsMsg::Load.into());
                 Ok(ServiceMsg::Idle)
             }
 
             // === API Enable Flow ===
             SecretManagerMsg::ApiDisabled => {
-                self.hide_loading_spinner();
-                self.display_overlay(EnableApiDialog::new());
+                self.views.clear_loading();
+                self.views.show_modal(EnableApiDialog::new());
                 Ok(ServiceMsg::Idle)
             }
 
             SecretManagerMsg::EnableApi => {
-                self.close_overlay();
-                self.display_loading_spinner("Enabling Secret Manager API...");
+                self.views.close_modal();
+                self.views.set_loading("Enabling Secret Manager API...");
                 Ok(EnableApiCmd {
                     context: self.context.clone(),
-                    tx: self.msg_tx.clone(),
+                    tx: self.events.clone_sender(),
                 }
                 .into())
             }
 
             SecretManagerMsg::ApiEnabled => {
-                self.queue(SecretManagerMsg::Initialize);
+                self.events.send(SecretManagerMsg::Initialize);
                 Ok(ServiceMsg::Idle)
             }
 
             // === Navigation ===
             SecretManagerMsg::NavigateBack => {
-                if self.pop_view() {
+                if self.views.pop() {
                     Ok(ServiceMsg::Idle)
                 } else {
                     Ok(ServiceMsg::Close)
@@ -301,9 +171,9 @@ impl SecretManager {
             }
 
             SecretManagerMsg::DialogCancelled => {
-                self.close_overlay();
-                // If there's nothing to show (e.g. API dialog before secrets loaded), close
-                if self.screen_stack.is_empty() {
+                self.views.close_modal();
+                // If there's nothing to show (e.g., API dialog before secrets loaded), close
+                if !self.views.has_screens() {
                     return Ok(ServiceMsg::Close);
                 }
                 Ok(ServiceMsg::Idle)
@@ -319,56 +189,27 @@ impl SecretManager {
 
 impl Service for SecretManager {
     fn init(&mut self) {
-        self.queue(SecretManagerMsg::Initialize);
+        self.events.send(SecretManagerMsg::Initialize);
     }
 
     fn handle_tick(&mut self) {
-        if self.loading.is_some() {
-            self.spinner.handle_tick();
-        }
+        self.views.handle_tick();
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> EventResult<()> {
-        if self.loading.is_some() {
-            return EventResult::Ignored;
-        }
-
-        // Handle modal first if present (captures all input)
-        if let Some(modal) = &mut self.modal {
-            let (consumed, msg) = modal.handle_key(key).process();
-            if let Some(msg) = msg {
-                self.queue(msg);
-            }
-            if consumed {
-                return EventResult::Consumed;
-            }
-        }
-
-        // Handle current screen
-        if let Some(screen) = self.current_screen_mut() {
-            let (consumed, msg) = screen.handle_key(key).process();
-            if let Some(msg) = msg {
-                self.queue(msg);
-            }
-            if consumed {
-                return EventResult::Consumed;
-            }
-        }
-
-        // Global navigation
-        if key.code == KeyCode::Esc {
-            self.queue(SecretManagerMsg::NavigateBack);
-            return EventResult::Consumed;
-        }
-
-        EventResult::Ignored
+        self.views
+            .handle_key(key, &self.events, SecretManagerMsg::NavigateBack)
     }
 
     fn update(&mut self) -> Result<ServiceMsg> {
-        let mut commands: Vec<Box<dyn Command>> = Vec::new();
+        let mut commands: Vec<Box<dyn crate::commands::Command>> = Vec::new();
 
-        while let Ok(msg) = self.msg_rx.try_recv() {
-            match self.process_message(msg)? {
+        loop {
+            let messages = self.events.drain();
+            if messages.is_empty() {
+                break;
+            }
+            match EventQueue::process_events(messages, |msg| self.process_message(msg))? {
                 ServiceMsg::Idle => {}
                 ServiceMsg::Run(cmds) => commands.extend(cmds),
                 ServiceMsg::Close => return Ok(ServiceMsg::Close),
@@ -387,42 +228,21 @@ impl Service for SecretManager {
         if let Some(secret) = self.editing_secret.take()
             && let Some(new_data) = new_content
         {
-            self.queue(
-                PayloadMsg::SaveEdit {
-                    secret,
-                    new_data,
-                }
-                .into(),
-            );
+            self.events
+                .send(PayloadMsg::SaveEdit { secret, new_data }.into());
         }
     }
 
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        if let Some(label) = self.loading {
-            self.spinner.set_label(label);
-            self.spinner.render(frame, area, theme);
-        } else if let Some(screen) = self.current_screen_mut() {
-            screen.render(frame, area, theme);
-        }
-
-        // Render modal on top if present
-        if let Some(modal) = &mut self.modal {
-            modal.render(frame, area, theme);
-        }
+        self.views.render(frame, area, theme);
     }
 
     fn breadcrumbs(&self) -> Vec<String> {
-        let mut bc = vec!["Secret Manager".to_string()];
-        for screen in &self.screen_stack {
-            bc.extend(screen.breadcrumbs());
-        }
-        bc
+        self.views.breadcrumbs("Secret Manager")
     }
 
     fn keybindings(&self) -> Vec<Keybinding> {
-        self.current_screen()
-            .map(Screen::keybindings)
-            .unwrap_or_default()
+        self.views.keybindings()
     }
 }
 
@@ -449,9 +269,7 @@ impl Modal for EnableApiDialog {
     fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>> {
         Ok(match self.dialog.handle_key(key)? {
             EventResult::Event(ConfirmEvent::Confirmed) => SecretManagerMsg::EnableApi.into(),
-            EventResult::Event(ConfirmEvent::Cancelled) => {
-                SecretManagerMsg::DialogCancelled.into()
-            }
+            EventResult::Event(ConfirmEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
             _ => EventResult::Consumed,
         })
     }
@@ -463,6 +281,7 @@ impl Modal for EnableApiDialog {
 
 // === Commands ===
 
+// TODO: Move to global state
 struct EnableApiCmd {
     context: GcpContext,
     tx: UnboundedSender<SecretManagerMsg>,

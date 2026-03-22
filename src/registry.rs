@@ -132,9 +132,10 @@ impl ServiceRegistry {
     /// Register a service provider.
     ///
     /// If a provider with the same service ID already exists, it will be replaced.
-    pub fn register<P: ServiceProvider + 'static>(&mut self, provider: P) {
+    pub fn register<P: ServiceProvider + 'static>(&mut self, provider: P) -> &mut Self {
         let id = provider.service_id();
         self.providers.insert(id, Arc::new(provider));
+        self
     }
 
     /// Get a service provider by ID.
