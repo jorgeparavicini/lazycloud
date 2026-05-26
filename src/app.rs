@@ -14,7 +14,9 @@ use crate::Theme;
 use crate::cli::Args;
 use crate::commands::Command;
 use crate::config::{AppConfig, KeyResolver};
-use crate::context::{CloudContext, ContextManager, ContextMergePopup, ContextSelectorView};
+use crate::context::{
+    CloudContext, ContextChange, ContextManager, ContextMergePopup, ContextSelectorView,
+};
 use crate::registry::ServiceRegistry;
 use crate::service::{Service, ServiceMsg, ServiceSelectorView};
 use crate::theme::ThemeSelectorView;
@@ -61,7 +63,7 @@ pub enum AppMessage {
     GoBack,
 
     RefreshContexts,
-    ImportContexts(Vec<CloudContext>),
+    ApplyContextChanges(Vec<ContextChange>),
 }
 
 /// Application state - what the user is currently doing.

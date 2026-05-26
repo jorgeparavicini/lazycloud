@@ -77,6 +77,21 @@ impl std::fmt::Display for CloudContext {
     }
 }
 
+/// A reconciliation change between the cached contexts and gcloud discovery.
+#[derive(Debug, Clone)]
+pub enum ContextChange {
+    Add(CloudContext),
+    Remove(CloudContext),
+}
+
+impl ContextChange {
+    pub const fn context(&self) -> &CloudContext {
+        match self {
+            Self::Add(ctx) | Self::Remove(ctx) => ctx,
+        }
+    }
+}
+
 pub struct ContextManager {
     contexts: Vec<CloudContext>,
 }
@@ -102,18 +117,27 @@ impl ContextManager {
         Self { contexts }
     }
 
-    /// Discover contexts from gcloud that aren't saved yet.
-    pub fn discover_new(&self) -> Vec<CloudContext> {
+    /// Compute the set of changes needed to reconcile the cache with gcloud.
+    ///
+    /// Returns `Add` entries for gcloud configs not in the cache and `Remove`
+    /// entries for cached contexts that no longer exist in gcloud.
+    pub fn discover_changes(&self) -> Vec<ContextChange> {
         let discovered = Self::discover_all();
-        discovered
-            .into_iter()
-            .filter(|ctx| {
-                !self
-                    .contexts
-                    .iter()
-                    .any(|existing| existing.name() == ctx.name())
-            })
-            .collect()
+
+        let additions = discovered
+            .iter()
+            .filter(|ctx| !self.contexts.iter().any(|c| c.name() == ctx.name()))
+            .cloned()
+            .map(ContextChange::Add);
+
+        let removals = self
+            .contexts
+            .iter()
+            .filter(|ctx| !discovered.iter().any(|d| d.name() == ctx.name()))
+            .cloned()
+            .map(ContextChange::Remove);
+
+        additions.chain(removals).collect()
     }
 
     /// Find a context by name (case-insensitive).
@@ -147,9 +171,14 @@ impl ContextManager {
             .collect()
     }
 
-    /// Add new contexts and save to disk.
-    pub fn add_contexts(&mut self, contexts: Vec<CloudContext>) -> Result<()> {
-        self.contexts.extend(contexts);
+    /// Apply a set of additions and removals, then persist to disk.
+    pub fn apply_changes(&mut self, changes: Vec<ContextChange>) -> Result<()> {
+        for change in changes {
+            match change {
+                ContextChange::Add(ctx) => self.contexts.push(ctx),
+                ContextChange::Remove(ctx) => self.contexts.retain(|c| c.name() != ctx.name()),
+            }
+        }
         self.save_contexts()
     }
 
@@ -295,27 +324,27 @@ impl Screen for ContextSelectorView {
 // === Context Merge Popup ===
 
 pub enum ContextMergeEvent {
-    Import(Vec<CloudContext>),
+    Apply(Vec<ContextChange>),
     Skip,
 }
 
-struct SelectableContext {
-    context: CloudContext,
+struct SelectableChange {
+    change: ContextChange,
     selected: bool,
 }
 
 pub struct ContextMergePopup {
-    items: Vec<SelectableContext>,
+    items: Vec<SelectableChange>,
     state: ListState,
     resolver: Arc<KeyResolver>,
 }
 
 impl ContextMergePopup {
-    pub fn new(contexts: Vec<CloudContext>, resolver: Arc<KeyResolver>) -> Self {
-        let items: Vec<SelectableContext> = contexts
+    pub fn new(changes: Vec<ContextChange>, resolver: Arc<KeyResolver>) -> Self {
+        let items: Vec<SelectableChange> = changes
             .into_iter()
-            .map(|context| SelectableContext {
-                context,
+            .map(|change| SelectableChange {
+                change,
                 selected: true, // Default to selected
             })
             .collect();
@@ -352,11 +381,11 @@ impl ContextMergePopup {
         }
     }
 
-    fn get_selected_contexts(&self) -> Vec<CloudContext> {
+    fn get_selected_changes(&self) -> Vec<ContextChange> {
         self.items
             .iter()
             .filter(|item| item.selected)
-            .map(|item| item.context.clone())
+            .map(|item| item.change.clone())
             .collect()
     }
 
@@ -396,8 +425,8 @@ impl Component for ContextMergePopup {
         match key.code {
             KeyCode::Esc => return Ok(ContextMergeEvent::Skip.into()),
             KeyCode::Enter => {
-                let selected = self.get_selected_contexts();
-                return Ok(ContextMergeEvent::Import(selected).into());
+                let selected = self.get_selected_changes();
+                return Ok(ContextMergeEvent::Apply(selected).into());
             }
             KeyCode::Char(' ') => self.toggle_current(),
             KeyCode::Char('a') => self.select_all(),
@@ -423,7 +452,7 @@ impl Component for ContextMergePopup {
             .add_modifier(Modifier::BOLD);
 
         let block = Block::default()
-            .title(" Import New Contexts ")
+            .title(" Sync Contexts ")
             .title_style(title_style)
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
@@ -435,8 +464,13 @@ impl Component for ContextMergePopup {
             .iter()
             .map(|item| {
                 let checkbox = if item.selected { "[x]" } else { "[ ]" };
-                let name = item.context.name();
-                let project = match &item.context {
+                let (marker, marker_color) = match &item.change {
+                    ContextChange::Add(_) => ("+", theme.green()),
+                    ContextChange::Remove(_) => ("-", theme.red()),
+                };
+                let ctx = item.change.context();
+                let name = ctx.name();
+                let project = match ctx {
                     CloudContext::Gcp(ctx) => &ctx.project_id,
                 };
                 ListItem::new(Line::from(vec![
@@ -447,6 +481,12 @@ impl Component for ContextMergePopup {
                         } else {
                             theme.overlay1()
                         }),
+                    ),
+                    Span::styled(
+                        format!("{marker} "),
+                        Style::default()
+                            .fg(marker_color)
+                            .add_modifier(Modifier::BOLD),
                     ),
                     Span::styled(name.to_string(), Style::default().fg(theme.text())),
                     Span::styled(
@@ -484,7 +524,7 @@ impl Component for ContextMergePopup {
             Span::styled("n", Style::default().fg(theme.mauve())),
             Span::styled(" none  ", Style::default().fg(theme.subtext0())),
             Span::styled("Enter", Style::default().fg(theme.mauve())),
-            Span::styled(" import  ", Style::default().fg(theme.subtext0())),
+            Span::styled(" apply  ", Style::default().fg(theme.subtext0())),
             Span::styled("Esc", Style::default().fg(theme.mauve())),
             Span::styled(" skip", Style::default().fg(theme.subtext0())),
         ]);

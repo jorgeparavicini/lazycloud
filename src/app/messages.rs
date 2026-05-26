@@ -4,7 +4,7 @@ use tracing::{debug, error, warn};
 
 use super::{ActivePopup, App, AppMessage, AppState};
 use crate::config::save_theme;
-use crate::context::{ContextMergePopup, ContextSelectorView};
+use crate::context::{ContextChange, ContextMergePopup, ContextSelectorView};
 use crate::theme::ThemeSelectorView;
 use crate::tui::Tui;
 use crate::ui::{ErrorDialog, Toast};
@@ -102,39 +102,45 @@ impl App {
                 self.go_back();
             }
             AppMessage::RefreshContexts => {
-                let new_contexts = self.context_manager.discover_new();
-                if new_contexts.is_empty() {
+                let changes = self.context_manager.discover_changes();
+                if changes.is_empty() {
                     self.toast_manager
-                        .show(Toast::info("No new contexts found"));
+                        .show(Toast::info("Contexts already in sync"));
                 } else {
                     self.popup = Some(ActivePopup::ContextMerge(ContextMergePopup::new(
-                        new_contexts,
+                        changes,
                         self.resolver.clone(),
                     )));
                 }
             }
-            AppMessage::ImportContexts(new_contexts) => {
-                let count = new_contexts.len();
-                if let Err(e) = self.context_manager.add_contexts(new_contexts) {
-                    error!("Failed to import contexts: {e}");
-                    self.toast_manager
-                        .show(Toast::info("Failed to import contexts"));
-                } else {
-                    let contexts = self.context_manager.get_all();
-                    self.state = AppState::SelectingContext(ContextSelectorView::new(
-                        contexts,
-                        self.resolver.clone(),
-                    ));
-                    self.toast_manager.show(Toast::success(format!(
-                        "Imported {} context{}",
-                        count,
-                        if count == 1 { "" } else { "s" }
-                    )));
-                }
-                self.popup = None;
-            }
+            AppMessage::ApplyContextChanges(changes) => self.apply_context_changes(changes),
         }
 
         Ok(())
+    }
+
+    fn apply_context_changes(&mut self, changes: Vec<ContextChange>) {
+        let (added, removed) = changes.iter().fold((0usize, 0usize), |(a, r), c| match c {
+            ContextChange::Add(_) => (a + 1, r),
+            ContextChange::Remove(_) => (a, r + 1),
+        });
+        match self.context_manager.apply_changes(changes) {
+            Ok(()) => {
+                let contexts = self.context_manager.get_all();
+                self.state = AppState::SelectingContext(ContextSelectorView::new(
+                    contexts,
+                    self.resolver.clone(),
+                ));
+                self.toast_manager.show(Toast::success(format!(
+                    "Synced contexts: +{added} -{removed}"
+                )));
+            }
+            Err(e) => {
+                error!("Failed to sync contexts: {e}");
+                self.toast_manager
+                    .show(Toast::info("Failed to sync contexts"));
+            }
+        }
+        self.popup = None;
     }
 }

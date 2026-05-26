@@ -39,8 +39,8 @@ impl App {
                 }
             }
             ActivePopup::ContextMerge(merge) => match merge.handle_key(key) {
-                Ok(EventResult::Event(ContextMergeEvent::Import(contexts))) => {
-                    self.msg_tx.send(AppMessage::ImportContexts(contexts))?;
+                Ok(EventResult::Event(ContextMergeEvent::Apply(changes))) => {
+                    self.msg_tx.send(AppMessage::ApplyContextChanges(changes))?;
                 }
                 Ok(EventResult::Event(ContextMergeEvent::Skip)) => {
                     self.msg_tx.send(AppMessage::ClosePopup)?;
