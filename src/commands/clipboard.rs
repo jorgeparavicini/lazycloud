@@ -1,10 +1,10 @@
+use std::sync::Arc;
+
 use arboard::Clipboard;
 use async_trait::async_trait;
 use color_eyre::Result;
-use tokio::sync::mpsc::UnboundedSender;
 
-use crate::app::AppMessage;
-use crate::commands::Command;
+use crate::commands::{Command, CommandCtx};
 use crate::ui::ToastType;
 
 /// Copies a string to the system clipboard and shows a success toast notification.
@@ -28,7 +28,7 @@ impl Command for CopyToClipboardCmd {
         format!("Copying {}", self.toast_message)
     }
 
-    async fn execute(self: Box<Self>, action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, ctx: Arc<dyn CommandCtx>) -> Result<()> {
         let mut clipboard = Clipboard::new()?;
         #[cfg(target_os = "linux")]
         clipboard.set().text(self.text)?;
@@ -36,10 +36,10 @@ impl Command for CopyToClipboardCmd {
         #[cfg(not(target_os = "linux"))]
         clipboard.set_text(self.text)?;
 
-        action_tx.send(AppMessage::ShowToast {
-            message: format!("Copied {}", self.toast_message),
-            toast_type: ToastType::Success,
-        })?;
+        ctx.toast(
+            format!("Copied {}", self.toast_message),
+            ToastType::Success,
+        );
         Ok(())
     }
 }

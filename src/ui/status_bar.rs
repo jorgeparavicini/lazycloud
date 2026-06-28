@@ -127,8 +127,8 @@ impl StatusBar {
         // Collect all hint keybindings (local first, then global)
         let hints: Vec<&Keybinding> = local_keybindings
             .iter()
-            .filter(|kb| kb.hint)
-            .chain(global_keybindings.iter().filter(|kb| kb.hint))
+            .filter(|kb| kb.is_primary())
+            .chain(global_keybindings.iter().filter(|kb| kb.is_primary()))
             .collect();
 
         if hints.is_empty() {
@@ -148,27 +148,49 @@ impl StatusBar {
         let num_cols = (area.width / col_width).max(1) as usize;
         let num_rows = area.height as usize;
 
-        // Distribute keybindings across columns (fill column by column)
+        // How many hints actually fit. If there are more than the grid can hold,
+        // reserve the last cell for a "+N more" indicator pointing at the help
+        // overlay, rather than silently dropping the overflow.
+        let capacity = num_cols.saturating_mul(num_rows);
+        let overflow = hints.len() > capacity;
+        let shown = if overflow {
+            capacity.saturating_sub(1)
+        } else {
+            hints.len()
+        };
+
+        let cell = |key: &str, desc: &str, key_style: Style, desc_style: Style| {
+            Line::from(vec![
+                Span::styled(format!("{key:>max_key_w$}"), key_style),
+                Span::styled(" │ ", Style::default().fg(theme.surface2())),
+                Span::styled(desc.to_string(), desc_style),
+            ])
+        };
+
+        // Distribute keybindings across columns (fill column by column).
         let mut columns: Vec<Vec<Line>> = vec![Vec::new(); num_cols];
 
-        for (i, kb) in hints.iter().enumerate() {
+        for (i, kb) in hints.iter().take(shown).enumerate() {
             let col_idx = i / num_rows;
-            if col_idx >= num_cols {
-                break;
-            }
+            columns[col_idx].push(cell(
+                &kb.key,
+                &kb.description,
+                Style::default().fg(theme.accent()),
+                Style::default().fg(theme.text_muted()),
+            ));
+        }
 
-            let line = Line::from(vec![
-                Span::styled(
-                    format!("{:>width$}", kb.key, width = max_key_w),
-                    Style::default().fg(theme.accent()),
-                ),
-                Span::styled(" │ ", Style::default().fg(theme.surface2())),
-                Span::styled(
-                    kb.description.clone(),
-                    Style::default().fg(theme.text_muted()),
-                ),
-            ]);
-            columns[col_idx].push(line);
+        if overflow {
+            let remaining = hints.len() - shown;
+            let col_idx = (shown / num_rows).min(num_cols - 1);
+            columns[col_idx].push(cell(
+                "?",
+                &format!("+{remaining} more"),
+                Style::default().fg(theme.accent()),
+                Style::default()
+                    .fg(theme.text_muted())
+                    .add_modifier(Modifier::ITALIC),
+            ));
         }
 
         // Create column areas
@@ -208,13 +230,13 @@ impl StatusBar {
     #[allow(clippy::unused_self)]
     pub fn global_keybindings(&self) -> Vec<Keybinding> {
         vec![
-            Keybinding::hint("?", "Help"),
-            Keybinding::hint("Esc", "Back"),
-            Keybinding::new("t", "Theme"),
-            Keybinding::new("q", "Quit"),
-            Keybinding::new("c", "Commands"),
-            Keybinding::new("Enter", "Select"),
-            Keybinding::new("k/j", "Navigate"),
+            Keybinding::primary("?", "Help"),
+            Keybinding::primary("Esc", "Back"),
+            Keybinding::secondary("t", "Theme"),
+            Keybinding::secondary("q", "Quit"),
+            Keybinding::secondary("c", "Commands"),
+            Keybinding::secondary("Enter", "Select"),
+            Keybinding::secondary("k/j", "Navigate"),
         ]
     }
 }

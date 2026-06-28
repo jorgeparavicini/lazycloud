@@ -9,7 +9,7 @@ use crate::ui::Component;
 
 pub struct Spinner {
     throbber_state: ThrobberState,
-    label: Option<&'static str>,
+    label: Option<String>,
 }
 
 impl Spinner {
@@ -20,8 +20,8 @@ impl Spinner {
         }
     }
 
-    pub const fn set_label(&mut self, label: &'static str) {
-        self.label = Some(label);
+    pub fn set_label(&mut self, label: impl Into<String>) {
+        self.label = Some(label.into());
     }
 }
 
@@ -48,8 +48,8 @@ impl Component for Spinner {
         // The throbber itself uses 1-character width
         let mut width = 1u16;
 
-        if let Some(label) = self.label {
-            throbber = throbber.label(label);
+        if let Some(label) = &self.label {
+            throbber = throbber.label(label.clone());
             #[allow(clippy::cast_possible_truncation)]
             {
                 width += label.len() as u16 + 1;

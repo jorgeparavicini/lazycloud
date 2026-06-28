@@ -38,7 +38,7 @@ const FORCEFUL_SHUTDOWN_TIMEOUT_MS: u64 = 2000;
 pub type Backend = CrosstermBackend<Stdout>;
 
 #[derive(Clone, Debug)]
-pub enum Event {
+pub enum TuiEvent {
     Init,
     Quit,
     Error(String),
@@ -61,8 +61,8 @@ pub struct Tui {
     terminal: Terminal<Backend>,
     task: JoinHandle<()>,
     cancellation_token: CancellationToken,
-    event_rx: UnboundedReceiver<Event>,
-    event_tx: UnboundedSender<Event>,
+    event_rx: UnboundedReceiver<TuiEvent>,
+    event_tx: UnboundedSender<TuiEvent>,
     frame_rate: f64,
     tick_rate: f64,
 }
@@ -139,7 +139,7 @@ impl Tui {
     }
 
     /// Get the next event from the event stream.
-    pub async fn next_event(&mut self) -> Option<Event> {
+    pub async fn next_event(&mut self) -> Option<TuiEvent> {
         self.event_rx.recv().await
     }
 
@@ -176,7 +176,7 @@ impl Tui {
     }
 
     async fn event_loop(
-        event_tx: UnboundedSender<Event>,
+        event_tx: UnboundedSender<TuiEvent>,
         cancellation_token: CancellationToken,
         tick_rate: f64,
         frame_rate: f64,
@@ -194,12 +194,12 @@ impl Tui {
                     tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
                         .expect("Failed to create SIGTERM handler");
                 sigterm.recv().await;
-                let _ = event_tx_clone.send(Event::Quit);
+                let _ = event_tx_clone.send(TuiEvent::Quit);
             });
         }
 
         event_tx
-            .send(Event::Init)
+            .send(TuiEvent::Init)
             .expect("Failed to send init event");
 
         loop {
@@ -207,8 +207,8 @@ impl Tui {
                 () = cancellation_token.cancelled() => {
                     break;
                 }
-                _ = tick_interval.tick() => Event::Tick,
-                _ = frame_interval.tick() => Event::Render,
+                _ = tick_interval.tick() => TuiEvent::Tick,
+                _ = frame_interval.tick() => TuiEvent::Render,
                 crossterm_event = event_stream.next().fuse() => {
                     match crossterm_event {
                         Some(Ok(event)) => match event {
@@ -217,21 +217,21 @@ impl Tui {
                                     if key.modifiers.contains(KeyModifiers::CONTROL)
                                         && key.code == KeyCode::Char('c')
                                     {
-                                        Event::Quit
+                                        TuiEvent::Quit
                                     } else {
-                                        Event::Key(key)
+                                        TuiEvent::Key(key)
                                     }
                                 } else {
                                     continue;
                                 }
                             },
-                            CrosstermEvent::Mouse(mouse) => Event::Mouse(mouse),
-                            CrosstermEvent::Resize(width, height) => Event::Resize(width, height),
-                            CrosstermEvent::FocusGained => Event::FocusGained,
-                            CrosstermEvent::FocusLost => Event::FocusLost,
-                            CrosstermEvent::Paste(paste) => Event::Paste(paste),
+                            CrosstermEvent::Mouse(mouse) => TuiEvent::Mouse(mouse),
+                            CrosstermEvent::Resize(width, height) => TuiEvent::Resize(width, height),
+                            CrosstermEvent::FocusGained => TuiEvent::FocusGained,
+                            CrosstermEvent::FocusLost => TuiEvent::FocusLost,
+                            CrosstermEvent::Paste(paste) => TuiEvent::Paste(paste),
                         },
-                        Some(Err(e)) => Event::Error(e.to_string()),
+                        Some(Err(e)) => TuiEvent::Error(e.to_string()),
                         None => break
                     }
                 }

@@ -10,8 +10,7 @@ use crate::context::GcpContext;
 use crate::provider::gcp::secret_manager::payload::SecretPayload;
 use crate::provider::gcp::secret_manager::secrets::{
     IamBinding,
-    IamPolicy
-    ,
+    IamPolicy,
     Secret,
 };
 use crate::provider::gcp::secret_manager::versions::SecretVersion;

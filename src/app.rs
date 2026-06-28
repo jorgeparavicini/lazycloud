@@ -12,7 +12,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::Theme;
 use crate::cli::Args;
-use crate::commands::Command;
+use crate::commands::{Command, CommandCtx};
 use crate::config::AppConfig;
 use crate::context::{CloudContext, ContextManager, ContextMergePopup, ContextSelectorView};
 use crate::registry::ServiceRegistry;
@@ -29,6 +29,23 @@ use crate::ui::{
     ToastManager,
     ToastType,
 };
+
+/// App-backed implementation of [`CommandCtx`].
+///
+/// Adapts the narrow capability port that commands see onto the App's internal
+/// message channel, so commands stay decoupled from `AppMessage`.
+struct AppCommandCtx {
+    msg_tx: UnboundedSender<AppMessage>,
+}
+
+impl CommandCtx for AppCommandCtx {
+    fn toast(&self, message: String, toast_type: ToastType) {
+        let _ = self.msg_tx.send(AppMessage::ShowToast {
+            message,
+            toast_type,
+        });
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum AppMessage {
@@ -239,8 +256,11 @@ impl App {
         for cmd in commands {
             let id = self.command_tracker.start(cmd.name());
             let msg_tx = self.msg_tx.clone();
+            let ctx: Arc<dyn CommandCtx> = Arc::new(AppCommandCtx {
+                msg_tx: msg_tx.clone(),
+            });
             tokio::spawn(async move {
-                let success = match cmd.execute(msg_tx.clone()).await {
+                let success = match cmd.execute(ctx).await {
                     Ok(()) => true,
                     Err(e) => {
                         let _ = msg_tx.send(AppMessage::DisplayError(e.to_string()));

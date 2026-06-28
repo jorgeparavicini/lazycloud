@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Display;
-
+use std::hash::Hash;
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent};
 use google_cloud_secretmanager_v1::model;
@@ -11,14 +11,16 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Cell, Paragraph};
 use tokio::sync::mpsc::UnboundedSender;
 
+use std::sync::Arc;
+
 use crate::Theme;
-use crate::app::AppMessage;
-use crate::commands::{Command, CopyToClipboardCmd};
+use crate::commands::{Command, CommandCtx, CopyToClipboardCmd};
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::{ClientError, SecretManagerClient};
 use crate::provider::gcp::secret_manager::payload::PayloadMsg;
-use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
+use crate::provider::gcp::secret_manager::service::{SecretManagerMsg, SmDomainMsg};
 use crate::provider::gcp::secret_manager::versions::VersionsMsg;
+use crate::provider::gcp::service::Lifecycle;
 use crate::search::Matcher;
 use crate::service::ServiceMsg;
 use crate::ui::{
@@ -26,6 +28,9 @@ use crate::ui::{
     Screen, Table, TableEvent, TableRow, TextInput, TextInputEvent,
 };
 use crate::utility::format_timestamp;
+
+const SECRETS_CACHE_KEY: &str = "secrets";
+
 // === Models ===
 
 /// A secret managed by GCP.
@@ -74,6 +79,12 @@ impl Secret {
 impl Display for Secret {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name)
+    }
+}
+
+impl Hash for Secret {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
     }
 }
 
@@ -284,13 +295,13 @@ pub enum SecretsMsg {
 
 impl From<SecretsMsg> for SecretManagerMsg {
     fn from(msg: SecretsMsg) -> Self {
-        Self::Secret(msg)
+        Self::Domain(SmDomainMsg::Secret(msg))
     }
 }
 
 impl From<SecretsMsg> for EventResult<SecretManagerMsg> {
     fn from(msg: SecretsMsg) -> Self {
-        Self::Event(SecretManagerMsg::Secret(msg))
+        Self::Event(SecretManagerMsg::from(msg))
     }
 }
 
@@ -367,16 +378,16 @@ impl Screen for SecretListScreen {
 
     fn keybindings(&self) -> Vec<Keybinding> {
         vec![
-            Keybinding::hint("Enter", "Payload"),
-            Keybinding::hint("y", "Copy"),
-            Keybinding::hint("v", "Versions"),
-            Keybinding::hint("n", "New"),
-            Keybinding::hint("d", "Delete"),
-            Keybinding::hint("/", "Search"),
-            Keybinding::new("l", "Labels"),
-            Keybinding::new("i", "IAM"),
-            Keybinding::new("R", "Replication"),
-            Keybinding::new("r", "Reload"),
+            Keybinding::primary("Enter", "Payload"),
+            Keybinding::primary("n", "New"),
+            Keybinding::primary("d", "Delete"),
+            Keybinding::primary("/", "Search"),
+            Keybinding::secondary("v", "Versions"),
+            Keybinding::secondary("y", "Copy"),
+            Keybinding::secondary("l", "Labels"),
+            Keybinding::secondary("i", "IAM"),
+            Keybinding::secondary("R", "Replication"),
+            Keybinding::secondary("r", "Reload"),
         ]
     }
 }
@@ -430,8 +441,8 @@ impl Screen for LabelsScreen {
 
     fn keybindings(&self) -> Vec<Keybinding> {
         vec![
-            Keybinding::hint("/", "Search"),
-            Keybinding::new("r", "Reload"),
+            Keybinding::primary("/", "Search"),
+            Keybinding::secondary("r", "Reload"),
         ]
     }
 }
@@ -473,8 +484,8 @@ impl Screen for IamPolicyScreen {
 
     fn keybindings(&self) -> Vec<Keybinding> {
         vec![
-            Keybinding::hint("/", "Search"),
-            Keybinding::new("r", "Reload"),
+            Keybinding::primary("/", "Search"),
+            Keybinding::secondary("r", "Reload"),
         ]
     }
 }
@@ -571,7 +582,7 @@ impl Screen for ReplicationScreen {
     }
 
     fn keybindings(&self) -> Vec<Keybinding> {
-        vec![Keybinding::new("r", "Reload")]
+        vec![Keybinding::secondary("r", "Reload")]
     }
 }
 
@@ -609,7 +620,7 @@ impl Modal for CreateSecretWizard {
                     EventResult::Consumed
                 }
                 EventResult::Event(TextInputEvent::Cancelled) => {
-                    SecretManagerMsg::DialogCancelled.into()
+                    Lifecycle::DialogCancelled.into()
                 }
                 _ => EventResult::Consumed,
             },
@@ -624,7 +635,7 @@ impl Modal for CreateSecretWizard {
                     SecretsMsg::Create { name, payload }.into()
                 }
                 EventResult::Event(TextInputEvent::Cancelled) => {
-                    SecretManagerMsg::DialogCancelled.into()
+                    Lifecycle::DialogCancelled.into()
                 }
                 _ => EventResult::Consumed,
             },
@@ -669,7 +680,7 @@ impl Modal for DeleteSecretDialog {
             EventResult::Event(ConfirmEvent::Confirmed) => {
                 SecretsMsg::Delete(self.secret.clone()).into()
             }
-            EventResult::Event(ConfirmEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
+            EventResult::Event(ConfirmEvent::Cancelled) => Lifecycle::DialogCancelled.into(),
             _ => EventResult::Consumed,
         })
     }
@@ -686,71 +697,71 @@ impl Modal for DeleteSecretDialog {
 pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<ServiceMsg> {
     match msg {
         SecretsMsg::Load => {
-            if let Some(secrets) = state.get_cached_secrets() {
-                state.push_view(SecretListScreen::new(secrets));
+            if let Some(secrets) = state.cache.get::<_, Vec<Secret>>(&SECRETS_CACHE_KEY.to_string()) {
+                state.views.push(SecretListScreen::new(secrets.clone()));
                 return Ok(ServiceMsg::Idle);
             }
 
-            state.display_loading_spinner("Loading secrets...");
+            state.views.set_loading("Loading secrets...");
 
             Ok(FetchSecretsCmd {
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
 
         SecretsMsg::Loaded(secrets) => {
-            state.hide_loading_spinner();
-            state.cache_secrets(&secrets);
-            state.push_view(SecretListScreen::new(secrets));
+            state.views.clear_loading();
+            state.cache.insert(SECRETS_CACHE_KEY, secrets.clone());
+            state.views.push(SecretListScreen::new(secrets));
             Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::StartCreation => {
-            state.display_overlay(CreateSecretWizard::new());
+            state.views.show_modal(CreateSecretWizard::new());
             Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::Create { name, payload } => {
-            state.display_loading_spinner("Creating secret...");
-            state.close_overlay();
+            state.views.set_loading("Creating secret...");
+            state.views.close_modal();
 
             Ok(CreateSecretCmd {
                 name,
                 payload,
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
 
         SecretsMsg::Created(_secret) => {
-            state.invalidate_secrets_cache();
+            state.cache.invalidate::<_, Vec<Secret>>(&SECRETS_CACHE_KEY.to_string());
             state.queue(SecretsMsg::Load.into());
             Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::ConfirmDelete(secret) => {
-            state.display_overlay(DeleteSecretDialog::new(secret));
+            state.views.show_modal(DeleteSecretDialog::new(secret));
             Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::Delete(secret) => {
-            state.display_loading_spinner("Deleting secret...");
-            state.close_overlay();
+            state.views.set_loading("Deleting secret...");
+            state.views.close_modal();
 
             Ok(DeleteSecretCmd {
                 secret,
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
 
         SecretsMsg::Deleted(_name) => {
-            state.invalidate_secrets_cache();
-            state.pop_to_root();
+            state.cache.invalidate::<_, Vec<Secret>>(&SECRETS_CACHE_KEY.to_string());
+            state.views.pop_to_root();
             state.queue(SecretsMsg::Load.into());
             Ok(ServiceMsg::Idle)
         }
@@ -772,54 +783,54 @@ pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<Servi
         }
 
         SecretsMsg::ViewLabels(secret) => {
-            state.push_view(LabelsScreen::new(secret));
+            state.views.push(LabelsScreen::new(secret));
             Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::UpdateLabels { secret, labels } => {
-            state.display_loading_spinner("Updating labels...");
+            state.views.set_loading("Updating labels...");
 
             Ok(UpdateLabelsCmd {
                 secret,
                 labels,
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
 
         SecretsMsg::LabelsUpdated(secret) => {
-            state.hide_loading_spinner();
-            state.invalidate_secrets_cache();
-            state.pop_view();
-            state.push_view(LabelsScreen::new(secret));
+            state.views.clear_loading();
+            state.cache.invalidate::<_, Vec<Secret>>(&SECRETS_CACHE_KEY.to_string());
+            state.views.pop();
+            state.views.push(LabelsScreen::new(secret));
             Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::ViewIamPolicy(secret) => {
-            state.display_loading_spinner("Loading IAM policy...");
+            state.views.set_loading("Loading IAM policy...");
 
             Ok(FetchIamPolicyCmd {
                 secret,
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
 
         SecretsMsg::IamPolicyLoaded { secret, policy } => {
-            state.hide_loading_spinner();
-            state.push_view(IamPolicyScreen::new(secret, policy));
+            state.views.clear_loading();
+            state.views.push(IamPolicyScreen::new(secret, policy));
             Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::ViewReplicationInfo(secret) => {
-            state.display_loading_spinner("Loading replication info...");
+            state.views.set_loading("Loading replication info...");
 
             Ok(FetchSecretMetadataCmd {
                 secret,
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
@@ -828,15 +839,15 @@ pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<Servi
             secret,
             replication,
         } => {
-            state.hide_loading_spinner();
-            state.push_view(ReplicationScreen::new(secret, replication));
+            state.views.clear_loading();
+            state.views.push(ReplicationScreen::new(secret, replication));
             Ok(ServiceMsg::Idle)
         }
 
         SecretsMsg::CopyPayload(secret) => Ok(LoadPayloadCmd {
             secret,
             client: state.get_client()?,
-            tx: state.get_msg_sender(),
+            tx: state.clone_sender(),
         }
         .into()),
 
@@ -903,14 +914,14 @@ impl Command for FetchSecretsCmd {
         "Loading secrets".to_string()
     }
 
-    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
         match self.client.list_secrets().await {
             Ok(secrets) => {
                 self.tx.send(SecretsMsg::Loaded(secrets).into())?;
                 Ok(())
             }
             Err(ClientError::ApiDisabled) => {
-                self.tx.send(SecretManagerMsg::ApiDisabled)?;
+                self.tx.send(Lifecycle::ApiDisabled.into())?;
                 Ok(())
             }
             Err(e) => Err(e.into()),
@@ -931,7 +942,7 @@ impl Command for CreateSecretCmd {
         format!("Creating '{}'", self.name)
     }
 
-    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
         let secret = if let Some(payload) = self.payload {
             self.client
                 .create_secret_with_payload(&self.name, payload.as_bytes())
@@ -956,7 +967,7 @@ impl Command for DeleteSecretCmd {
         format!("Deleting '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
         self.client.delete_secret(&self.secret.name).await?;
         self.tx.send(SecretsMsg::Deleted(self.secret.name).into())?;
         Ok(())
@@ -976,7 +987,7 @@ impl Command for UpdateLabelsCmd {
         format!("Updating labels on '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
         let secret = self
             .client
             .update_labels(&self.secret.name, self.labels)
@@ -998,7 +1009,7 @@ impl Command for FetchIamPolicyCmd {
         format!("Loading IAM for '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
         let policy = self.client.get_iam_policy(&self.secret.name).await?;
         self.tx.send(
             SecretsMsg::IamPolicyLoaded {
@@ -1023,7 +1034,7 @@ impl Command for FetchSecretMetadataCmd {
         format!("Loading metadata for '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
         let secret = self.client.get_secret(&self.secret.name).await?;
         let replication = secret.replication.clone();
         self.tx.send(
@@ -1049,7 +1060,7 @@ impl Command for LoadPayloadCmd {
         format!("Loading payload for '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
         let payload = self.client.access_latest_version(&self.secret.name).await?;
         self.tx.send(
             SecretsMsg::PayloadLoaded {

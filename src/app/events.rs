@@ -4,7 +4,7 @@ use crossterm::event::KeyCode;
 use super::{ActivePopup, App, AppMessage, AppState};
 use crate::context::{ContextMergeEvent, ContextSelectorEvent};
 use crate::theme::ThemeEvent;
-use crate::tui::Event;
+use crate::tui::TuiEvent;
 use crate::ui::{Component, ErrorDialogEvent, EventResult, HelpEvent, Screen};
 
 impl App {
@@ -52,14 +52,14 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn handle_global_event(&self, event: &Event) -> Result<()> {
+    pub(super) fn handle_global_event(&self, event: &TuiEvent) -> Result<()> {
         match event {
-            Event::Quit => self.msg_tx.send(AppMessage::Quit)?,
-            Event::Render => self.msg_tx.send(AppMessage::Render)?,
-            Event::Resize(width, height) => {
+            TuiEvent::Quit => self.msg_tx.send(AppMessage::Quit)?,
+            TuiEvent::Render => self.msg_tx.send(AppMessage::Render)?,
+            TuiEvent::Resize(width, height) => {
                 self.msg_tx.send(AppMessage::Resize(*width, *height))?;
             }
-            Event::Key(key) => {
+            TuiEvent::Key(key) => {
                 if key.code == KeyCode::Char('q') {
                     self.msg_tx.send(AppMessage::Quit)?;
                 } else if key.code == KeyCode::Char('?') {
@@ -77,16 +77,16 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn handle_event(&mut self, event: &Event) -> Result<()> {
+    pub(super) fn handle_event(&mut self, event: &TuiEvent) -> Result<()> {
         // Popup intercepts all key events when visible
         if self.popup.is_some()
-            && let Event::Key(key) = event
+            && let TuiEvent::Key(key) = event
         {
             self.handle_popup_event(*key)?;
             return Ok(());
         }
 
-        if matches!(event, Event::Tick) {
+        if matches!(event, TuiEvent::Tick) {
             self.command_tracker.handle_tick();
             self.toast_manager.handle_tick();
             if let AppState::ActiveService(service) = &mut self.state {
@@ -97,7 +97,7 @@ impl App {
 
         let handled = match &mut self.state {
             AppState::SelectingContext(selector) => {
-                if let Event::Key(key) = event {
+                if let TuiEvent::Key(key) = event {
                     match selector.handle_key(*key) {
                         Ok(EventResult::Event(ContextSelectorEvent::Selected(context))) => {
                             self.msg_tx.send(AppMessage::SelectContext(context))?;
@@ -115,7 +115,7 @@ impl App {
                 }
             }
             AppState::SelectingService(selector) => {
-                if let Event::Key(key) = event {
+                if let TuiEvent::Key(key) = event {
                     match selector.handle_key(*key) {
                         Ok(EventResult::Event(service_id)) => {
                             self.msg_tx.send(AppMessage::SelectService(service_id))?;
@@ -129,7 +129,7 @@ impl App {
                 }
             }
             AppState::ActiveService(service) => {
-                if let Event::Key(key) = event {
+                if let TuiEvent::Key(key) = event {
                     let result = service.handle_key(*key);
                     if result.is_consumed() {
                         let msg = service.update();

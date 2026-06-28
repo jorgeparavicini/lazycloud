@@ -8,29 +8,44 @@ use ratatui::widgets::{Clear, Paragraph};
 use crate::Theme;
 use crate::ui::{Component, EventResult, Result};
 
+/// Where a keybinding is surfaced in the UI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeybindingKind {
+    /// A core action: shown in the bottom hint bar *and* the help overlay.
+    Primary,
+    /// A secondary action: shown only in the `?` help overlay.
+    Secondary,
+}
+
 pub struct Keybinding {
     pub key: String,
     pub description: String,
-    /// Whether this keybinding should be shown in the hints line at the bottom.
-    pub hint: bool,
+    pub kind: KeybindingKind,
 }
 
 impl Keybinding {
-    pub fn new(key: impl Into<String>, description: impl Into<String>) -> Self {
+    /// A core action, shown in the bottom hint bar and the help overlay.
+    pub fn primary(key: impl Into<String>, description: impl Into<String>) -> Self {
         Self {
             key: key.into(),
             description: description.into(),
-            hint: false,
+            kind: KeybindingKind::Primary,
         }
     }
 
-    /// Create a keybinding that is also shown as a hint at the bottom of the screen.
-    pub fn hint(key: impl Into<String>, description: impl Into<String>) -> Self {
+    /// A secondary action, shown only in the `?` help overlay.
+    pub fn secondary(key: impl Into<String>, description: impl Into<String>) -> Self {
         Self {
             key: key.into(),
             description: description.into(),
-            hint: true,
+            kind: KeybindingKind::Secondary,
         }
+    }
+
+    /// Whether this binding belongs in the bottom hint bar.
+    #[must_use]
+    pub const fn is_primary(&self) -> bool {
+        matches!(self.kind, KeybindingKind::Primary)
     }
 }
 

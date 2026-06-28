@@ -1,5 +1,6 @@
 use color_eyre::eyre::{Result, eyre};
 use crossterm::event::{KeyCode, KeyEvent};
+use google_cloud_auth::build_errors;
 use google_cloud_auth::credentials::Credentials;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
@@ -44,7 +45,7 @@ pub enum AuthMethod {
 }
 
 impl GcpContext {
-    pub fn create_credentials(&self) -> Result<Credentials> {
+    pub fn create_credentials(&self) -> Result<Credentials, build_errors::Error> {
         match &self.auth {
             AuthMethod::ApplicationDefault => {
                 Ok(google_cloud_auth::credentials::Builder::default().build()?)

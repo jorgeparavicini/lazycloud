@@ -5,15 +5,17 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::layout::{Constraint, Rect};
 use ratatui::widgets::Cell;
 use ratatui::Frame;
+use std::sync::Arc;
+
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::app::AppMessage;
-use crate::commands::Command;
+use crate::commands::{Command, CommandCtx};
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::payload::PayloadMsg;
 use crate::provider::gcp::secret_manager::secrets::Secret;
-use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
+use crate::provider::gcp::secret_manager::service::{SecretManagerMsg, SmDomainMsg};
 use crate::provider::gcp::secret_manager::SecretManager;
+use crate::provider::gcp::service::Lifecycle;
 use crate::search::Matcher;
 use crate::service::ServiceMsg;
 use crate::ui::{
@@ -133,13 +135,13 @@ pub enum VersionsMsg {
 
 impl From<VersionsMsg> for SecretManagerMsg {
     fn from(msg: VersionsMsg) -> Self {
-        Self::Version(msg)
+        Self::Domain(SmDomainMsg::Version(msg))
     }
 }
 
 impl From<VersionsMsg> for EventResult<SecretManagerMsg> {
     fn from(msg: VersionsMsg) -> Self {
-        Self::Event(SecretManagerMsg::Version(msg))
+        Self::Event(SecretManagerMsg::from(msg))
     }
 }
 
@@ -224,13 +226,13 @@ impl Screen for VersionListScreen {
 
     fn keybindings(&self) -> Vec<Keybinding> {
         vec![
-            Keybinding::hint("Enter", "Payload"),
-            Keybinding::hint("n", "Add version"),
-            Keybinding::hint("/", "Search"),
-            Keybinding::new("D", "Disable"),
-            Keybinding::new("e", "Enable"),
-            Keybinding::new("X", "Destroy"),
-            Keybinding::new("r", "Reload"),
+            Keybinding::primary("Enter", "Payload"),
+            Keybinding::primary("n", "Add version"),
+            Keybinding::primary("/", "Search"),
+            Keybinding::secondary("D", "Disable"),
+            Keybinding::secondary("e", "Enable"),
+            Keybinding::secondary("X", "Destroy"),
+            Keybinding::secondary("r", "Reload"),
         ]
     }
 }
@@ -264,7 +266,7 @@ impl Modal for CreateVersionDialog {
                 .into()
             }
             EventResult::Event(TextInputEvent::Cancelled) => {
-                SecretManagerMsg::DialogCancelled.into()
+                Lifecycle::DialogCancelled.into()
             }
             // Empty submission
             _ => EventResult::Consumed,
@@ -312,7 +314,7 @@ impl Modal for DestroyVersionDialog {
                 version: self.version.clone(),
             }
             .into(),
-            EventResult::Event(ConfirmEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
+            EventResult::Event(ConfirmEvent::Cancelled) => Lifecycle::DialogCancelled.into(),
             _ => EventResult::Consumed,
         })
     }
@@ -330,43 +332,43 @@ pub(super) fn update(state: &mut SecretManager, msg: VersionsMsg) -> Result<Serv
     match msg {
         VersionsMsg::Load(secret) => {
             // Use cached versions if available
-            if let Some(versions) = state.get_cached_versions(&secret) {
-                state.push_view(VersionListScreen::new(secret, versions));
+            if let Some(versions) = state.cache.get::<_, Vec<SecretVersion>>(&secret) {
+                state.views.push(VersionListScreen::new(secret, versions.clone()));
                 return Ok(ServiceMsg::Idle);
             }
 
-            state.display_loading_spinner("Loading versions...");
+            state.views.set_loading("Loading versions...");
 
             Ok(FetchVersionsCmd {
                 secret,
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
 
         VersionsMsg::Loaded { secret, versions } => {
-            state.hide_loading_spinner();
-            state.cache_versions(&secret, versions.clone());
-            state.push_view(VersionListScreen::new(secret, versions));
+            state.views.clear_loading();
+            state.cache.insert(secret.clone(), versions.clone());
+            state.views.push(VersionListScreen::new(secret, versions));
             Ok(ServiceMsg::Idle)
         }
 
         VersionsMsg::StartCreation(secret) => {
-            state.display_overlay(CreateVersionDialog::new(secret));
+            state.views.show_modal(CreateVersionDialog::new(secret));
             Ok(ServiceMsg::Idle)
         }
 
         VersionsMsg::Create { secret, payload } => {
-            state.display_loading_spinner("Creating version...");
-            state.close_overlay();
-            state.invalidate_versions_cache(&secret);
+            state.views.set_loading("Creating version...");
+            state.views.close_modal();
+            state.cache.invalidate::<Secret, Secret>(&secret);
 
             Ok(AddVersionCmd {
                 secret,
                 payload,
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
@@ -375,52 +377,52 @@ pub(super) fn update(state: &mut SecretManager, msg: VersionsMsg) -> Result<Serv
         | VersionsMsg::Disabled { secret }
         | VersionsMsg::Enabled { secret }
         | VersionsMsg::Destroyed { secret } => {
-            state.pop_view();
+            state.views.pop();
             state.queue(VersionsMsg::Load(secret).into());
             Ok(ServiceMsg::Idle)
         }
 
         VersionsMsg::Disable { secret, version } => {
-            state.display_loading_spinner("Disabling version...");
-            state.invalidate_versions_cache(&secret);
+            state.views.set_loading("Disabling version...");
+            state.cache.invalidate::<Secret, Secret>(&secret);
 
             Ok(DisableVersionCmd {
                 secret,
                 version,
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
 
         VersionsMsg::Enable { secret, version } => {
-            state.display_loading_spinner("Enabling version...");
-            state.invalidate_versions_cache(&secret);
+            state.views.set_loading("Enabling version...");
+            state.cache.invalidate::<Secret, Secret>(&secret);
 
             Ok(EnableVersionCmd {
                 secret,
                 version,
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
 
         VersionsMsg::ConfirmDestroy { secret, version } => {
-            state.display_overlay(DestroyVersionDialog::new(secret, version));
+            state.views.show_modal(DestroyVersionDialog::new(secret, version));
             Ok(ServiceMsg::Idle)
         }
 
         VersionsMsg::Destroy { secret, version } => {
-            state.display_loading_spinner("Destroying version...");
-            state.close_overlay();
-            state.invalidate_versions_cache(&secret);
+            state.views.set_loading("Destroying version...");
+            state.views.close_modal();
+            state.cache.invalidate::<Secret, Secret>(&secret);
 
             Ok(DestroyVersionCmd {
                 secret,
                 version,
                 client: state.get_client()?,
-                tx: state.get_msg_sender(),
+                tx: state.clone_sender(),
             }
             .into())
         }
@@ -452,7 +454,7 @@ impl Command for FetchVersionsCmd {
         format!("Loading '{}' versions", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
         let versions = self.client.list_versions(&self.secret.name).await?;
         self.tx.send(
             VersionsMsg::Loaded {
@@ -478,7 +480,7 @@ impl Command for AddVersionCmd {
         format!("Adding version to '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
         self.client
             .add_secret_version(&self.secret.name, self.payload.as_bytes())
             .await?;
@@ -508,7 +510,7 @@ impl Command for DisableVersionCmd {
         )
     }
 
-    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
         self.client
             .disable_version(&self.secret.name, &self.version.version_id)
             .await?;
@@ -538,7 +540,7 @@ impl Command for EnableVersionCmd {
         )
     }
 
-    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
         self.client
             .enable_version(&self.secret.name, &self.version.version_id)
             .await?;
@@ -568,7 +570,7 @@ impl Command for DestroyVersionCmd {
         )
     }
 
-    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
         self.client
             .destroy_version(&self.secret.name, &self.version.version_id)
             .await?;
