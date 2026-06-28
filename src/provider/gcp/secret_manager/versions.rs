@@ -226,13 +226,13 @@ impl Screen for VersionListScreen {
 
     fn keybindings(&self) -> Vec<Keybinding> {
         vec![
-            Keybinding::hint("Enter", "Payload"),
-            Keybinding::hint("n", "Add version"),
-            Keybinding::hint("/", "Search"),
-            Keybinding::new("D", "Disable"),
-            Keybinding::new("e", "Enable"),
-            Keybinding::new("X", "Destroy"),
-            Keybinding::new("r", "Reload"),
+            Keybinding::primary("Enter", "Payload"),
+            Keybinding::primary("n", "Add version"),
+            Keybinding::primary("/", "Search"),
+            Keybinding::secondary("D", "Disable"),
+            Keybinding::secondary("e", "Enable"),
+            Keybinding::secondary("X", "Destroy"),
+            Keybinding::secondary("r", "Reload"),
         ]
     }
 }

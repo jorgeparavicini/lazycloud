@@ -311,9 +311,9 @@ impl Screen for ObjectBrowserScreen {
 
     fn keybindings(&self) -> Vec<Keybinding> {
         vec![
-            Keybinding::hint("Enter", "Open"),
-            Keybinding::hint("r", "Reload"),
-            Keybinding::hint("Esc", "Back"),
+            Keybinding::primary("Enter", "Open"),
+            // Esc/Back is a global binding, so it is not repeated here.
+            Keybinding::secondary("r", "Reload"),
         ]
     }
 }

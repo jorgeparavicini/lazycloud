@@ -138,9 +138,9 @@ impl Screen for PayloadScreen {
 
     fn keybindings(&self) -> Vec<Keybinding> {
         vec![
-            Keybinding::hint("y", "Copy"),
-            Keybinding::hint("e", "Edit"),
-            Keybinding::new("r", "Reload"),
+            Keybinding::primary("y", "Copy"),
+            Keybinding::primary("e", "Edit"),
+            Keybinding::secondary("r", "Reload"),
         ]
     }
 }

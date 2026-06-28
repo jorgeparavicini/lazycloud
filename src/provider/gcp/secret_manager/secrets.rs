@@ -378,16 +378,16 @@ impl Screen for SecretListScreen {
 
     fn keybindings(&self) -> Vec<Keybinding> {
         vec![
-            Keybinding::hint("Enter", "Payload"),
-            Keybinding::hint("y", "Copy"),
-            Keybinding::hint("v", "Versions"),
-            Keybinding::hint("n", "New"),
-            Keybinding::hint("d", "Delete"),
-            Keybinding::hint("/", "Search"),
-            Keybinding::new("l", "Labels"),
-            Keybinding::new("i", "IAM"),
-            Keybinding::new("R", "Replication"),
-            Keybinding::new("r", "Reload"),
+            Keybinding::primary("Enter", "Payload"),
+            Keybinding::primary("n", "New"),
+            Keybinding::primary("d", "Delete"),
+            Keybinding::primary("/", "Search"),
+            Keybinding::secondary("v", "Versions"),
+            Keybinding::secondary("y", "Copy"),
+            Keybinding::secondary("l", "Labels"),
+            Keybinding::secondary("i", "IAM"),
+            Keybinding::secondary("R", "Replication"),
+            Keybinding::secondary("r", "Reload"),
         ]
     }
 }
@@ -441,8 +441,8 @@ impl Screen for LabelsScreen {
 
     fn keybindings(&self) -> Vec<Keybinding> {
         vec![
-            Keybinding::hint("/", "Search"),
-            Keybinding::new("r", "Reload"),
+            Keybinding::primary("/", "Search"),
+            Keybinding::secondary("r", "Reload"),
         ]
     }
 }
@@ -484,8 +484,8 @@ impl Screen for IamPolicyScreen {
 
     fn keybindings(&self) -> Vec<Keybinding> {
         vec![
-            Keybinding::hint("/", "Search"),
-            Keybinding::new("r", "Reload"),
+            Keybinding::primary("/", "Search"),
+            Keybinding::secondary("r", "Reload"),
         ]
     }
 }
@@ -582,7 +582,7 @@ impl Screen for ReplicationScreen {
     }
 
     fn keybindings(&self) -> Vec<Keybinding> {
-        vec![Keybinding::new("r", "Reload")]
+        vec![Keybinding::secondary("r", "Reload")]
     }
 }
 

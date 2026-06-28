@@ -122,8 +122,8 @@ impl Screen for BucketListScreen {
 
     fn keybindings(&self) -> Vec<Keybinding> {
         vec![
-            Keybinding::hint("/", "Search"),
-            Keybinding::hint("r", "Reload"),
+            Keybinding::primary("/", "Search"),
+            Keybinding::secondary("r", "Reload"),
         ]
     }
 }
