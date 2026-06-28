@@ -1,150 +1,70 @@
-use crate::Theme;
-use crate::app::AppMessage;
-use crate::commands::Command;
-use crate::context::{CloudContext, GcpContext};
-use crate::provider::Provider;
-use crate::provider::gcp::gcs::client::GcsClient;
-use crate::registry::ServiceProvider;
-use crate::service::{Service, ServiceMsg};
-use crate::ui::EventResult;
+//! Cloud Storage service wiring.
+//!
+//! All lifecycle/connection/API-enable machinery lives in the shared
+//! [`crate::provider::gcp::service`] harness. This module only declares what is
+//! unique to GCS: its domain messages, its per-service state, and how to connect
+//! and dispatch.
+
 use async_trait::async_trait;
 use color_eyre::Result;
-use crossterm::event::KeyEvent;
-use ratatui::Frame;
-use ratatui::layout::Rect;
-use tokio::sync::mpsc::{UnboundedSender};
-use tracing::error;
-use crate::event_queue::EventQueue;
-use crate::view_stack::ViewStack;
+use tokio::sync::mpsc::UnboundedSender;
 
-pub(super) enum GcsMsg {
-    Initialize,
+use crate::context::GcpContext;
+use crate::provider::gcp::gcs::buckets::{self, BucketsMsg};
+use crate::provider::gcp::gcs::client::{ClientError, GcsClient};
+use crate::provider::gcp::gcs::objects::{self, ObjectsMsg, PreviewContent};
+use crate::provider::gcp::service::{ConnectError, GcpService, GcpServiceLogic, HostMsg};
+use crate::service::ServiceMsg;
+
+/// Concrete service type used throughout the GCS feature slices.
+pub type Gcs = GcpService<GcsLogic>;
+
+/// The message type that flows through the GCS service.
+pub type GcsMsg = HostMsg<GcsLogic>;
+
+/// GCS-specific messages, dispatched to feature slices.
+#[derive(Debug, Clone)]
+pub enum GcsDomainMsg {
+    Bucket(BucketsMsg),
+    Object(ObjectsMsg),
 }
 
-pub struct GcsProvider;
-
-impl ServiceProvider for GcsProvider {
-    fn provider(&self) -> Provider {
-        Provider::Gcp
-    }
-
-    fn service_key(&self) -> &'static str {
-        "gcs"
-    }
-
-    fn display_name(&self) -> &'static str {
-        "Cloud Storage"
-    }
-
-    fn description(&self) -> &'static str {
-        "Manage Google Cloud Storage buckets and objects."
-    }
-
-    fn create_service(&self, ctx: &CloudContext) -> Box<dyn Service> {
-        let CloudContext::Gcp(gcp_ctx) = ctx;
-        Box::new(Gcs::new(gcp_ctx.clone()))
-    }
-}
-
-pub struct Gcs {
-    context: GcpContext,
-    client: Option<GcsClient>,
-    event_queue: EventQueue<GcsMsg>,
-    views: ViewStack<GcsMsg>,
-}
-
-impl Gcs {
-    pub fn new(ctx: GcpContext) -> Self {
-        Self {
-            context: ctx,
-            client: None,
-            event_queue: EventQueue::new(),
-            views: ViewStack::new(),
-        }
-    }
-
-    fn process_message(&mut self, msg: GcsMsg) -> Result<ServiceMsg> {
-        match msg {
-            GcsMsg::Initialize => {
-                let cmd = InitClientCmd {
-                    context: self.context.clone(),
-                    tx: self.event_queue.clone_sender(),
-                };
-                Ok(ServiceMsg::Run(vec![Box::new(cmd)]))
-            }
-        }
-    }
-}
-
-impl Service for Gcs {
-    fn init(&mut self) {
-        self.event_queue.send(GcsMsg::Initialize);
-    }
-
-    fn handle_key(&mut self, key: KeyEvent) -> EventResult<()> {
-        EventResult::Ignored
-    }
-
-    fn update(&mut self) -> Result<ServiceMsg> {
-        let mut commands: Vec<Box<dyn crate::commands::Command>> = Vec::new();
-
-        loop {
-            let messages = self.event_queue.drain();
-            if messages.is_empty() {
-                break;
-            }
-            match EventQueue::process_events(messages, |msg| self.process_message(msg))? {
-                ServiceMsg::Idle => {}
-                ServiceMsg::Run(cmds) => commands.extend(cmds),
-                ServiceMsg::Close => return Ok(ServiceMsg::Close),
-                msg @ ServiceMsg::EditExternal { .. } => return Ok(msg),
-            }
-        }
-
-        if commands.is_empty() {
-            Ok(ServiceMsg::Idle)
-        } else {
-            Ok(ServiceMsg::Run(commands))
-        }
-    }
-
-    fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        self.views.render(frame, area, theme);
-    }
-
-    fn breadcrumbs(&self) -> Vec<String> {
-        vec!["GCS".to_string()]
-    }
-}
-
-struct InitClientCmd {
-    context: GcpContext,
-    tx: UnboundedSender<GcsMsg>,
+/// Per-service domain state owned by the harness.
+pub struct GcsLogic {
+    /// Channel feeding object previews to the active browser screen.
+    pub(super) preview_tx: Option<UnboundedSender<PreviewContent>>,
 }
 
 #[async_trait]
-impl Command for InitClientCmd {
-    fn name(&self) -> String {
-        format!(
-            "Initializing GCS client for project {}",
-            self.context.project_id
-        )
+impl GcpServiceLogic for GcsLogic {
+    type Domain = GcsDomainMsg;
+    type Client = GcsClient;
+
+    const SERVICE_KEY: &'static str = "gcs";
+    const DISPLAY_NAME: &'static str = "Cloud Storage";
+    const DESCRIPTION: &'static str = "Manage Google Cloud Storage buckets and objects.";
+    const API_SERVICE: &'static str = "storage.googleapis.com";
+
+    fn new() -> Self {
+        Self { preview_tx: None }
     }
 
-    async fn execute(
-        self: Box<Self>,
-        action_tx: UnboundedSender<AppMessage>,
-    ) -> crate::ui::Result<()> {
-        match GcsClient::new(&self.context).await {
-            Ok(client) => {
-                self.tx.send(GcsMsg::Initialize)?;
-                Ok(())
-            }
-            // TODO: Handle disabled api globally
-            Err(err) => {
-                error!("Failed to initialize GCS client: {err}");
-                Err(err.into())
-            }
+    async fn connect(context: &GcpContext) -> Result<Self::Client, ConnectError> {
+        match GcsClient::new(context).await {
+            Ok(client) => Ok(client),
+            Err(ClientError::ApiDisabled) => Err(ConnectError::ApiDisabled),
+            Err(e) => Err(ConnectError::Other(e.into())),
+        }
+    }
+
+    fn on_connected(host: &mut GcpService<Self>) {
+        host.queue(BucketsMsg::Load.into());
+    }
+
+    fn update(host: &mut GcpService<Self>, msg: Self::Domain) -> Result<ServiceMsg> {
+        match msg {
+            GcsDomainMsg::Bucket(msg) => buckets::update(host, msg),
+            GcsDomainMsg::Object(msg) => objects::update(host, msg),
         }
     }
 }

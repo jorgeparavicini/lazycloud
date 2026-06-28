@@ -11,14 +11,16 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Cell, Paragraph};
 use tokio::sync::mpsc::UnboundedSender;
 
+use std::sync::Arc;
+
 use crate::Theme;
-use crate::app::AppMessage;
-use crate::commands::{Command, CopyToClipboardCmd};
+use crate::commands::{Command, CommandCtx, CopyToClipboardCmd};
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::{ClientError, SecretManagerClient};
 use crate::provider::gcp::secret_manager::payload::PayloadMsg;
-use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
+use crate::provider::gcp::secret_manager::service::{SecretManagerMsg, SmDomainMsg};
 use crate::provider::gcp::secret_manager::versions::VersionsMsg;
+use crate::provider::gcp::service::Lifecycle;
 use crate::search::Matcher;
 use crate::service::ServiceMsg;
 use crate::ui::{
@@ -293,13 +295,13 @@ pub enum SecretsMsg {
 
 impl From<SecretsMsg> for SecretManagerMsg {
     fn from(msg: SecretsMsg) -> Self {
-        Self::Secret(msg)
+        Self::Domain(SmDomainMsg::Secret(msg))
     }
 }
 
 impl From<SecretsMsg> for EventResult<SecretManagerMsg> {
     fn from(msg: SecretsMsg) -> Self {
-        Self::Event(SecretManagerMsg::Secret(msg))
+        Self::Event(SecretManagerMsg::from(msg))
     }
 }
 
@@ -618,7 +620,7 @@ impl Modal for CreateSecretWizard {
                     EventResult::Consumed
                 }
                 EventResult::Event(TextInputEvent::Cancelled) => {
-                    SecretManagerMsg::DialogCancelled.into()
+                    Lifecycle::DialogCancelled.into()
                 }
                 _ => EventResult::Consumed,
             },
@@ -633,7 +635,7 @@ impl Modal for CreateSecretWizard {
                     SecretsMsg::Create { name, payload }.into()
                 }
                 EventResult::Event(TextInputEvent::Cancelled) => {
-                    SecretManagerMsg::DialogCancelled.into()
+                    Lifecycle::DialogCancelled.into()
                 }
                 _ => EventResult::Consumed,
             },
@@ -678,7 +680,7 @@ impl Modal for DeleteSecretDialog {
             EventResult::Event(ConfirmEvent::Confirmed) => {
                 SecretsMsg::Delete(self.secret.clone()).into()
             }
-            EventResult::Event(ConfirmEvent::Cancelled) => SecretManagerMsg::DialogCancelled.into(),
+            EventResult::Event(ConfirmEvent::Cancelled) => Lifecycle::DialogCancelled.into(),
             _ => EventResult::Consumed,
         })
     }
@@ -912,14 +914,14 @@ impl Command for FetchSecretsCmd {
         "Loading secrets".to_string()
     }
 
-    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
         match self.client.list_secrets().await {
             Ok(secrets) => {
                 self.tx.send(SecretsMsg::Loaded(secrets).into())?;
                 Ok(())
             }
             Err(ClientError::ApiDisabled) => {
-                self.tx.send(SecretManagerMsg::ApiDisabled)?;
+                self.tx.send(Lifecycle::ApiDisabled.into())?;
                 Ok(())
             }
             Err(e) => Err(e.into()),
@@ -940,7 +942,7 @@ impl Command for CreateSecretCmd {
         format!("Creating '{}'", self.name)
     }
 
-    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
         let secret = if let Some(payload) = self.payload {
             self.client
                 .create_secret_with_payload(&self.name, payload.as_bytes())
@@ -965,7 +967,7 @@ impl Command for DeleteSecretCmd {
         format!("Deleting '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
         self.client.delete_secret(&self.secret.name).await?;
         self.tx.send(SecretsMsg::Deleted(self.secret.name).into())?;
         Ok(())
@@ -985,7 +987,7 @@ impl Command for UpdateLabelsCmd {
         format!("Updating labels on '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
         let secret = self
             .client
             .update_labels(&self.secret.name, self.labels)
@@ -1007,7 +1009,7 @@ impl Command for FetchIamPolicyCmd {
         format!("Loading IAM for '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
         let policy = self.client.get_iam_policy(&self.secret.name).await?;
         self.tx.send(
             SecretsMsg::IamPolicyLoaded {
@@ -1032,7 +1034,7 @@ impl Command for FetchSecretMetadataCmd {
         format!("Loading metadata for '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
         let secret = self.client.get_secret(&self.secret.name).await?;
         let replication = secret.replication.clone();
         self.tx.send(
@@ -1058,7 +1060,7 @@ impl Command for LoadPayloadCmd {
         format!("Loading payload for '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
         let payload = self.client.access_latest_version(&self.secret.name).await?;
         self.tx.send(
             SecretsMsg::PayloadLoaded {

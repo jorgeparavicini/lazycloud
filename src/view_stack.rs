@@ -10,7 +10,7 @@ pub struct ViewStack<M: 'static> {
     screens: Vec<Box<dyn Screen<Output = M>>>,
     modal: Option<Box<dyn Modal<Output = M>>>,
     spinner: Spinner,
-    loading: Option<&'static str>,
+    loading: Option<String>,
 }
 
 impl<M> ViewStack<M> {
@@ -60,11 +60,11 @@ impl<M> ViewStack<M> {
         self.modal = None;
     }
 
-    pub const fn set_loading(&mut self, label: &'static str) {
-        self.loading = Some(label);
+    pub fn set_loading(&mut self, label: impl Into<String>) {
+        self.loading = Some(label.into());
     }
 
-    pub const fn clear_loading(&mut self) {
+    pub fn clear_loading(&mut self) {
         self.loading = None;
     }
 
@@ -79,6 +79,9 @@ impl<M> ViewStack<M> {
     pub fn handle_tick(&mut self) {
         if self.loading.is_some() {
             self.spinner.handle_tick();
+        }
+        if let Some(screen) = self.current_screen_mut() {
+            screen.handle_tick();
         }
     }
 
@@ -124,8 +127,8 @@ impl<M> ViewStack<M> {
     }
 
     pub fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
-        if let Some(label) = self.loading {
-            self.spinner.set_label(label);
+        if let Some(label) = &self.loading {
+            self.spinner.set_label(label.clone());
             self.spinner.render(frame, area, theme);
         } else if let Some(screen) = self.current_screen_mut() {
             screen.render(frame, area, theme);

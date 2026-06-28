@@ -4,4 +4,4 @@ mod secrets;
 mod service;
 mod versions;
 
-pub use service::{SecretManager, SecretManagerProvider};
+pub use service::{SecretManager, SecretManagerLogic};

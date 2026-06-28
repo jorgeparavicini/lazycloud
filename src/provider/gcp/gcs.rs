@@ -1,4 +1,6 @@
+mod buckets;
 mod client;
+mod objects;
 mod service;
 
-pub use service::{Gcs, GcsProvider};
+pub use service::{Gcs, GcsLogic};

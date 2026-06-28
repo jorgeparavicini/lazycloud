@@ -4,15 +4,16 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::widgets::Paragraph;
+use std::sync::Arc;
+
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::Theme;
-use crate::app::AppMessage;
-use crate::commands::{Command, CopyToClipboardCmd};
+use crate::commands::{Command, CommandCtx, CopyToClipboardCmd};
 use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::secrets::Secret;
-use crate::provider::gcp::secret_manager::service::SecretManagerMsg;
+use crate::provider::gcp::secret_manager::service::{SecretManagerMsg, SmDomainMsg};
 use crate::provider::gcp::secret_manager::versions::SecretVersion;
 use crate::service::ServiceMsg;
 use crate::ui::{EventResult, Keybinding, Result, Screen};
@@ -57,13 +58,13 @@ pub enum PayloadMsg {
 
 impl From<PayloadMsg> for SecretManagerMsg {
     fn from(msg: PayloadMsg) -> Self {
-        Self::Payload(msg)
+        Self::Domain(SmDomainMsg::Payload(msg))
     }
 }
 
 impl From<PayloadMsg> for EventResult<SecretManagerMsg> {
     fn from(msg: PayloadMsg) -> Self {
-        Self::Event(SecretManagerMsg::Payload(msg))
+        Self::Event(SecretManagerMsg::from(msg))
     }
 }
 
@@ -195,7 +196,7 @@ pub(super) fn update(state: &mut SecretManager, msg: PayloadMsg) -> Result<Servi
         }
 
         PayloadMsg::Edit { secret, data } => {
-            state.set_editing_secret(secret);
+            state.logic.editing_secret = Some(secret);
             Ok(ServiceMsg::EditExternal { content: data })
         }
 
@@ -252,7 +253,7 @@ impl Command for FetchPayloadCmd {
         )
     }
 
-    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
         let payload = self
             .client
             .access_version(&self.secret.name, &self.version.version_id)
@@ -282,14 +283,14 @@ impl Command for SaveEditCmd {
         format!("Saving edit to '{}'", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, ctx: Arc<dyn CommandCtx>) -> Result<()> {
         self.client
             .add_secret_version(&self.secret.name, self.new_data.as_bytes())
             .await?;
-        let _ = action_tx.send(AppMessage::ShowToast {
-            message: format!("New version created for '{}'", self.secret.name),
-            toast_type: crate::ui::ToastType::Success,
-        });
+        ctx.toast(
+            format!("New version created for '{}'", self.secret.name),
+            crate::ui::ToastType::Success,
+        );
         self.tx.send(
             PayloadMsg::EditSaved {
                 secret: self.secret,
@@ -312,7 +313,7 @@ impl Command for FetchLatestPayloadCmd {
         format!("Loading '{}' (latest)", self.secret.name)
     }
 
-    async fn execute(self: Box<Self>, _action_tx: UnboundedSender<AppMessage>) -> Result<()> {
+    async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
         let payload = self.client.access_latest_version(&self.secret.name).await?;
         self.tx.send(
             PayloadMsg::Loaded {
