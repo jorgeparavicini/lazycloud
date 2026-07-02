@@ -7,12 +7,20 @@
 mod clipboard;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 pub use clipboard::CopyToClipboardCmd;
 use color_eyre::Result;
 
 use crate::ui::ToastType;
+
+/// Default wall-clock timeout applied to a command's execution.
+///
+/// Network/auth operations occasionally hang (e.g. a token fetch stuck
+/// retrying transient errors). Capping execution turns an indefinite hang into
+/// a surfaced error so the UI never gets stuck on a loading spinner forever.
+pub const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Capabilities a [`Command`] is allowed to use to talk back to the
 /// application shell while it runs.
@@ -35,6 +43,13 @@ pub trait Command: Send + 'static {
     /// Human-readable name for status display.
     /// Include context like secret names, version IDs, etc.
     fn name(&self) -> String;
+
+    /// How long the command may run before the shell aborts it and surfaces a
+    /// timeout error. Returning `None` opts out of the timeout entirely (use
+    /// for genuinely long-running work such as polling an API-enable LRO).
+    fn timeout(&self) -> Option<Duration> {
+        Some(DEFAULT_COMMAND_TIMEOUT)
+    }
 
     /// Execute the command.
     ///

@@ -1,8 +1,8 @@
-use crate::context::GcpContext;
-use google_cloud_auth::build_errors;
+use crate::context::{CredentialError, GcpContext};
 use google_cloud_gax::client_builder;
 use google_cloud_gax::error::rpc::Code;
 use google_cloud_storage::client::{Storage, StorageControl};
+use tracing::{debug, info};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
@@ -12,8 +12,8 @@ pub enum ClientError {
     #[error("Permission denied: {0}")]
     PermissionDenied(String),
 
-    #[error("Failed to create credentials: {0}")]
-    CredentialsError(build_errors::Error),
+    #[error("{0}")]
+    CredentialsError(#[from] CredentialError),
 
     #[error("Failed to create GCS client: {0}")]
     ClientCreationError(client_builder::Error),
@@ -78,25 +78,30 @@ pub struct GcsClient {
 
 impl GcsClient {
     pub async fn new(context: &GcpContext) -> Result<Self, ClientError> {
-        let control_creds = context
-            .create_credentials()
-            .map_err(ClientError::CredentialsError)?;
-        let storage_creds = context
-            .create_credentials()
-            .map_err(ClientError::CredentialsError)?;
+        info!(
+            project = %context.project_id,
+            account = %context.account,
+            "Creating GCS credentials"
+        );
+        // Build and validate the credentials once, then share the clone across
+        // both clients (Credentials is Arc-backed) to avoid a second preflight.
+        let credentials = context.create_credentials().await?;
 
+        debug!("Credentials validated; building StorageControl client");
         let control = StorageControl::builder()
-            .with_credentials(control_creds)
+            .with_credentials(credentials.clone())
             .build()
             .await
             .map_err(ClientError::ClientCreationError)?;
 
+        debug!("Building Storage client");
         let storage = Storage::builder()
-            .with_credentials(storage_creds)
+            .with_credentials(credentials)
             .build()
             .await
             .map_err(|e| ClientError::Other(format!("Failed to create Storage client: {e}")))?;
 
+        info!("GCS clients ready");
         Ok(Self {
             control,
             storage,
@@ -105,12 +110,14 @@ impl GcsClient {
     }
 
     pub async fn list_buckets(&self) -> Result<Vec<BucketInfo>, ClientError> {
+        info!(parent = %self.parent, "Listing buckets");
         let response = self
             .control
             .list_buckets()
             .set_parent(&self.parent)
             .send()
             .await?;
+        debug!(count = response.buckets.len(), "Received buckets response");
 
         let buckets = response
             .buckets

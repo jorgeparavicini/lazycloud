@@ -1962,6 +1962,7 @@ dependencies = [
  "google-cloud-secretmanager-v1",
  "google-cloud-storage",
  "google-cloud-wkt",
+ "http",
  "ratatui",
  "serde",
  "serde_json",

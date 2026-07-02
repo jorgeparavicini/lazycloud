@@ -2,10 +2,10 @@ use color_eyre::Result;
 use crossterm::event::KeyCode;
 
 use super::{ActivePopup, App, AppMessage, AppState};
-use crate::context::{ContextMergeEvent, ContextSelectorEvent};
+use crate::context::{AuthEditorEvent, ContextSelectorEvent, ContextSyncEvent};
 use crate::theme::ThemeEvent;
 use crate::tui::TuiEvent;
-use crate::ui::{Component, ErrorDialogEvent, EventResult, HelpEvent, Screen};
+use crate::ui::{Component, ErrorDialogEvent, EventResult, HelpEvent, LogViewEvent, Screen};
 
 impl App {
     pub(super) fn handle_popup_event(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
@@ -39,15 +39,35 @@ impl App {
                     self.msg_tx.send(AppMessage::ClosePopup)?;
                 }
             }
-            ActivePopup::ContextMerge(merge) => match merge.handle_key(key) {
-                Ok(EventResult::Event(ContextMergeEvent::Import(contexts))) => {
-                    self.msg_tx.send(AppMessage::ImportContexts(contexts))?;
+            ActivePopup::ContextSync(sync) => match sync.handle_key(key) {
+                Ok(EventResult::Event(ContextSyncEvent::Apply(decisions))) => {
+                    self.msg_tx.send(AppMessage::ApplyContextSync(decisions))?;
                 }
-                Ok(EventResult::Event(ContextMergeEvent::Skip)) => {
+                Ok(EventResult::Event(ContextSyncEvent::Cancel)) => {
                     self.msg_tx.send(AppMessage::ClosePopup)?;
                 }
                 _ => {}
             },
+            ActivePopup::AuthEditor(editor) => match editor.handle_key(key) {
+                Ok(EventResult::Event(AuthEditorEvent::Save { context_name, auth })) => {
+                    self.msg_tx.send(AppMessage::SetContextAuth {
+                        name: context_name,
+                        auth,
+                    })?;
+                }
+                Ok(EventResult::Event(AuthEditorEvent::Cancel)) => {
+                    self.msg_tx.send(AppMessage::ClosePopup)?;
+                }
+                _ => {}
+            },
+            ActivePopup::Logs(logs) => {
+                if matches!(
+                    logs.handle_key(key),
+                    Ok(EventResult::Event(LogViewEvent::Close))
+                ) {
+                    self.msg_tx.send(AppMessage::ClosePopup)?;
+                }
+            }
         }
         Ok(())
     }
@@ -68,6 +88,8 @@ impl App {
                     self.msg_tx.send(AppMessage::DisplayThemeSelector)?;
                 } else if key.code == KeyCode::Char('c') {
                     self.msg_tx.send(AppMessage::ToggleCommandStatus)?;
+                } else if key.code == KeyCode::Char('L') {
+                    self.msg_tx.send(AppMessage::ToggleLogs)?;
                 } else if key.code == KeyCode::Esc {
                     self.msg_tx.send(AppMessage::GoBack)?;
                 }
@@ -105,6 +127,10 @@ impl App {
                         }
                         Ok(EventResult::Event(ContextSelectorEvent::Refresh)) => {
                             self.msg_tx.send(AppMessage::RefreshContexts)?;
+                            return Ok(());
+                        }
+                        Ok(EventResult::Event(ContextSelectorEvent::EditAuth(context))) => {
+                            self.msg_tx.send(AppMessage::EditContextAuth(context))?;
                             return Ok(());
                         }
                         Ok(EventResult::Consumed) => true,

@@ -19,7 +19,8 @@ impl App {
             // Get keybindings for status bar
             let local_keybindings = match &self.state {
                 AppState::ActiveService(service) => service.keybindings(),
-                _ => vec![],
+                AppState::SelectingContext(selector) => selector.keybindings(),
+                AppState::SelectingService(_) => vec![],
             };
 
             let chunks = Layout::default()
@@ -93,8 +94,14 @@ impl App {
                     ActivePopup::Error(dialog) => {
                         dialog.render(frame, frame.area(), &self.theme);
                     }
-                    ActivePopup::ContextMerge(merge) => {
-                        merge.render(frame, frame.area(), &self.theme);
+                    ActivePopup::ContextSync(sync) => {
+                        sync.render(frame, frame.area(), &self.theme);
+                    }
+                    ActivePopup::AuthEditor(editor) => {
+                        editor.render(frame, frame.area(), &self.theme);
+                    }
+                    ActivePopup::Logs(logs) => {
+                        logs.render(frame, frame.area(), &self.theme);
                     }
                 }
             }

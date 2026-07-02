@@ -4,7 +4,7 @@ use tracing::{debug, error, warn};
 
 use super::{ActivePopup, App, AppMessage, AppState};
 use crate::config::save_theme;
-use crate::context::{ContextMergePopup, ContextSelectorView};
+use crate::context::{AuthMethodEditor, ContextSelectorView, ContextSyncPopup};
 use crate::theme::ThemeSelectorView;
 use crate::tui::Tui;
 use crate::ui::{ErrorDialog, Toast};
@@ -36,10 +36,15 @@ impl App {
                 error!("Error: {err}");
                 self.popup = Some(ActivePopup::Error(ErrorDialog::new(err)));
             }
+            AppMessage::DisplayExpectedError(err) => {
+                warn!("Actionable error: {err}");
+                self.popup = Some(ActivePopup::Error(ErrorDialog::new(err).expected()));
+            }
             AppMessage::DisplayHelp => self.open_help_overlay(),
             AppMessage::DisplayThemeSelector => {
                 self.popup = Some(ActivePopup::ThemeSelector(ThemeSelectorView::new()));
             }
+            AppMessage::ToggleLogs => self.toggle_logs(),
             AppMessage::ClosePopup => {
                 self.popup = None;
             }
@@ -98,32 +103,50 @@ impl App {
                 self.go_back();
             }
             AppMessage::RefreshContexts => {
-                let new_contexts = self.context_manager.discover_new();
-                if new_contexts.is_empty() {
+                let diff = self.context_manager.diff_gcloud();
+                if diff.is_empty() {
                     self.toast_manager
-                        .show(Toast::info("No new contexts found"));
+                        .show(Toast::info("Contexts already in sync with gcloud"));
                 } else {
-                    self.popup = Some(ActivePopup::ContextMerge(ContextMergePopup::new(
-                        new_contexts,
-                    )));
+                    self.popup = Some(ActivePopup::ContextSync(ContextSyncPopup::new(diff)));
                 }
             }
-            AppMessage::ImportContexts(new_contexts) => {
-                let count = new_contexts.len();
-                if let Err(e) = self.context_manager.add_contexts(new_contexts) {
-                    error!("Failed to import contexts: {e}");
+            AppMessage::ApplyContextSync(decisions) => {
+                match self.context_manager.apply_sync(decisions) {
+                    Ok(summary) if summary.is_empty() => {
+                        self.toast_manager.show(Toast::info("No changes applied"));
+                    }
+                    Ok(summary) => {
+                        let contexts = self.context_manager.get_all();
+                        self.state =
+                            AppState::SelectingContext(ContextSelectorView::new(contexts));
+                        self.toast_manager.show(Toast::success(format!(
+                            "Synced contexts: +{} ~{} -{}",
+                            summary.added, summary.updated, summary.removed
+                        )));
+                    }
+                    Err(e) => {
+                        error!("Failed to apply context sync: {e}");
+                        self.toast_manager
+                            .show(Toast::info("Failed to sync contexts"));
+                    }
+                }
+                self.popup = None;
+            }
+            AppMessage::EditContextAuth(context) => {
+                self.popup = Some(ActivePopup::AuthEditor(AuthMethodEditor::new(&context)));
+            }
+            AppMessage::SetContextAuth { name, auth } => {
+                if let Err(e) = self.context_manager.set_auth(&name, auth) {
+                    error!("Failed to update auth method: {e}");
                     self.toast_manager
-                        .show(Toast::info("Failed to import contexts"));
+                        .show(Toast::info("Failed to update auth method"));
                 } else {
                     let contexts = self.context_manager.get_all();
-                    self.state = AppState::SelectingContext(ContextSelectorView::new(
-                        contexts,
-                    ));
-                    self.toast_manager.show(Toast::success(format!(
-                        "Imported {} context{}",
-                        count,
-                        if count == 1 { "" } else { "s" }
-                    )));
+                    self.state =
+                        AppState::SelectingContext(ContextSelectorView::new(contexts));
+                    self.toast_manager
+                        .show(Toast::success(format!("Updated auth for '{name}'")));
                 }
                 self.popup = None;
             }

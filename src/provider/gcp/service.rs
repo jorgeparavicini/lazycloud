@@ -13,6 +13,7 @@
 
 use std::marker::PhantomData;
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use color_eyre::Result;
@@ -466,8 +467,14 @@ impl<L: GcpServiceLogic> Command for EnableApiCmd<L> {
         format!("Enabling {} API", L::DISPLAY_NAME)
     }
 
+    /// Enabling an API is a long-running operation we poll to completion, so it
+    /// gets a generous cap rather than the default short network timeout.
+    fn timeout(&self) -> Option<Duration> {
+        Some(Duration::from_mins(5))
+    }
+
     async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> Result<()> {
-        let credentials = self.context.create_credentials()?;
+        let credentials = self.context.create_credentials().await?;
         let client = ServiceUsage::builder()
             .with_credentials(credentials)
             .build()
