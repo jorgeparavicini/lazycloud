@@ -1,8 +1,9 @@
-use crate::context::{CredentialError, GcpContext};
 use google_cloud_gax::client_builder;
 use google_cloud_gax::error::rpc::Code;
 use google_cloud_storage::client::{Storage, StorageControl};
 use tracing::{debug, info};
+
+use crate::context::{CredentialError, GcpContext};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
@@ -166,10 +167,7 @@ impl GcsClient {
                 } else {
                     obj.name.rsplit('/').next().unwrap_or(&obj.name).to_string()
                 };
-                let updated = obj
-                    .update_time
-                    .map(String::from)
-                    .unwrap_or_default();
+                let updated = obj.update_time.map(String::from).unwrap_or_default();
                 ObjectInfo {
                     name: display_name,
                     full_name: obj.name,

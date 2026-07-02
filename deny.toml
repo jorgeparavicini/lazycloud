@@ -11,6 +11,15 @@ ignore = [
   # Transitive dep via google-cloud-auth; no safe upgrade available.
   # See https://rustsec.org/advisories/RUSTSEC-2025-0134
   "RUSTSEC-2025-0134",
+  # aws-lc-sys 0.38.0 (transitive via google-cloud-auth -> aws-lc-rs); pinned
+  # by aws-lc-rs, no compatible upgrade to a patched (>=0.39) release yet.
+  "RUSTSEC-2026-0044",
+  "RUSTSEC-2026-0048",
+  # quick-xml 0.38.4 (transitive via arboard -> wl-clipboard-rs ->
+  # wayland-scanner); wayland-scanner pins <0.41, so no patched upgrade yet.
+  # Only reachable through Wayland clipboard parsing, not attacker-controlled.
+  "RUSTSEC-2026-0194",
+  "RUSTSEC-2026-0195",
 ]
 
 [licenses]
@@ -24,6 +33,11 @@ allow = [
   "MPL-2.0",
   "ISC",
   "CDLA-Permissive-2.0",
+  # `edit` (external editor launcher) is public-domain dedicated.
+  "CC0-1.0",
+  # aws-lc-sys bundles BoringSSL/OpenSSL-derived code (transitive via
+  # google-cloud-auth -> aws-lc-rs); the OpenSSL license is permissive.
+  "OpenSSL",
 ]
 confidence-threshold = 0.8
 exceptions = []

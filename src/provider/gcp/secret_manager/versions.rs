@@ -1,29 +1,40 @@
 use std::fmt::Display;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::widgets::Cell;
-use ratatui::Frame;
-use std::sync::Arc;
-
 use tokio::sync::mpsc::UnboundedSender;
 
+use crate::Theme;
 use crate::commands::{Command, CommandCtx};
+use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::payload::PayloadMsg;
 use crate::provider::gcp::secret_manager::secrets::Secret;
 use crate::provider::gcp::secret_manager::service::{SecretManagerMsg, SmDomainMsg};
-use crate::provider::gcp::secret_manager::SecretManager;
 use crate::provider::gcp::service::Lifecycle;
 use crate::search::Matcher;
 use crate::service::ServiceMsg;
 use crate::ui::{
-    ColumnDef, Component, ConfirmDialog, ConfirmEvent, EventResult, Keybinding, Modal, Result,
-    Screen, Table, TableEvent, TableRow, TextInput, TextInputEvent,
+    ColumnDef,
+    Component,
+    ConfirmDialog,
+    ConfirmEvent,
+    EventResult,
+    Keybinding,
+    Modal,
+    Result,
+    Screen,
+    Table,
+    TableEvent,
+    TableRow,
+    TextInput,
+    TextInputEvent,
 };
 use crate::utility::format_timestamp;
-use crate::Theme;
 // === Models ===
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,10 +52,10 @@ impl SecretVersion {
         Self {
             version_id: version_id.to_string(),
             state: format!("{:?}", proto.state),
-            created_at: proto.create_time.as_ref().map_or_else(
-                || "Unknown".to_string(),
-                |t| format_timestamp(t.seconds()),
-            ),
+            created_at: proto
+                .create_time
+                .as_ref()
+                .map_or_else(|| "Unknown".to_string(), |t| format_timestamp(t.seconds())),
         }
     }
 }
@@ -265,9 +276,7 @@ impl Modal for CreateVersionDialog {
                 }
                 .into()
             }
-            EventResult::Event(TextInputEvent::Cancelled) => {
-                Lifecycle::DialogCancelled.into()
-            }
+            EventResult::Event(TextInputEvent::Cancelled) => Lifecycle::DialogCancelled.into(),
             // Empty submission
             _ => EventResult::Consumed,
         })
@@ -286,12 +295,10 @@ pub struct DestroyVersionDialog {
 
 impl DestroyVersionDialog {
     pub fn new(secret: Secret, version: SecretVersion) -> Self {
-        let dialog = ConfirmDialog::new(
-            format!(
-                "Destroy version '{}'? This is permanent and cannot be undone.",
-                version.version_id
-            ),
-        )
+        let dialog = ConfirmDialog::new(format!(
+            "Destroy version '{}'? This is permanent and cannot be undone.",
+            version.version_id
+        ))
         .with_title("Destroy Version")
         .with_confirm_text("Destroy")
         .danger();
@@ -333,7 +340,9 @@ pub(super) fn update(state: &mut SecretManager, msg: VersionsMsg) -> Result<Serv
         VersionsMsg::Load(secret) => {
             // Use cached versions if available
             if let Some(versions) = state.cache.get::<_, Vec<SecretVersion>>(&secret) {
-                state.views.push(VersionListScreen::new(secret, versions.clone()));
+                state
+                    .views
+                    .push(VersionListScreen::new(secret, versions.clone()));
                 return Ok(ServiceMsg::Idle);
             }
 
@@ -409,7 +418,9 @@ pub(super) fn update(state: &mut SecretManager, msg: VersionsMsg) -> Result<Serv
         }
 
         VersionsMsg::ConfirmDestroy { secret, version } => {
-            state.views.show_modal(DestroyVersionDialog::new(secret, version));
+            state
+                .views
+                .show_modal(DestroyVersionDialog::new(secret, version));
             Ok(ServiceMsg::Idle)
         }
 

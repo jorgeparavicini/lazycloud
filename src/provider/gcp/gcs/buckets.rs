@@ -1,11 +1,11 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
 use ratatui::widgets::Cell;
 use tokio::sync::mpsc::UnboundedSender;
-
-use std::sync::Arc;
 
 use crate::Theme;
 use crate::commands::{Command, CommandCtx};
@@ -17,7 +17,15 @@ use crate::provider::gcp::service::Lifecycle;
 use crate::search::Matcher;
 use crate::service::ServiceMsg;
 use crate::ui::{
-    ColumnDef, Component, EventResult, Keybinding, Result, Screen, Table, TableEvent, TableRow,
+    ColumnDef,
+    Component,
+    EventResult,
+    Keybinding,
+    Result,
+    Screen,
+    Table,
+    TableEvent,
+    TableRow,
 };
 
 const BUCKETS_CACHE_KEY: &str = "buckets";
@@ -133,8 +141,9 @@ impl Screen for BucketListScreen {
 pub(super) fn update(state: &mut Gcs, msg: BucketsMsg) -> color_eyre::Result<ServiceMsg> {
     match msg {
         BucketsMsg::Load => {
-            if let Some(buckets) =
-                state.cache.get::<_, Vec<Bucket>>(&BUCKETS_CACHE_KEY.to_string())
+            if let Some(buckets) = state
+                .cache
+                .get::<_, Vec<Bucket>>(&BUCKETS_CACHE_KEY.to_string())
             {
                 state.views.push(BucketListScreen::new(buckets.clone()));
                 return Ok(ServiceMsg::Idle);

@@ -1,10 +1,10 @@
 use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::layout::Rect;
 use ratatui::Frame;
+use ratatui::layout::Rect;
 
+use crate::Theme;
 use crate::event_queue::EventQueue;
 use crate::ui::{Component, EventResult, EventResultExt, Keybinding, Modal, Screen, Spinner};
-use crate::Theme;
 
 pub struct ViewStack<M: 'static> {
     screens: Vec<Box<dyn Screen<Output = M>>>,

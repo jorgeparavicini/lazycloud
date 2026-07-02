@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::hash::Hash;
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent};
 use google_cloud_secretmanager_v1::model;
@@ -10,8 +12,6 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Cell, Paragraph};
 use tokio::sync::mpsc::UnboundedSender;
-
-use std::sync::Arc;
 
 use crate::Theme;
 use crate::commands::{Command, CommandCtx, CopyToClipboardCmd};
@@ -24,8 +24,20 @@ use crate::provider::gcp::service::Lifecycle;
 use crate::search::Matcher;
 use crate::service::ServiceMsg;
 use crate::ui::{
-    ColumnDef, Component, ConfirmDialog, ConfirmEvent, EventResult, Keybinding, Modal, Result,
-    Screen, Table, TableEvent, TableRow, TextInput, TextInputEvent,
+    ColumnDef,
+    Component,
+    ConfirmDialog,
+    ConfirmEvent,
+    EventResult,
+    Keybinding,
+    Modal,
+    Result,
+    Screen,
+    Table,
+    TableEvent,
+    TableRow,
+    TextInput,
+    TextInputEvent,
 };
 use crate::utility::format_timestamp;
 
@@ -496,10 +508,7 @@ pub struct ReplicationScreen {
 }
 
 impl ReplicationScreen {
-    pub const fn new(
-        secret: Secret,
-        replication: ReplicationConfig,
-    ) -> Self {
+    pub const fn new(secret: Secret, replication: ReplicationConfig) -> Self {
         Self {
             secret,
             replication,
@@ -619,9 +628,7 @@ impl Modal for CreateSecretWizard {
                     self.step = CreateSecretWizardStep::Payload;
                     EventResult::Consumed
                 }
-                EventResult::Event(TextInputEvent::Cancelled) => {
-                    Lifecycle::DialogCancelled.into()
-                }
+                EventResult::Event(TextInputEvent::Cancelled) => Lifecycle::DialogCancelled.into(),
                 _ => EventResult::Consumed,
             },
             CreateSecretWizardStep::Payload => match self.payload_input.handle_key(key)? {
@@ -634,9 +641,7 @@ impl Modal for CreateSecretWizard {
                     };
                     SecretsMsg::Create { name, payload }.into()
                 }
-                EventResult::Event(TextInputEvent::Cancelled) => {
-                    Lifecycle::DialogCancelled.into()
-                }
+                EventResult::Event(TextInputEvent::Cancelled) => Lifecycle::DialogCancelled.into(),
                 _ => EventResult::Consumed,
             },
         })
@@ -657,12 +662,10 @@ pub struct DeleteSecretDialog {
 
 impl DeleteSecretDialog {
     pub fn new(secret: Secret) -> Self {
-        let dialog = ConfirmDialog::new(
-            format!(
-                "Are you sure you want to delete the secret \"{}\"?",
-                secret.name
-            ),
-        )
+        let dialog = ConfirmDialog::new(format!(
+            "Are you sure you want to delete the secret \"{}\"?",
+            secret.name
+        ))
         .with_title("Delete Secret")
         .with_confirm_text("Delete")
         .with_cancel_text("Cancel")
@@ -697,7 +700,10 @@ impl Modal for DeleteSecretDialog {
 pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<ServiceMsg> {
     match msg {
         SecretsMsg::Load => {
-            if let Some(secrets) = state.cache.get::<_, Vec<Secret>>(&SECRETS_CACHE_KEY.to_string()) {
+            if let Some(secrets) = state
+                .cache
+                .get::<_, Vec<Secret>>(&SECRETS_CACHE_KEY.to_string())
+            {
                 state.views.push(SecretListScreen::new(secrets.clone()));
                 return Ok(ServiceMsg::Idle);
             }
@@ -737,7 +743,9 @@ pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<Servi
         }
 
         SecretsMsg::Created(_secret) => {
-            state.cache.invalidate::<_, Vec<Secret>>(&SECRETS_CACHE_KEY.to_string());
+            state
+                .cache
+                .invalidate::<_, Vec<Secret>>(&SECRETS_CACHE_KEY.to_string());
             state.queue(SecretsMsg::Load.into());
             Ok(ServiceMsg::Idle)
         }
@@ -760,7 +768,9 @@ pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<Servi
         }
 
         SecretsMsg::Deleted(_name) => {
-            state.cache.invalidate::<_, Vec<Secret>>(&SECRETS_CACHE_KEY.to_string());
+            state
+                .cache
+                .invalidate::<_, Vec<Secret>>(&SECRETS_CACHE_KEY.to_string());
             state.views.pop_to_root();
             state.queue(SecretsMsg::Load.into());
             Ok(ServiceMsg::Idle)
@@ -801,7 +811,9 @@ pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<Servi
 
         SecretsMsg::LabelsUpdated(secret) => {
             state.views.clear_loading();
-            state.cache.invalidate::<_, Vec<Secret>>(&SECRETS_CACHE_KEY.to_string());
+            state
+                .cache
+                .invalidate::<_, Vec<Secret>>(&SECRETS_CACHE_KEY.to_string());
             state.views.pop();
             state.views.push(LabelsScreen::new(secret));
             Ok(ServiceMsg::Idle)
@@ -840,7 +852,9 @@ pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<Servi
             replication,
         } => {
             state.views.clear_loading();
-            state.views.push(ReplicationScreen::new(secret, replication));
+            state
+                .views
+                .push(ReplicationScreen::new(secret, replication));
             Ok(ServiceMsg::Idle)
         }
 

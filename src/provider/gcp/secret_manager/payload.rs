@@ -1,11 +1,11 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::widgets::Paragraph;
-use std::sync::Arc;
-
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::Theme;
@@ -155,7 +155,9 @@ pub(super) fn update(state: &mut SecretManager, msg: PayloadMsg) -> Result<Servi
                 .cache
                 .get::<_, SecretPayload>(&get_cache_key(&secret, version.as_ref()))
             {
-                state.views.push(PayloadScreen::new(secret, version, payload.clone()));
+                state
+                    .views
+                    .push(PayloadScreen::new(secret, version, payload.clone()));
                 return Ok(ServiceMsg::Idle);
             }
 
@@ -187,7 +189,9 @@ pub(super) fn update(state: &mut SecretManager, msg: PayloadMsg) -> Result<Servi
             state
                 .cache
                 .insert(get_cache_key(&secret, version.as_ref()), payload.clone());
-            state.views.push(PayloadScreen::new(secret, version, payload));
+            state
+                .views
+                .push(PayloadScreen::new(secret, version, payload));
             Ok(ServiceMsg::Idle)
         }
 

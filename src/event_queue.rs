@@ -1,8 +1,9 @@
-use crate::commands::Command;
-use crate::service::ServiceMsg;
 use color_eyre::Result;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+
+use crate::commands::Command;
+use crate::service::ServiceMsg;
 
 pub struct EventQueue<Event> {
     tx: UnboundedSender<Event>,

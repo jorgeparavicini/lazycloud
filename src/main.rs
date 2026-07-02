@@ -13,10 +13,12 @@ use crate::logging::{LogBuffer, LogBufferLayer};
 use crate::registry::ServiceRegistry;
 
 mod app;
+mod cache;
 mod cli;
 pub mod commands;
 mod config;
 mod context;
+mod event_queue;
 mod logging;
 mod provider;
 mod registry;
@@ -26,8 +28,6 @@ mod theme;
 pub mod tui;
 mod ui;
 pub mod utility;
-mod cache;
-mod event_queue;
 mod view_stack;
 
 pub use theme::Theme;

@@ -132,7 +132,11 @@ impl Component for ConfirmDialog {
 
         // Focused button: bg highlight + bold text
         // Unfocused button: dimmed
-        let confirm_key_style = if focused_confirm { key_style } else { dim_key_style };
+        let confirm_key_style = if focused_confirm {
+            key_style
+        } else {
+            dim_key_style
+        };
         let confirm_style = if focused_confirm {
             Style::default()
                 .fg(confirm_color)
@@ -142,7 +146,11 @@ impl Component for ConfirmDialog {
             Style::default().fg(theme.overlay0())
         };
 
-        let cancel_key_style = if focused_confirm { dim_key_style } else { key_style };
+        let cancel_key_style = if focused_confirm {
+            dim_key_style
+        } else {
+            key_style
+        };
         let cancel_style = if focused_confirm {
             Style::default().fg(theme.overlay0())
         } else {
@@ -168,7 +176,8 @@ impl Component for ConfirmDialog {
         ];
 
         let title = format!(" {} ", self.title);
-        let block = theme.popup_block(&title)
+        let block = theme
+            .popup_block(&title)
             .title_style(
                 Style::default()
                     .fg(title_color)

@@ -36,10 +36,7 @@ impl Command for CopyToClipboardCmd {
         #[cfg(not(target_os = "linux"))]
         clipboard.set_text(self.text)?;
 
-        ctx.toast(
-            format!("Copied {}", self.toast_message),
-            ToastType::Success,
-        );
+        ctx.toast(format!("Copied {}", self.toast_message), ToastType::Success);
         Ok(())
     }
 }
