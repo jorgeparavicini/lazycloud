@@ -14,7 +14,17 @@ use crate::Theme;
 use crate::cli::Args;
 use crate::commands::{Command, CommandCtx};
 use crate::config::AppConfig;
-use crate::context::{CloudContext, ContextManager, ContextMergePopup, ContextSelectorView};
+use crate::context::{
+    AuthMethod,
+    AuthMethodEditor,
+    CloudContext,
+    ContextManager,
+    ContextSelectorView,
+    ContextSyncPopup,
+    CredentialError,
+    SyncDecision,
+};
+use crate::logging::LogBuffer;
 use crate::registry::ServiceRegistry;
 use crate::service::{Service, ServiceMsg, ServiceSelectorView};
 use crate::theme::ThemeSelectorView;
@@ -25,6 +35,8 @@ use crate::ui::{
     ErrorDialog,
     HelpOverlay,
     KeybindingSection,
+    LogView,
+    Screen,
     StatusBar,
     ToastManager,
     ToastType,
@@ -58,8 +70,10 @@ pub enum AppMessage {
     ClearScreen,
 
     DisplayError(String),
+    DisplayExpectedError(String),
     DisplayHelp,
     DisplayThemeSelector,
+    ToggleLogs,
     ClosePopup,
 
     CommandCompleted {
@@ -78,7 +92,9 @@ pub enum AppMessage {
     GoBack,
 
     RefreshContexts,
-    ImportContexts(Vec<CloudContext>),
+    ApplyContextSync(Vec<SyncDecision>),
+    EditContextAuth(CloudContext),
+    SetContextAuth { name: String, auth: AuthMethod },
 }
 
 /// Application state - what the user is currently doing.
@@ -95,7 +111,9 @@ enum ActivePopup {
     Help(HelpOverlay),
     ThemeSelector(ThemeSelectorView),
     Error(ErrorDialog),
-    ContextMerge(ContextMergePopup),
+    ContextSync(ContextSyncPopup),
+    AuthEditor(AuthMethodEditor),
+    Logs(LogView),
 }
 
 pub struct App {
@@ -115,6 +133,7 @@ pub struct App {
     config: Arc<AppConfig>,
     pending_service: Option<String>,
     pending_editor: Option<String>,
+    log_buffer: LogBuffer,
 }
 
 impl App {
@@ -122,6 +141,7 @@ impl App {
         registry: ServiceRegistry,
         config: Arc<AppConfig>,
         theme: Theme,
+        log_buffer: LogBuffer,
     ) -> Self {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
         let context_manager = ContextManager::new();
@@ -144,6 +164,7 @@ impl App {
             config,
             pending_service: None,
             pending_editor: None,
+            log_buffer,
         }
     }
 
@@ -252,18 +273,57 @@ impl App {
     }
 
     /// Spawn commands and signal when complete.
+    ///
+    /// Each command is bracketed with start/finish logging (visible live in the
+    /// log overlay) and an optional timeout, so a hung network/auth call turns
+    /// into a surfaced error instead of an indefinite loading spinner.
+    // `map_or_else` can't express the timeout branches: both arms `await` the
+    // (moved) execute future, which sync closures cannot do.
+    #[allow(clippy::option_if_let_else)]
     fn spawn_commands(&mut self, commands: Vec<Box<dyn Command>>) {
         for cmd in commands {
-            let id = self.command_tracker.start(cmd.name());
+            let name = cmd.name();
+            let timeout = cmd.timeout();
+            let id = self.command_tracker.start(name.clone());
             let msg_tx = self.msg_tx.clone();
             let ctx: Arc<dyn CommandCtx> = Arc::new(AppCommandCtx {
                 msg_tx: msg_tx.clone(),
             });
             tokio::spawn(async move {
-                let success = match cmd.execute(ctx).await {
-                    Ok(()) => true,
+                let started = std::time::Instant::now();
+                tracing::info!(command = %name, ?timeout, "Command started");
+
+                let result = match timeout {
+                    Some(limit) => match tokio::time::timeout(limit, cmd.execute(ctx)).await {
+                        Ok(res) => res,
+                        Err(_) => Err(color_eyre::eyre::eyre!(
+                            "'{name}' timed out after {}s — the operation may be blocked on \
+                             authentication or network connectivity",
+                            limit.as_secs()
+                        )),
+                    },
+                    None => cmd.execute(ctx).await,
+                };
+
+                let elapsed_ms = started.elapsed().as_millis();
+                let success = match result {
+                    Ok(()) => {
+                        tracing::info!(command = %name, elapsed_ms, "Command completed");
+                        true
+                    }
                     Err(e) => {
-                        let _ = msg_tx.send(AppMessage::DisplayError(e.to_string()));
+                        tracing::error!(command = %name, elapsed_ms, error = %e, "Command failed");
+                        // Credential problems are expected and user-actionable, not
+                        // bugs — surface them without the "report to developers" framing.
+                        let expected = e
+                            .chain()
+                            .any(|src| src.downcast_ref::<CredentialError>().is_some());
+                        let msg = e.to_string();
+                        let _ = msg_tx.send(if expected {
+                            AppMessage::DisplayExpectedError(msg)
+                        } else {
+                            AppMessage::DisplayError(msg)
+                        });
                         false
                     }
                 };
@@ -292,21 +352,33 @@ impl App {
     }
 
     fn open_help_overlay(&mut self) {
-        let local = match &self.state {
-            AppState::ActiveService(service) => service.keybindings(),
-            _ => vec![],
-        };
-        let local_title = match &self.state {
-            AppState::ActiveService(service) => service
-                .breadcrumbs()
-                .last()
-                .cloned()
-                .unwrap_or_else(|| "Current View".to_string()),
-            _ => "Navigation".to_string(),
+        let (local, local_title) = match &self.state {
+            AppState::ActiveService(service) => (
+                service.keybindings(),
+                service
+                    .breadcrumbs()
+                    .last()
+                    .cloned()
+                    .unwrap_or_else(|| "Current View".to_string()),
+            ),
+            AppState::SelectingContext(selector) => {
+                (selector.keybindings(), "Contexts".to_string())
+            }
+            AppState::SelectingService(_) => (vec![], "Navigation".to_string()),
         };
         self.popup = Some(ActivePopup::Help(HelpOverlay::with_sections(vec![
             KeybindingSection::new(&local_title, local),
             KeybindingSection::new("Global", self.status_bar.global_keybindings()),
         ])));
+    }
+
+    /// Toggle the live log viewer. Closes it if already open, otherwise opens
+    /// it on top of the current view.
+    fn toggle_logs(&mut self) {
+        if matches!(self.popup, Some(ActivePopup::Logs(_))) {
+            self.popup = None;
+        } else {
+            self.popup = Some(ActivePopup::Logs(LogView::new(self.log_buffer.clone())));
+        }
     }
 }

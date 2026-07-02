@@ -4,6 +4,7 @@ pub mod widgets;
 mod command_panel;
 mod error_dialog;
 mod help;
+mod log_view;
 mod status_bar;
 mod toast;
 
@@ -27,6 +28,7 @@ pub use components::{
 use crossterm::event::KeyEvent;
 pub use error_dialog::{ErrorDialog, ErrorDialogEvent};
 pub use help::{HelpEvent, HelpOverlay, Keybinding, KeybindingSection};
+pub use log_view::{LogView, LogViewEvent};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 pub use status_bar::StatusBar;

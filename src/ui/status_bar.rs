@@ -235,6 +235,7 @@ impl StatusBar {
             Keybinding::secondary("t", "Theme"),
             Keybinding::secondary("q", "Quit"),
             Keybinding::secondary("c", "Commands"),
+            Keybinding::secondary("L", "Logs"),
             Keybinding::secondary("Enter", "Select"),
             Keybinding::secondary("k/j", "Navigate"),
         ]

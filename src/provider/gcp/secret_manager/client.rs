@@ -5,8 +5,9 @@ use google_cloud_secretmanager_v1::client::SecretManagerService as GcpSecretMana
 use google_cloud_secretmanager_v1::model;
 use google_cloud_wkt::FieldMask;
 use tokio_util::bytes::Bytes;
+use tracing::{debug, info};
 
-use crate::context::GcpContext;
+use crate::context::{CredentialError, GcpContext};
 use crate::provider::gcp::secret_manager::payload::SecretPayload;
 use crate::provider::gcp::secret_manager::secrets::{
     IamBinding,
@@ -22,6 +23,9 @@ pub enum ClientError {
 
     #[error("{message}")]
     Rpc { code: Code, message: String },
+
+    #[error("{0}")]
+    Credentials(#[from] CredentialError),
 
     #[error("{0}")]
     Other(String),
@@ -57,16 +61,21 @@ impl SecretManagerClient {
     ///
     /// Uses the gcloud CLI credentials for the specified account.
     pub async fn new(context: &GcpContext) -> Result<Self, ClientError> {
-        let credentials = context
-            .create_credentials()
-            .map_err(|e| ClientError::Other(format!("{e:#}")))?;
+        info!(
+            project = %context.project_id,
+            account = %context.account,
+            "Creating Secret Manager credentials"
+        );
+        let credentials = context.create_credentials().await?;
 
+        debug!("Credentials validated; building Secret Manager client");
         let client = GcpSecretManagerClient::builder()
             .with_credentials(credentials)
             .build()
             .await
             .map_err(|e| ClientError::Other(e.to_string()))?;
 
+        info!("Secret Manager client ready");
         Ok(Self {
             client,
             project_id: context.project_id.clone(),
@@ -75,8 +84,10 @@ impl SecretManagerClient {
 
     pub async fn list_secrets(&self) -> Result<Vec<Secret>, ClientError> {
         let parent = format!("projects/{}", self.project_id);
+        info!(%parent, "Listing secrets");
 
         let response = self.client.list_secrets().set_parent(parent).send().await?;
+        debug!(count = response.secrets.len(), "Received secrets response");
 
         let mut secrets = Vec::new();
         for secret in response.secrets {
