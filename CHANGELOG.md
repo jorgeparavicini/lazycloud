@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.6] - 2026-06-28
+
+### Features
+
+- Edit secrets (53d9348)
+- Remove keybinding mapping (9839aa6)
+
 ## [0.1.5] - 2026-02-23
 
 ### Features
