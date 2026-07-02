@@ -42,6 +42,7 @@ impl Cache {
         store.insert(key, value);
     }
 
+    #[allow(dead_code)]
     pub fn clear<T>(&mut self)
     where
         T: 'static,
@@ -56,10 +57,10 @@ impl Cache {
         T: 'static,
     {
         let type_id = TypeId::of::<T>();
-        if let Some(store) = self.stores.get_mut(&type_id) {
-            if let Some(store) = store.downcast_mut::<HashMap<K, T>>() {
-                store.remove(key);
-            }
+        if let Some(store) = self.stores.get_mut(&type_id)
+            && let Some(store) = store.downcast_mut::<HashMap<K, T>>()
+        {
+            store.remove(key);
         }
     }
 }

@@ -68,6 +68,7 @@ impl<M> ViewStack<M> {
         self.loading = None;
     }
 
+    #[allow(dead_code)]
     pub const fn is_loading(&self) -> bool {
         self.loading.is_some()
     }
