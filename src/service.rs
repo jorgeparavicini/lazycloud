@@ -121,10 +121,7 @@ pub struct ServiceSelectorView {
 
 impl ServiceSelectorView {
     #[must_use]
-    pub fn new(
-        registry: &Arc<ServiceRegistry>,
-        context: &CloudContext,
-    ) -> Self {
+    pub fn new(registry: &Arc<ServiceRegistry>, context: &CloudContext) -> Self {
         let services: Vec<ServiceItem> = registry
             .available_services(context)
             .into_iter()

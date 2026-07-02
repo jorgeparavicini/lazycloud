@@ -133,13 +133,12 @@ impl GcpContext {
     /// Construct the credentials for the configured [`AuthMethod`] without any
     /// network validation.
     fn build_credentials(&self) -> Result<Credentials, CredentialError> {
-        let build = |e: google_cloud_auth::build_errors::Error| CredentialError::Build(e.to_string());
+        let build =
+            |e: google_cloud_auth::build_errors::Error| CredentialError::Build(e.to_string());
         match &self.auth {
-            AuthMethod::ApplicationDefault => {
-                google_cloud_auth::credentials::Builder::default()
-                    .build()
-                    .map_err(build)
-            }
+            AuthMethod::ApplicationDefault => google_cloud_auth::credentials::Builder::default()
+                .build()
+                .map_err(build),
             AuthMethod::ServiceAccountKey { path } => {
                 let display = path.display().to_string();
                 let contents =
@@ -178,7 +177,10 @@ impl GcpContext {
                 Err(CredentialError::Unusable(concise_error(&e.to_string())))
             }
             Err(_) => {
-                warn!(timeout_secs = Self::PREFLIGHT_TIMEOUT.as_secs(), "Credential validation timed out");
+                warn!(
+                    timeout_secs = Self::PREFLIGHT_TIMEOUT.as_secs(),
+                    "Credential validation timed out"
+                );
                 Err(CredentialError::Timeout(Self::PREFLIGHT_TIMEOUT))
             }
         }
@@ -355,11 +357,13 @@ impl ContextManager {
                     incoming: incoming.clone(),
                     existing: None,
                 }),
-                Some(existing) if existing.differs_from_gcloud(incoming) => entries.push(SyncEntry {
-                    kind: SyncKind::Modified,
-                    incoming: incoming.clone(),
-                    existing: Some(existing.clone()),
-                }),
+                Some(existing) if existing.differs_from_gcloud(incoming) => {
+                    entries.push(SyncEntry {
+                        kind: SyncKind::Modified,
+                        incoming: incoming.clone(),
+                        existing: Some(existing.clone()),
+                    });
+                }
                 Some(_) => {}
             }
         }
@@ -421,10 +425,8 @@ impl ContextManager {
                     summary.added += 1;
                 }
                 SyncKind::Modified => {
-                    if let Some(existing) = self
-                        .contexts
-                        .iter_mut()
-                        .find(|c| c.name() == decision.name)
+                    if let Some(existing) =
+                        self.contexts.iter_mut().find(|c| c.name() == decision.name)
                     {
                         let mut updated = decision.incoming;
                         updated.inherit_auth(existing);
@@ -433,7 +435,8 @@ impl ContextManager {
                     }
                 }
                 SyncKind::Removed => {
-                    if let Some(pos) = self.contexts.iter().position(|c| c.name() == decision.name) {
+                    if let Some(pos) = self.contexts.iter().position(|c| c.name() == decision.name)
+                    {
                         self.contexts.remove(pos);
                         summary.removed += 1;
                     }
@@ -593,10 +596,12 @@ impl Screen for ContextSelectorView {
             }
             EventResult::Ignored => match key.code {
                 KeyCode::Char('r') => ContextSelectorEvent::Refresh.into(),
-                KeyCode::Char('e') => self.table.selected_item().map_or(
-                    EventResult::Ignored,
-                    |ctx| ContextSelectorEvent::EditAuth(ctx.clone()).into(),
-                ),
+                KeyCode::Char('e') => self
+                    .table
+                    .selected_item()
+                    .map_or(EventResult::Ignored, |ctx| {
+                        ContextSelectorEvent::EditAuth(ctx.clone()).into()
+                    }),
                 _ => EventResult::Ignored,
             },
             _ => EventResult::Consumed,
@@ -673,10 +678,7 @@ impl ContextSyncPopup {
         }
 
         let mut state = ListState::default();
-        if let Some(pos) = rows
-            .iter()
-            .position(|r| matches!(r, SyncRow::Item(_)))
-        {
+        if let Some(pos) = rows.iter().position(|r| matches!(r, SyncRow::Item(_))) {
             state.select(Some(pos));
         }
 
@@ -919,8 +921,9 @@ impl AuthMethodEditor {
         state.select(Some(selected));
 
         let path_input = match &current {
-            AuthMethod::ServiceAccountKey { path } => TextInput::new("Service account key path")
-                .with_value(path.display().to_string()),
+            AuthMethod::ServiceAccountKey { path } => {
+                TextInput::new("Service account key path").with_value(path.display().to_string())
+            }
             _ => TextInput::new("Service account key path").with_placeholder("/path/to/key.json"),
         };
 

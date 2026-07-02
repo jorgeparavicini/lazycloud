@@ -118,8 +118,7 @@ impl App {
                     }
                     Ok(summary) => {
                         let contexts = self.context_manager.get_all();
-                        self.state =
-                            AppState::SelectingContext(ContextSelectorView::new(contexts));
+                        self.state = AppState::SelectingContext(ContextSelectorView::new(contexts));
                         self.toast_manager.show(Toast::success(format!(
                             "Synced contexts: +{} ~{} -{}",
                             summary.added, summary.updated, summary.removed
@@ -143,8 +142,7 @@ impl App {
                         .show(Toast::info("Failed to update auth method"));
                 } else {
                     let contexts = self.context_manager.get_all();
-                    self.state =
-                        AppState::SelectingContext(ContextSelectorView::new(contexts));
+                    self.state = AppState::SelectingContext(ContextSelectorView::new(contexts));
                     self.toast_manager
                         .show(Toast::success(format!("Updated auth for '{name}'")));
                 }

@@ -79,7 +79,10 @@ impl Component for ErrorDialog {
         // Preserve the message's own line breaks (e.g. an actionable hint on its
         // own line, an indented command) rather than collapsing to one blob.
         for message_line in self.message.split('\n') {
-            lines.push(Line::from(Span::styled(message_line.to_string(), message_style)));
+            lines.push(Line::from(Span::styled(
+                message_line.to_string(),
+                message_style,
+            )));
         }
         lines.push(Line::from(""));
 
@@ -95,7 +98,10 @@ impl Component for ErrorDialog {
             lines.push(Line::from(""));
         }
 
-        lines.push(Line::from(Span::styled("Press Enter or Esc to dismiss", hint_style)));
+        lines.push(Line::from(Span::styled(
+            "Press Enter or Esc to dismiss",
+            hint_style,
+        )));
 
         // Vertically center by padding the top with blank lines. `inner` height
         // excludes the two border rows.

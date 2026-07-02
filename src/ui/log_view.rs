@@ -116,7 +116,10 @@ impl Component for LogView {
                 .iter()
                 .map(|entry| {
                     Line::from(vec![
-                        Span::styled(entry.timestamp.format("%H:%M:%S%.3f").to_string(), time_style),
+                        Span::styled(
+                            entry.timestamp.format("%H:%M:%S%.3f").to_string(),
+                            time_style,
+                        ),
                         Span::raw(" "),
                         Span::styled(
                             format!("{:>5}", entry.level.as_str()),

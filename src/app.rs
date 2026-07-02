@@ -94,7 +94,10 @@ pub enum AppMessage {
     RefreshContexts,
     ApplyContextSync(Vec<SyncDecision>),
     EditContextAuth(CloudContext),
-    SetContextAuth { name: String, auth: AuthMethod },
+    SetContextAuth {
+        name: String,
+        auth: AuthMethod,
+    },
 }
 
 /// Application state - what the user is currently doing.
@@ -246,9 +249,9 @@ impl App {
                         Ok(new) if new != content => Some(new),
                         Ok(_) => None,
                         Err(e) => {
-                            let _ = self.msg_tx.send(AppMessage::DisplayError(
-                                format!("Failed to open editor: {e}"),
-                            ));
+                            let _ = self.msg_tx.send(AppMessage::DisplayError(format!(
+                                "Failed to open editor: {e}"
+                            )));
                             None
                         }
                     };

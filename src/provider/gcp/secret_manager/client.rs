@@ -9,11 +9,7 @@ use tracing::{debug, info};
 
 use crate::context::{CredentialError, GcpContext};
 use crate::provider::gcp::secret_manager::payload::SecretPayload;
-use crate::provider::gcp::secret_manager::secrets::{
-    IamBinding,
-    IamPolicy,
-    Secret,
-};
+use crate::provider::gcp::secret_manager::secrets::{IamBinding, IamPolicy, Secret};
 use crate::provider::gcp::secret_manager::versions::SecretVersion;
 
 #[derive(Debug, thiserror::Error)]
@@ -118,7 +114,11 @@ impl SecretManagerClient {
         Ok(versions)
     }
 
-    pub async fn access_version(&self, secret_id: &str, version_id: &str) -> Result<SecretPayload, ClientError> {
+    pub async fn access_version(
+        &self,
+        secret_id: &str,
+        version_id: &str,
+    ) -> Result<SecretPayload, ClientError> {
         let name = format!(
             "projects/{}/secrets/{}/versions/{}",
             self.project_id, secret_id, version_id
@@ -144,7 +144,10 @@ impl SecretManagerClient {
         }
     }
 
-    pub async fn access_latest_version(&self, secret_id: &str) -> Result<SecretPayload, ClientError> {
+    pub async fn access_latest_version(
+        &self,
+        secret_id: &str,
+    ) -> Result<SecretPayload, ClientError> {
         let name = format!(
             "projects/{}/secrets/{}/versions/latest",
             self.project_id, secret_id
@@ -232,11 +235,7 @@ impl SecretManagerClient {
             .send()
             .await?;
 
-        let version_id = response
-            .name
-            .split('/')
-            .next_back()
-            .unwrap_or("unknown");
+        let version_id = response.name.split('/').next_back().unwrap_or("unknown");
 
         Ok(SecretVersion::from_proto(version_id, &response))
     }
@@ -263,7 +262,11 @@ impl SecretManagerClient {
     }
 
     /// Enable a previously disabled secret version.
-    pub async fn enable_version(&self, secret_id: &str, version_id: &str) -> Result<SecretVersion, ClientError> {
+    pub async fn enable_version(
+        &self,
+        secret_id: &str,
+        version_id: &str,
+    ) -> Result<SecretVersion, ClientError> {
         let name = format!(
             "projects/{}/secrets/{}/versions/{}",
             self.project_id, secret_id, version_id

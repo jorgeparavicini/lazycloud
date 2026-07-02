@@ -258,10 +258,7 @@ mod tests {
             "Mock Service"
         }
 
-        fn create_service(
-            &self,
-            _ctx: &CloudContext,
-        ) -> Box<dyn Service> {
+        fn create_service(&self, _ctx: &CloudContext) -> Box<dyn Service> {
             Box::new(MockService)
         }
     }

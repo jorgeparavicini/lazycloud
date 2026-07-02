@@ -26,10 +26,7 @@ impl<T: ListRow + Clone> List<T> {
         if !items.is_empty() {
             state.select(Some(0));
         }
-        Self {
-            items,
-            state,
-        }
+        Self { items, state }
     }
 
     #[allow(dead_code)]

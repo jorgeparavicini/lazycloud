@@ -1,13 +1,13 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{ListItem, Paragraph, Wrap};
-use ratatui::Frame;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
-
-use std::sync::Arc;
 
 use crate::Theme;
 use crate::commands::{Command, CommandCtx};
@@ -30,11 +30,12 @@ pub enum ObjectEntry {
 impl ListRow for ObjectEntry {
     fn render_row(&self, theme: &Theme) -> ListItem<'static> {
         match self {
-            Self::ParentDir => {
-                ListItem::new("..").style(Style::default().fg(theme.text_muted()))
-            }
-            Self::Folder { name, .. } => ListItem::new(format!("{name}/"))
-                .style(Style::default().fg(theme.accent()).add_modifier(Modifier::BOLD)),
+            Self::ParentDir => ListItem::new("..").style(Style::default().fg(theme.text_muted())),
+            Self::Folder { name, .. } => ListItem::new(format!("{name}/")).style(
+                Style::default()
+                    .fg(theme.accent())
+                    .add_modifier(Modifier::BOLD),
+            ),
             Self::Object(info) => {
                 let line = Line::from(vec![
                     Span::styled(info.name.clone(), Style::default().fg(theme.text())),
@@ -72,16 +73,29 @@ fn format_size(bytes: i64) -> String {
 
 #[derive(Debug, Clone)]
 pub enum ObjectsMsg {
-    Browse { bucket: String },
-    Navigate { bucket: String, prefix: String },
+    Browse {
+        bucket: String,
+    },
+    Navigate {
+        bucket: String,
+        prefix: String,
+    },
     ObjectsLoaded {
         bucket: String,
         prefix: String,
         list: ObjectList,
     },
-    FetchPreview { bucket: String, object_name: String },
-    PreviewLoaded { content: PreviewContent },
-    Reload { bucket: String, prefix: String },
+    FetchPreview {
+        bucket: String,
+        object_name: String,
+    },
+    PreviewLoaded {
+        content: PreviewContent,
+    },
+    Reload {
+        bucket: String,
+        prefix: String,
+    },
 }
 
 impl From<ObjectsMsg> for GcsMsg {
@@ -100,19 +114,10 @@ impl From<ObjectsMsg> for EventResult<GcsMsg> {
 
 #[derive(Debug, Clone)]
 pub enum PreviewContent {
-    Text {
-        content: String,
-        truncated: bool,
-    },
-    Binary {
-        size: i64,
-    },
-    Error {
-        message: String,
-    },
-    Loading {
-        object_name: String,
-    },
+    Text { content: String, truncated: bool },
+    Binary { size: i64 },
+    Error { message: String },
+    Loading { object_name: String },
 }
 
 // === Screen ===
@@ -177,19 +182,14 @@ impl ObjectBrowserScreen {
                 format_size(*size)
             ))
             .style(Style::default().fg(theme.text_muted())),
-            Some(PreviewContent::Error { message }) => {
-                Paragraph::new(format!("Error: {message}"))
-                    .style(Style::default().fg(theme.error()))
-            }
+            Some(PreviewContent::Error { message }) => Paragraph::new(format!("Error: {message}"))
+                .style(Style::default().fg(theme.error())),
             Some(PreviewContent::Loading { object_name }) => {
                 Paragraph::new(format!("Loading {object_name}..."))
                     .style(Style::default().fg(theme.text_muted()))
             }
             None => self.list.selected().map_or_else(
-                || {
-                    Paragraph::new("No items")
-                        .style(Style::default().fg(theme.text_muted()))
-                },
+                || Paragraph::new("No items").style(Style::default().fg(theme.text_muted())),
                 |selected| match selected {
                     ObjectEntry::ParentDir => Paragraph::new("Parent directory")
                         .style(Style::default().fg(theme.text_muted())),
@@ -494,12 +494,19 @@ impl Command for FetchPreviewCmd {
     }
 
     async fn execute(self: Box<Self>, _ctx: Arc<dyn CommandCtx>) -> color_eyre::Result<()> {
-        let content = match self.client.read_object(&self.bucket, &self.object_name).await {
+        let content = match self
+            .client
+            .read_object(&self.bucket, &self.object_name)
+            .await
+        {
             Ok(data) => {
                 let max_bytes = 64 * 1024;
                 let truncated = data.len() >= max_bytes;
                 match String::from_utf8(data) {
-                    Ok(text) => PreviewContent::Text { content: text, truncated },
+                    Ok(text) => PreviewContent::Text {
+                        content: text,
+                        truncated,
+                    },
                     #[allow(clippy::cast_possible_wrap)]
                     Err(e) => PreviewContent::Binary {
                         size: e.into_bytes().len() as i64,

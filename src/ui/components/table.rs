@@ -2,13 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::prelude::{Modifier, Style};
-use ratatui::widgets::{
-    Cell,
-    Paragraph,
-    Row,
-    Table as RatatuiTable,
-    TableState,
-};
+use ratatui::widgets::{Cell, Paragraph, Row, Table as RatatuiTable, TableState};
 
 use crate::Theme;
 use crate::ui::{Component, EventResult, Result};
@@ -311,7 +305,8 @@ impl<T: TableRow + Clone> Component for Table<T> {
             .highlight_symbol("▶ ");
 
         if let Some(title) = &self.title {
-            let block = theme.block()
+            let block = theme
+                .block()
                 .title(title.as_str())
                 .title_style(theme.title_style());
             table = table.block(block);

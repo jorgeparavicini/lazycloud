@@ -300,7 +300,8 @@ impl CommandPanel {
             )
         };
 
-        let block = theme.block()
+        let block = theme
+            .block()
             .border_style(Style::default().fg(theme.surface2()))
             .title(title)
             .title_style(theme.title_style())
