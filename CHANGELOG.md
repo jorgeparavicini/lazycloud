@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.7] - 2026-07-02
+
+### Features
+
+- Log viewer, timeouts, auth methods, context sync, error UX (798dc03)
+
+### Miscellaneous
+
+- Satisfy CI (formatting, advisories, licenses) (5cc4d12)
+- Fix pre-existing clippy warnings (CI uses -D warnings) (31281a6)
+
 ## [0.1.6] - 2026-06-28
 
 ### Features
