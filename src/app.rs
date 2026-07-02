@@ -61,9 +61,13 @@ impl CommandCtx for AppCommandCtx {
 
 #[derive(Debug, Clone)]
 pub enum AppMessage {
+    // Matched by the message handler but not yet wired to a producer; kept as
+    // scaffolding for the tick/suspend lifecycle.
+    #[allow(dead_code)]
     Tick,
     Render,
     Resize(u16, u16),
+    #[allow(dead_code)]
     Suspend,
     Resume,
     Quit,
