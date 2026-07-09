@@ -647,6 +647,14 @@ impl Modal for CreateSecretWizard {
         })
     }
 
+    fn handle_paste(&mut self, text: &str) -> Result<EventResult<Self::Output>> {
+        match self.step {
+            CreateSecretWizardStep::Name => self.name_input.handle_paste(text)?,
+            CreateSecretWizardStep::Payload => self.payload_input.handle_paste(text)?,
+        };
+        Ok(EventResult::Consumed)
+    }
+
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         match self.step {
             CreateSecretWizardStep::Name => self.name_input.render(frame, area, theme),

@@ -99,12 +99,27 @@ impl App {
         Ok(())
     }
 
+    pub(super) fn handle_popup_paste(&mut self, text: &str) {
+        // Only the auth editor contains a text input; other popups ignore paste.
+        if let Some(ActivePopup::AuthEditor(editor)) = &mut self.popup {
+            let _ = editor.handle_paste(text);
+        }
+    }
+
     pub(super) fn handle_event(&mut self, event: &TuiEvent) -> Result<()> {
         // Popup intercepts all key events when visible
         if self.popup.is_some()
             && let TuiEvent::Key(key) = event
         {
             self.handle_popup_event(*key)?;
+            return Ok(());
+        }
+
+        // Popup intercepts pasted text as well
+        if self.popup.is_some()
+            && let TuiEvent::Paste(text) = event
+        {
+            self.handle_popup_paste(text);
             return Ok(());
         }
 
@@ -154,18 +169,25 @@ impl App {
                     false
                 }
             }
-            AppState::ActiveService(service) => {
-                if let TuiEvent::Key(key) = event {
+            AppState::ActiveService(service) => match event {
+                TuiEvent::Key(key) => {
                     let result = service.handle_key(*key);
                     if result.is_consumed() {
                         let msg = service.update();
                         self.process_update_result(msg);
                     }
                     result.is_consumed()
-                } else {
-                    false
                 }
-            }
+                TuiEvent::Paste(text) => {
+                    let result = service.handle_paste(text);
+                    if result.is_consumed() {
+                        let msg = service.update();
+                        self.process_update_result(msg);
+                    }
+                    result.is_consumed()
+                }
+                _ => false,
+            },
         };
 
         if !handled {

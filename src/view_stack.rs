@@ -127,6 +127,36 @@ impl<M> ViewStack<M> {
         EventResult::Ignored
     }
 
+    pub fn handle_paste(&mut self, text: &str, event_queue: &EventQueue<M>) -> EventResult<()> {
+        if self.loading.is_some() {
+            return EventResult::Ignored;
+        }
+
+        // Handle modal first if present (captures all input)
+        if let Some(modal) = &mut self.modal {
+            let (consumed, msg) = modal.handle_paste(text).process();
+            if let Some(msg) = msg {
+                event_queue.send(msg);
+            }
+            if consumed {
+                return EventResult::Consumed;
+            }
+        }
+
+        // Handle current screen
+        if let Some(screen) = self.current_screen_mut() {
+            let (consumed, msg) = screen.handle_paste(text).process();
+            if let Some(msg) = msg {
+                event_queue.send(msg);
+            }
+            if consumed {
+                return EventResult::Consumed;
+            }
+        }
+
+        EventResult::Ignored
+    }
+
     pub fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         if let Some(label) = &self.loading {
             self.spinner.set_label(label.clone());

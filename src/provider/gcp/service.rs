@@ -305,6 +305,10 @@ impl<L: GcpServiceLogic> Service for GcpService<L> {
             .handle_key(key, &self.events, Lifecycle::NavigateBack.into())
     }
 
+    fn handle_paste(&mut self, text: &str) -> EventResult<()> {
+        self.views.handle_paste(text, &self.events)
+    }
+
     fn update(&mut self) -> Result<ServiceMsg> {
         let mut commands: Vec<Box<dyn Command>> = Vec::new();
 

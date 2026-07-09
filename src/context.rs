@@ -996,6 +996,14 @@ impl Component for AuthMethodEditor {
         }
     }
 
+    fn handle_paste(&mut self, text: &str) -> Result<EventResult<Self::Output>> {
+        if matches!(self.phase, AuthEditorPhase::EnterKeyPath) {
+            self.path_input.handle_paste(text)?;
+        }
+        // The editor is a popup, so paste is captured either way.
+        Ok(EventResult::Consumed)
+    }
+
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         if matches!(self.phase, AuthEditorPhase::EnterKeyPath) {
             self.path_input.render(frame, area, theme);
