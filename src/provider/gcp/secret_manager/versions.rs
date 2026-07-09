@@ -282,6 +282,11 @@ impl Modal for CreateVersionDialog {
         })
     }
 
+    fn handle_paste(&mut self, text: &str) -> Result<EventResult<Self::Output>> {
+        self.input.handle_paste(text)?;
+        Ok(EventResult::Consumed)
+    }
+
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme) {
         self.input.render(frame, area, theme);
     }

@@ -113,6 +113,15 @@ pub trait Component {
         Ok(EventResult::Ignored)
     }
 
+    /// Handle text pasted into the terminal (bracketed paste).
+    ///
+    /// Defaults to `Ignored`; text-accepting components override this to
+    /// insert the pasted text.
+    fn handle_paste(&mut self, text: &str) -> Result<EventResult<Self::Output>> {
+        _ = text;
+        Ok(EventResult::Ignored)
+    }
+
     /// Called on each tick for animations and time-based updates.
     fn handle_tick(&mut self) {}
 
@@ -137,6 +146,12 @@ pub trait Modal {
 
     /// Handle a key event.
     fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>>;
+
+    /// Handle text pasted into the terminal (bracketed paste).
+    fn handle_paste(&mut self, text: &str) -> Result<EventResult<Self::Output>> {
+        _ = text;
+        Ok(EventResult::Ignored)
+    }
 
     /// Render the modal to the frame.
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme);
@@ -164,6 +179,12 @@ pub trait Screen {
 
     /// Handle a key event.
     fn handle_key(&mut self, key: KeyEvent) -> Result<EventResult<Self::Output>>;
+
+    /// Handle text pasted into the terminal (bracketed paste).
+    fn handle_paste(&mut self, text: &str) -> Result<EventResult<Self::Output>> {
+        _ = text;
+        Ok(EventResult::Ignored)
+    }
 
     /// Render the screen to the frame.
     fn render(&mut self, frame: &mut Frame, area: Rect, theme: &Theme);

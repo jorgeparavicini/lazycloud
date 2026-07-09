@@ -55,6 +55,12 @@ pub trait Service {
     /// Handle a key event.
     fn handle_key(&mut self, key: KeyEvent) -> EventResult<()>;
 
+    /// Handle text pasted into the terminal (bracketed paste).
+    fn handle_paste(&mut self, text: &str) -> EventResult<()> {
+        _ = text;
+        EventResult::Ignored
+    }
+
     /// Process all queued messages and return the result.
     ///
     /// # Errors
