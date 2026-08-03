@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.8] - 2026-08-03
+
+### Bug Fixes
+
+- Handle bracketed paste in text inputs (edec582)
+
 ## [0.1.7] - 2026-07-02
 
 ### Features
