@@ -1,5 +1,6 @@
 use google_cloud_gax::client_builder;
 use google_cloud_gax::error::rpc::Code;
+use google_cloud_gax::paginator::{ItemPaginator, Paginator};
 use google_cloud_storage::client::{Storage, StorageControl};
 use tracing::{debug, info};
 
@@ -47,6 +48,10 @@ impl From<google_cloud_gax::error::Error> for ClientError {
         }
     }
 }
+
+/// Page size requested for list calls. GCS caps both bucket and object listings
+/// at 1000 entries per page, and defaults to a much smaller page when unset.
+const LIST_PAGE_SIZE: i32 = 1000;
 
 pub struct BucketInfo {
     pub name: String,
@@ -112,29 +117,27 @@ impl GcsClient {
 
     pub async fn list_buckets(&self) -> Result<Vec<BucketInfo>, ClientError> {
         info!(parent = %self.parent, "Listing buckets");
-        let response = self
+        let mut items = self
             .control
             .list_buckets()
             .set_parent(&self.parent)
-            .send()
-            .await?;
-        debug!(count = response.buckets.len(), "Received buckets response");
+            .set_page_size(LIST_PAGE_SIZE)
+            .by_item();
 
-        let buckets = response
-            .buckets
-            .into_iter()
-            .map(|bucket| {
-                let name = bucket
-                    .name
-                    .rsplit_once('/')
-                    .map_or_else(|| bucket.name.clone(), |(_, n)| n.to_string());
-                BucketInfo {
-                    name,
-                    location: bucket.location,
-                    storage_class: bucket.storage_class,
-                }
-            })
-            .collect::<Vec<_>>();
+        let mut buckets = Vec::new();
+        while let Some(bucket) = items.next().await {
+            let bucket = bucket?;
+            let name = bucket
+                .name
+                .rsplit_once('/')
+                .map_or_else(|| bucket.name.clone(), |(_, n)| n.to_string());
+            buckets.push(BucketInfo {
+                name,
+                location: bucket.location,
+                storage_class: bucket.storage_class,
+            });
+        }
+        debug!(count = buckets.len(), "Received buckets");
         Ok(buckets)
     }
 
@@ -148,20 +151,23 @@ impl GcsClient {
             .control
             .list_objects()
             .set_parent(&bucket_path)
-            .set_delimiter("/");
+            .set_delimiter("/")
+            .set_page_size(LIST_PAGE_SIZE);
 
         if !prefix.is_empty() {
             builder = builder.set_prefix(prefix);
         }
 
-        let response = builder.send().await?;
+        // Iterate by page rather than by item: prefixes (the synthetic folders)
+        // live on the page, not on the item stream.
+        let mut pages = builder.by_page();
+        let mut folders = Vec::new();
+        let mut objects = Vec::new();
 
-        let folders = response.prefixes;
-
-        let objects = response
-            .objects
-            .into_iter()
-            .map(|obj| {
+        while let Some(page) = pages.next().await {
+            let page = page?;
+            folders.extend(page.prefixes);
+            objects.extend(page.objects.into_iter().map(|obj| {
                 let display_name = if let Some(stripped) = obj.name.strip_prefix(prefix) {
                     stripped.to_string()
                 } else {
@@ -176,9 +182,14 @@ impl GcsClient {
                     updated,
                     storage_class: obj.storage_class,
                 }
-            })
-            .collect();
+            }));
+        }
 
+        debug!(
+            folders = folders.len(),
+            objects = objects.len(),
+            "Received objects"
+        );
         Ok(ObjectList { folders, objects })
     }
 
