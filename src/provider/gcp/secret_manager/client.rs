@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use google_cloud_gax::error::rpc::Code;
+use google_cloud_gax::paginator::ItemPaginator;
 use google_cloud_secretmanager_v1::client::SecretManagerService as GcpSecretManagerClient;
 use google_cloud_secretmanager_v1::model;
 use google_cloud_wkt::FieldMask;
@@ -46,6 +47,11 @@ impl From<google_cloud_gax::error::Error> for ClientError {
     }
 }
 
+/// Page size requested for list calls. The API defaults to a small page when
+/// unset (25 for secrets), so ask for a large page to keep round-trips down.
+/// The server caps this at 25000.
+const LIST_PAGE_SIZE: i32 = 1000;
+
 #[derive(Clone, Debug)]
 pub struct SecretManagerClient {
     client: GcpSecretManagerClient,
@@ -82,31 +88,38 @@ impl SecretManagerClient {
         let parent = format!("projects/{}", self.project_id);
         info!(%parent, "Listing secrets");
 
-        let response = self.client.list_secrets().set_parent(parent).send().await?;
-        debug!(count = response.secrets.len(), "Received secrets response");
+        let mut items = self
+            .client
+            .list_secrets()
+            .set_parent(parent)
+            .set_page_size(LIST_PAGE_SIZE)
+            .by_item();
 
         let mut secrets = Vec::new();
-        for secret in response.secrets {
+        while let Some(secret) = items.next().await {
+            let secret = secret?;
             if let Some(secret_id) = secret.name.rsplit('/').next() {
                 let secret_id = secret_id.to_owned();
                 secrets.push(Secret::from_proto(&secret_id, secret));
             }
         }
+        debug!(count = secrets.len(), "Received secrets");
         Ok(secrets)
     }
 
     pub async fn list_versions(&self, secret_id: &str) -> Result<Vec<SecretVersion>, ClientError> {
         let parent = format!("projects/{}/secrets/{}", self.project_id, secret_id);
 
-        let response = self
+        let mut items = self
             .client
             .list_secret_versions()
             .set_parent(parent)
-            .send()
-            .await?;
+            .set_page_size(LIST_PAGE_SIZE)
+            .by_item();
 
         let mut versions = Vec::new();
-        for version in response.versions {
+        while let Some(version) = items.next().await {
+            let version = version?;
             if let Some(name) = version.name.split('/').next_back() {
                 versions.push(SecretVersion::from_proto(name, &version));
             }
