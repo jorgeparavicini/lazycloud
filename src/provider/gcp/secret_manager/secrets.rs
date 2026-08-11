@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::hash::Hash;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -16,6 +15,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::Theme;
 use crate::commands::{Command, CommandCtx, CopyToClipboardCmd};
 use crate::provider::gcp::secret_manager::SecretManager;
+use crate::provider::gcp::secret_manager::cache::{SecretsKey, invalidate_secret};
 use crate::provider::gcp::secret_manager::client::{ClientError, SecretManagerClient};
 use crate::provider::gcp::secret_manager::payload::PayloadMsg;
 use crate::provider::gcp::secret_manager::service::{SecretManagerMsg, SmDomainMsg};
@@ -40,8 +40,6 @@ use crate::ui::{
     TextInputEvent,
 };
 use crate::utility::format_timestamp;
-
-const SECRETS_CACHE_KEY: &str = "secrets";
 
 // === Models ===
 
@@ -91,12 +89,6 @@ impl Secret {
 impl Display for Secret {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name)
-    }
-}
-
-impl Hash for Secret {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
     }
 }
 
@@ -708,10 +700,7 @@ impl Modal for DeleteSecretDialog {
 pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<ServiceMsg> {
     match msg {
         SecretsMsg::Load => {
-            if let Some(secrets) = state
-                .cache
-                .get::<_, Vec<Secret>>(&SECRETS_CACHE_KEY.to_string())
-            {
+            if let Some(secrets) = state.cache.get(&SecretsKey) {
                 state.views.push(SecretListScreen::new(secrets.clone()));
                 return Ok(ServiceMsg::Idle);
             }
@@ -727,7 +716,7 @@ pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<Servi
 
         SecretsMsg::Loaded(secrets) => {
             state.views.clear_loading();
-            state.cache.insert(SECRETS_CACHE_KEY, secrets.clone());
+            state.cache.insert(SecretsKey, secrets.clone());
             state.views.push(SecretListScreen::new(secrets));
             Ok(ServiceMsg::Idle)
         }
@@ -751,9 +740,7 @@ pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<Servi
         }
 
         SecretsMsg::Created(_secret) => {
-            state
-                .cache
-                .invalidate::<_, Vec<Secret>>(&SECRETS_CACHE_KEY.to_string());
+            state.cache.invalidate(&SecretsKey);
             state.queue(SecretsMsg::Load.into());
             Ok(ServiceMsg::Idle)
         }
@@ -775,10 +762,10 @@ pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<Servi
             .into())
         }
 
-        SecretsMsg::Deleted(_name) => {
-            state
-                .cache
-                .invalidate::<_, Vec<Secret>>(&SECRETS_CACHE_KEY.to_string());
+        SecretsMsg::Deleted(name) => {
+            state.cache.invalidate(&SecretsKey);
+            // A later secret of the same name must not inherit these entries.
+            invalidate_secret(&mut state.cache, &name);
             state.views.pop_to_root();
             state.queue(SecretsMsg::Load.into());
             Ok(ServiceMsg::Idle)
@@ -819,9 +806,7 @@ pub(super) fn update(state: &mut SecretManager, msg: SecretsMsg) -> Result<Servi
 
         SecretsMsg::LabelsUpdated(secret) => {
             state.views.clear_loading();
-            state
-                .cache
-                .invalidate::<_, Vec<Secret>>(&SECRETS_CACHE_KEY.to_string());
+            state.cache.invalidate(&SecretsKey);
             state.views.pop();
             state.views.push(LabelsScreen::new(secret));
             Ok(ServiceMsg::Idle)

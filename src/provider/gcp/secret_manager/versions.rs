@@ -11,6 +11,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::Theme;
 use crate::commands::{Command, CommandCtx};
 use crate::provider::gcp::secret_manager::SecretManager;
+use crate::provider::gcp::secret_manager::cache::{VersionsKey, invalidate_secret};
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::payload::PayloadMsg;
 use crate::provider::gcp::secret_manager::secrets::Secret;
@@ -344,7 +345,7 @@ pub(super) fn update(state: &mut SecretManager, msg: VersionsMsg) -> Result<Serv
     match msg {
         VersionsMsg::Load(secret) => {
             // Use cached versions if available
-            if let Some(versions) = state.cache.get::<_, Vec<SecretVersion>>(&secret) {
+            if let Some(versions) = state.cache.get(&VersionsKey(secret.name.clone())) {
                 state
                     .views
                     .push(VersionListScreen::new(secret, versions.clone()));
@@ -363,7 +364,9 @@ pub(super) fn update(state: &mut SecretManager, msg: VersionsMsg) -> Result<Serv
 
         VersionsMsg::Loaded { secret, versions } => {
             state.views.clear_loading();
-            state.cache.insert(secret.clone(), versions.clone());
+            state
+                .cache
+                .insert(VersionsKey(secret.name.clone()), versions.clone());
             state.views.push(VersionListScreen::new(secret, versions));
             Ok(ServiceMsg::Idle)
         }
@@ -376,7 +379,7 @@ pub(super) fn update(state: &mut SecretManager, msg: VersionsMsg) -> Result<Serv
         VersionsMsg::Create { secret, payload } => {
             state.views.set_loading("Creating version...");
             state.views.close_modal();
-            state.cache.invalidate::<Secret, Secret>(&secret);
+            invalidate_secret(&mut state.cache, &secret.name);
 
             Ok(AddVersionCmd {
                 secret,
@@ -398,7 +401,7 @@ pub(super) fn update(state: &mut SecretManager, msg: VersionsMsg) -> Result<Serv
 
         VersionsMsg::Disable { secret, version } => {
             state.views.set_loading("Disabling version...");
-            state.cache.invalidate::<Secret, Secret>(&secret);
+            invalidate_secret(&mut state.cache, &secret.name);
 
             Ok(DisableVersionCmd {
                 secret,
@@ -411,7 +414,7 @@ pub(super) fn update(state: &mut SecretManager, msg: VersionsMsg) -> Result<Serv
 
         VersionsMsg::Enable { secret, version } => {
             state.views.set_loading("Enabling version...");
-            state.cache.invalidate::<Secret, Secret>(&secret);
+            invalidate_secret(&mut state.cache, &secret.name);
 
             Ok(EnableVersionCmd {
                 secret,
@@ -432,7 +435,7 @@ pub(super) fn update(state: &mut SecretManager, msg: VersionsMsg) -> Result<Serv
         VersionsMsg::Destroy { secret, version } => {
             state.views.set_loading("Destroying version...");
             state.views.close_modal();
-            state.cache.invalidate::<Secret, Secret>(&secret);
+            invalidate_secret(&mut state.cache, &secret.name);
 
             Ok(DestroyVersionCmd {
                 secret,
