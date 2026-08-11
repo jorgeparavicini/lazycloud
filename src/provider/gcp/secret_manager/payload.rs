@@ -11,6 +11,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::Theme;
 use crate::commands::{Command, CommandCtx, CopyToClipboardCmd};
 use crate::provider::gcp::secret_manager::SecretManager;
+use crate::provider::gcp::secret_manager::cache::{PayloadKey, invalidate_secret};
 use crate::provider::gcp::secret_manager::client::SecretManagerClient;
 use crate::provider::gcp::secret_manager::secrets::Secret;
 use crate::provider::gcp::secret_manager::service::{SecretManagerMsg, SmDomainMsg};
@@ -151,10 +152,7 @@ pub(super) fn update(state: &mut SecretManager, msg: PayloadMsg) -> Result<Servi
     match msg {
         PayloadMsg::Load { secret, version } => {
             // Use cached payload if available
-            if let Some(payload) = state
-                .cache
-                .get::<_, SecretPayload>(&get_cache_key(&secret, version.as_ref()))
-            {
+            if let Some(payload) = state.cache.get(&PayloadKey::new(&secret, version.as_ref())) {
                 state
                     .views
                     .push(PayloadScreen::new(secret, version, payload.clone()));
@@ -188,7 +186,7 @@ pub(super) fn update(state: &mut SecretManager, msg: PayloadMsg) -> Result<Servi
             state.views.clear_loading();
             state
                 .cache
-                .insert(get_cache_key(&secret, version.as_ref()), payload.clone());
+                .insert(PayloadKey::new(&secret, version.as_ref()), payload.clone());
             state
                 .views
                 .push(PayloadScreen::new(secret, version, payload));
@@ -206,7 +204,9 @@ pub(super) fn update(state: &mut SecretManager, msg: PayloadMsg) -> Result<Servi
 
         PayloadMsg::SaveEdit { secret, new_data } => {
             state.views.set_loading("Saving new version...");
-            state.cache.invalidate::<_, SecretVersion>(&secret);
+            // The edit adds a version, so the cached payloads of this secret —
+            // `latest` above all — no longer describe it.
+            invalidate_secret(&mut state.cache, &secret.name);
 
             Ok(SaveEditCmd {
                 secret,
@@ -230,13 +230,6 @@ pub(super) fn update(state: &mut SecretManager, msg: PayloadMsg) -> Result<Servi
             Ok(ServiceMsg::Idle)
         }
     }
-}
-
-fn get_cache_key(secret: &Secret, version: Option<&SecretVersion>) -> String {
-    version.map_or_else(
-        || format!("{}:latest", secret.name),
-        |v| format!("{}:{}", secret.name, v.version_id),
-    )
 }
 
 // === Commands ===

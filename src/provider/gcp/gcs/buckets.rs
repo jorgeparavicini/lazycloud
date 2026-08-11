@@ -8,6 +8,7 @@ use ratatui::widgets::Cell;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::Theme;
+use crate::cache::CacheKey;
 use crate::commands::{Command, CommandCtx};
 use crate::provider::gcp::gcs::Gcs;
 use crate::provider::gcp::gcs::client::{ClientError, GcsClient};
@@ -28,7 +29,15 @@ use crate::ui::{
     TableRow,
 };
 
-const BUCKETS_CACHE_KEY: &str = "buckets";
+// === Cache ===
+
+/// The buckets of the current project.
+#[derive(Debug, Hash, PartialEq, Eq)]
+struct BucketsKey;
+
+impl CacheKey for BucketsKey {
+    type Value = Vec<Bucket>;
+}
 
 // === Model ===
 
@@ -141,10 +150,7 @@ impl Screen for BucketListScreen {
 pub(super) fn update(state: &mut Gcs, msg: BucketsMsg) -> color_eyre::Result<ServiceMsg> {
     match msg {
         BucketsMsg::Load => {
-            if let Some(buckets) = state
-                .cache
-                .get::<_, Vec<Bucket>>(&BUCKETS_CACHE_KEY.to_string())
-            {
+            if let Some(buckets) = state.cache.get(&BucketsKey) {
                 state.views.push(BucketListScreen::new(buckets.clone()));
                 return Ok(ServiceMsg::Idle);
             }
@@ -160,7 +166,7 @@ pub(super) fn update(state: &mut Gcs, msg: BucketsMsg) -> color_eyre::Result<Ser
 
         BucketsMsg::Loaded(buckets) => {
             state.views.clear_loading();
-            state.cache.insert(BUCKETS_CACHE_KEY, buckets.clone());
+            state.cache.insert(BucketsKey, buckets.clone());
             state.views.push(BucketListScreen::new(buckets));
             Ok(ServiceMsg::Idle)
         }
