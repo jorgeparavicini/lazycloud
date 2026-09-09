@@ -41,6 +41,7 @@ use crate::ui::{
     ToastManager,
     ToastType,
 };
+use crate::utility::strip_editor_trailing_newline;
 
 /// App-backed implementation of [`CommandCtx`].
 ///
@@ -250,8 +251,10 @@ impl App {
 
                 if let AppState::ActiveService(service) = &mut self.state {
                     let edited = match result {
-                        Ok(new) if new != content => Some(new),
-                        Ok(_) => None,
+                        Ok(new) => {
+                            let new = strip_editor_trailing_newline(&content, new);
+                            (new != content).then_some(new)
+                        }
                         Err(e) => {
                             let _ = self.msg_tx.send(AppMessage::DisplayError(format!(
                                 "Failed to open editor: {e}"
