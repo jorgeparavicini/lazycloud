@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.8] - 2026-09-09
+
+### Bug Fixes
+
+- Handle bracketed paste in text inputs (edec582)
+- Paginate all GCP list calls (b69173e)
+- Show the new payload after editing a secret (566f60c)
+
 ## [0.1.7] - 2026-07-02
 
 ### Features
