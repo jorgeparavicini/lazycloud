@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.9] - 2026-09-16
+
+### Bug Fixes
+
+- Drop the trailing newline an editor appends to a payload (0094202)
+
 ## [0.1.8] - 2026-09-09
 
 ### Bug Fixes
